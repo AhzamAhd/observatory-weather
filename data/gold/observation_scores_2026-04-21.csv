@@ -1,0 +1,6 @@
+observatory,country,altitude_m,cloud_cover_pct,humidity_pct,wind_speed_ms,temperature_c,observation_score,condition
+Mauna Kea Observatory,USA,4205,0.0,74.0,2.11,7.2,100.0,Excellent
+Cerro Pachon Observatory,Chile,2722,0.0,36.0,3.44,16.6,100.0,Excellent
+Himalayan Chandra Telescope,India,4500,0.0,34.0,1.4,-7.4,100.0,Excellent
+Paranal Observatory,Chile,2635,22.0,63.0,0.91,14.8,89.0,Excellent
+La Palma Observatory,Spain,2396,47.0,87.0,1.39,3.8,72.5,Good
