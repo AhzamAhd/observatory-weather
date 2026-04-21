@@ -5,11 +5,11 @@
     "latitude": 19.8207,
     "longitude": -155.4681,
     "altitude_m": 4205,
-    "timestamp_utc": "2026-04-21T21:24:36.588481",
-    "cloud_cover_pct": 52,
+    "timestamp_utc": "2026-04-21T21:37:45.426195",
+    "cloud_cover_pct": 55,
     "humidity_pct": 70,
     "wind_speed_ms": 3.11,
-    "temperature_c": 9.3,
+    "temperature_c": 9.4,
     "precipitation_mm": 0.0
   },
   {
@@ -18,11 +18,11 @@
     "latitude": -24.6275,
     "longitude": -70.4044,
     "altitude_m": 2635,
-    "timestamp_utc": "2026-04-21T21:24:37.567945",
-    "cloud_cover_pct": 29,
+    "timestamp_utc": "2026-04-21T21:37:46.116385",
+    "cloud_cover_pct": 15,
     "humidity_pct": 75,
-    "wind_speed_ms": 0.73,
-    "temperature_c": 12.8,
+    "wind_speed_ms": 0.91,
+    "temperature_c": 12.6,
     "precipitation_mm": 0.0
   },
   {
@@ -31,11 +31,11 @@
     "latitude": 28.7606,
     "longitude": -17.8795,
     "altitude_m": 2396,
-    "timestamp_utc": "2026-04-21T21:24:38.554169",
+    "timestamp_utc": "2026-04-21T21:37:46.794062",
     "cloud_cover_pct": 55,
-    "humidity_pct": 93,
-    "wind_speed_ms": 0.92,
-    "temperature_c": 2.4,
+    "humidity_pct": 94,
+    "wind_speed_ms": 0.94,
+    "temperature_c": 2.3,
     "precipitation_mm": 0.0
   },
   {
@@ -44,11 +44,11 @@
     "latitude": -30.2407,
     "longitude": -70.7366,
     "altitude_m": 2722,
-    "timestamp_utc": "2026-04-21T21:24:39.479214",
+    "timestamp_utc": "2026-04-21T21:37:47.369131",
     "cloud_cover_pct": 24,
-    "humidity_pct": 47,
-    "wind_speed_ms": 2.35,
-    "temperature_c": 14.6,
+    "humidity_pct": 50,
+    "wind_speed_ms": 2.24,
+    "temperature_c": 14.2,
     "precipitation_mm": 0.0
   },
   {
@@ -57,11 +57,11 @@
     "latitude": 32.7794,
     "longitude": 78.9627,
     "altitude_m": 4500,
-    "timestamp_utc": "2026-04-21T21:24:40.438863",
+    "timestamp_utc": "2026-04-21T21:37:48.039226",
     "cloud_cover_pct": 0,
     "humidity_pct": 37,
-    "wind_speed_ms": 1.04,
-    "temperature_c": -8.9,
+    "wind_speed_ms": 1.14,
+    "temperature_c": -9.2,
     "precipitation_mm": 0.0
   }
 ]
