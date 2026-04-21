@@ -31,7 +31,7 @@ jobs:
         run: python score_quality.py
 
       - name: Run visualisation
-        run: python visualise.py
+        run: python visualize.py
 
       - name: Commit results to repo
         run: |
