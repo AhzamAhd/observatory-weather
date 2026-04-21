@@ -2,8 +2,8 @@ name: Daily Observatory Weather Pipeline
 
 on:
   schedule:
-    - cron: '0 6 * * *'    # Runs every day at 06:00 UTC
-  workflow_dispatch:         # Allows manual trigger from GitHub
+    - cron: '0 6 * * *'
+  workflow_dispatch:
 
 jobs:
   run-pipeline:
@@ -21,13 +21,6 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Download existing database
-        uses: actions/download-artifact@v4
-        with:
-          name: observatory-db
-          path: data/silver/
-        continue-on-error: true
-
       - name: Run fetcher
         run: python fetch_weather.py
 
@@ -40,17 +33,10 @@ jobs:
       - name: Run visualisation
         run: python visualise.py
 
-      - name: Upload updated database
-        uses: actions/upload-artifact@v4
-        with:
-          name: observatory-db
-          path: data/silver/observatory_weather.db
-          retention-days: 7
-
-      - name: Commit charts and scores to repo
+      - name: Commit results to repo
         run: |
           git config --global user.name "github-actions"
           git config --global user.email "actions@github.com"
-          git add data/gold/
+          git add data/
           git diff --staged --quiet || git commit -m "auto: daily weather update $(date -u '+%Y-%m-%d')"
           git push
