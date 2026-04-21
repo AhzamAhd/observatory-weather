@@ -5,11 +5,11 @@
     "latitude": 19.8207,
     "longitude": -155.4681,
     "altitude_m": 4205,
-    "timestamp_utc": "2026-04-21T20:41:39.861413",
+    "timestamp_utc": "2026-04-21T20:46:15.896709",
     "cloud_cover_pct": 55,
-    "humidity_pct": 75,
-    "wind_speed_ms": 2.76,
-    "temperature_c": 8.6,
+    "humidity_pct": 73,
+    "wind_speed_ms": 2.9,
+    "temperature_c": 8.9,
     "precipitation_mm": 0.0
   },
   {
@@ -18,11 +18,11 @@
     "latitude": -24.6275,
     "longitude": -70.4044,
     "altitude_m": 2635,
-    "timestamp_utc": "2026-04-21T20:41:40.361919",
+    "timestamp_utc": "2026-04-21T20:46:16.542071",
     "cloud_cover_pct": 33,
-    "humidity_pct": 73,
+    "humidity_pct": 74,
     "wind_speed_ms": 0.78,
-    "temperature_c": 13.4,
+    "temperature_c": 13.1,
     "precipitation_mm": 0.0
   },
   {
@@ -31,11 +31,11 @@
     "latitude": 28.7606,
     "longitude": -17.8795,
     "altitude_m": 2396,
-    "timestamp_utc": "2026-04-21T20:41:40.839279",
+    "timestamp_utc": "2026-04-21T20:46:17.093738",
     "cloud_cover_pct": 55,
     "humidity_pct": 91,
-    "wind_speed_ms": 0.94,
-    "temperature_c": 2.8,
+    "wind_speed_ms": 0.92,
+    "temperature_c": 2.6,
     "precipitation_mm": 0.0
   },
   {
@@ -44,11 +44,11 @@
     "latitude": -30.2407,
     "longitude": -70.7366,
     "altitude_m": 2722,
-    "timestamp_utc": "2026-04-21T20:41:41.317134",
+    "timestamp_utc": "2026-04-21T20:46:17.628428",
     "cloud_cover_pct": 22,
-    "humidity_pct": 42,
-    "wind_speed_ms": 2.82,
-    "temperature_c": 15.5,
+    "humidity_pct": 44,
+    "wind_speed_ms": 2.6,
+    "temperature_c": 15.2,
     "precipitation_mm": 0.0
   },
   {
@@ -57,11 +57,11 @@
     "latitude": 32.7794,
     "longitude": 78.9627,
     "altitude_m": 4500,
-    "timestamp_utc": "2026-04-21T20:41:41.776070",
+    "timestamp_utc": "2026-04-21T20:46:18.181779",
     "cloud_cover_pct": 0,
-    "humidity_pct": 37,
-    "wind_speed_ms": 1.3,
-    "temperature_c": -8.8,
+    "humidity_pct": 36,
+    "wind_speed_ms": 1.1,
+    "temperature_c": -8.7,
     "precipitation_mm": 0.0
   }
 ]
