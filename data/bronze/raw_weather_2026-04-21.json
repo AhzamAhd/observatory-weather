@@ -1,0 +1,67 @@
+[
+  {
+    "observatory_name": "Mauna Kea Observatory",
+    "country": "USA",
+    "latitude": 19.8207,
+    "longitude": -155.4681,
+    "altitude_m": 4205,
+    "timestamp_utc": "2026-04-21T19:21:36.341653",
+    "cloud_cover_pct": 0,
+    "humidity_pct": 74,
+    "wind_speed_ms": 2.11,
+    "temperature_c": 7.2,
+    "precipitation_mm": 0.0
+  },
+  {
+    "observatory_name": "Paranal Observatory",
+    "country": "Chile",
+    "latitude": -24.6275,
+    "longitude": -70.4044,
+    "altitude_m": 2635,
+    "timestamp_utc": "2026-04-21T19:21:36.937373",
+    "cloud_cover_pct": 22,
+    "humidity_pct": 63,
+    "wind_speed_ms": 0.91,
+    "temperature_c": 14.8,
+    "precipitation_mm": 0.0
+  },
+  {
+    "observatory_name": "La Palma Observatory",
+    "country": "Spain",
+    "latitude": 28.7606,
+    "longitude": -17.8795,
+    "altitude_m": 2396,
+    "timestamp_utc": "2026-04-21T19:21:37.515874",
+    "cloud_cover_pct": 47,
+    "humidity_pct": 87,
+    "wind_speed_ms": 1.39,
+    "temperature_c": 3.8,
+    "precipitation_mm": 0.0
+  },
+  {
+    "observatory_name": "Cerro Pachon Observatory",
+    "country": "Chile",
+    "latitude": -30.2407,
+    "longitude": -70.7366,
+    "altitude_m": 2722,
+    "timestamp_utc": "2026-04-21T19:21:38.056725",
+    "cloud_cover_pct": 0,
+    "humidity_pct": 36,
+    "wind_speed_ms": 3.44,
+    "temperature_c": 16.6,
+    "precipitation_mm": 0.0
+  },
+  {
+    "observatory_name": "Himalayan Chandra Telescope",
+    "country": "India",
+    "latitude": 32.7794,
+    "longitude": 78.9627,
+    "altitude_m": 4500,
+    "timestamp_utc": "2026-04-21T19:21:38.636852",
+    "cloud_cover_pct": 0,
+    "humidity_pct": 34,
+    "wind_speed_ms": 1.4,
+    "temperature_c": -7.4,
+    "precipitation_mm": 0.0
+  }
+]
