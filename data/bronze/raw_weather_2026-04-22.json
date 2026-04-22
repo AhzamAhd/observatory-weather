@@ -5,11 +5,11 @@
     "latitude": 19.8207,
     "longitude": -155.4681,
     "altitude_m": 4205,
-    "timestamp_utc": "2026-04-22T07:43:38.227615",
-    "cloud_cover_pct": 100,
-    "humidity_pct": 98,
-    "wind_speed_ms": 0.85,
-    "temperature_c": 4.5,
+    "timestamp_utc": "2026-04-22T19:36:03.738459",
+    "cloud_cover_pct": 48,
+    "humidity_pct": 80,
+    "wind_speed_ms": 2.05,
+    "temperature_c": 7.4,
     "precipitation_mm": 0.0
   },
   {
@@ -18,11 +18,11 @@
     "latitude": -24.6275,
     "longitude": -70.4044,
     "altitude_m": 2635,
-    "timestamp_utc": "2026-04-22T07:43:38.861833",
+    "timestamp_utc": "2026-04-22T19:36:04.205534",
     "cloud_cover_pct": 0,
-    "humidity_pct": 21,
-    "wind_speed_ms": 2.06,
-    "temperature_c": 15.2,
+    "humidity_pct": 50,
+    "wind_speed_ms": 1.75,
+    "temperature_c": 15.0,
     "precipitation_mm": 0.0
   },
   {
@@ -31,11 +31,11 @@
     "latitude": 28.7606,
     "longitude": -17.8795,
     "altitude_m": 2396,
-    "timestamp_utc": "2026-04-22T07:43:39.529826",
-    "cloud_cover_pct": 100,
-    "humidity_pct": 99,
-    "wind_speed_ms": 1.21,
-    "temperature_c": 1.7,
+    "timestamp_utc": "2026-04-22T19:36:05.253073",
+    "cloud_cover_pct": 46,
+    "humidity_pct": 88,
+    "wind_speed_ms": 1.17,
+    "temperature_c": 2.5,
     "precipitation_mm": 0.0
   },
   {
@@ -44,11 +44,11 @@
     "latitude": -30.2407,
     "longitude": -70.7366,
     "altitude_m": 2722,
-    "timestamp_utc": "2026-04-22T07:43:40.141975",
+    "timestamp_utc": "2026-04-22T19:36:05.736895",
     "cloud_cover_pct": 0,
-    "humidity_pct": 54,
-    "wind_speed_ms": 1.49,
-    "temperature_c": 8.3,
+    "humidity_pct": 36,
+    "wind_speed_ms": 3.21,
+    "temperature_c": 18.1,
     "precipitation_mm": 0.0
   },
   {
@@ -57,11 +57,11 @@
     "latitude": 32.7794,
     "longitude": 78.9627,
     "altitude_m": 4500,
-    "timestamp_utc": "2026-04-22T07:43:40.760404",
+    "timestamp_utc": "2026-04-22T19:36:06.520209",
     "cloud_cover_pct": 0,
-    "humidity_pct": 8,
-    "wind_speed_ms": 3.14,
-    "temperature_c": 9.1,
+    "humidity_pct": 29,
+    "wind_speed_ms": 1.53,
+    "temperature_c": -4.9,
     "precipitation_mm": 0.0
   }
 ]

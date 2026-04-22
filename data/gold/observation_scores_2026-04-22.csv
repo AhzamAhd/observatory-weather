@@ -14,6 +14,9 @@ Himalayan Chandra Telescope,India,4500,0.0,37.0,1.14,-9.2,100.0,Excellent
 Paranal Observatory,Chile,2635,0.0,21.0,2.06,15.2,100.0,Excellent
 Cerro Pachon Observatory,Chile,2722,0.0,54.0,1.49,8.3,100.0,Excellent
 Himalayan Chandra Telescope,India,4500,0.0,8.0,3.14,9.1,100.0,Excellent
+Paranal Observatory,Chile,2635,0.0,50.0,1.75,15.0,100.0,Excellent
+Cerro Pachon Observatory,Chile,2722,0.0,36.0,3.21,18.1,100.0,Excellent
+Himalayan Chandra Telescope,India,4500,0.0,29.0,1.53,-4.9,100.0,Excellent
 Paranal Observatory,Chile,2635,15.0,75.0,0.91,12.6,92.5,Excellent
 Paranal Observatory,Chile,2635,22.0,63.0,0.91,14.8,89.0,Excellent
 Cerro Pachon Observatory,Chile,2722,22.0,42.0,2.82,15.5,89.0,Excellent
@@ -33,6 +36,7 @@ Paranal Observatory,Chile,2635,33.0,73.0,0.78,13.4,83.5,Excellent
 Paranal Observatory,Chile,2635,33.0,74.0,0.78,13.1,83.5,Excellent
 Paranal Observatory,Chile,2635,33.0,74.0,0.78,13.1,83.5,Excellent
 Paranal Observatory,Chile,2635,33.0,74.0,0.78,13.1,83.5,Excellent
+Mauna Kea Observatory,USA,4205,48.0,80.0,2.05,7.4,76.0,Good
 Mauna Kea Observatory,USA,4205,52.0,71.0,3.04,9.1,74.0,Good
 Mauna Kea Observatory,USA,4205,52.0,71.0,3.04,9.1,74.0,Good
 Mauna Kea Observatory,USA,4205,52.0,70.0,3.11,9.3,74.0,Good
@@ -43,6 +47,7 @@ Mauna Kea Observatory,USA,4205,55.0,73.0,2.9,8.9,72.5,Good
 Mauna Kea Observatory,USA,4205,55.0,73.0,2.9,8.9,72.5,Good
 Mauna Kea Observatory,USA,4205,55.0,73.0,2.9,8.9,72.5,Good
 Mauna Kea Observatory,USA,4205,55.0,70.0,3.11,9.4,72.5,Good
+La Palma Observatory,Spain,2396,46.0,88.0,1.17,2.5,71.0,Good
 La Palma Observatory,Spain,2396,55.0,91.0,0.94,2.8,60.5,Good
 La Palma Observatory,Spain,2396,55.0,91.0,0.94,2.8,60.5,Good
 La Palma Observatory,Spain,2396,55.0,91.0,0.92,2.6,60.5,Good
