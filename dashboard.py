@@ -6,6 +6,7 @@ from streamlit_folium import st_folium
 from datetime import datetime
 from observing_window import get_all_windows
 from object_visibility import get_best_observatories_for_object, calculate_visibility, OBJECTS
+from peak_time import get_all_peak_times, calculate_hourly_scores
 
 st.set_page_config(
     page_title="Observatory Weather Tracker",
@@ -64,6 +65,10 @@ def load_data():
 def load_windows():
     return get_all_windows()
 
+@st.cache_data(ttl=300)
+def load_peak_times():
+    return get_all_peak_times()
+
 def score_color(score):
     if score >= 80:   return "#1D9E75"
     elif score >= 60: return "#378ADD"
@@ -76,6 +81,7 @@ def condition_emoji(condition):
 
 df  = load_data()
 win = load_windows()
+peak = load_peak_times()
 
 st.title("🔭 Global Observatory Weather Tracker")
 st.caption(
@@ -83,10 +89,11 @@ st.caption(
     f"· {len(df)} observatories monitored"
 )
 
-tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "🌍 Live Weather Map",
     "🌙 Observing Windows",
     "🔭 Object Visibility",
+    "⏰ Peak Observing Time",
     "🔬 Observatory Detail"
 ])
 
@@ -367,7 +374,173 @@ with tab3:
 # ═══════════════════════════════════════════════════════
 # TAB 4 — Observatory Detail
 # ═══════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════
+# TAB 4 — Peak Observing Time
+# ═══════════════════════════════════════════════════════
 with tab4:
+    st.subheader("⏰ Peak Observing Time Calculator")
+    st.caption(
+        "Find the single best hour to observe tonight at each "
+        "observatory. Combines weather, darkness, and moon position "
+        "into an hourly score across all 24 hours."
+    )
+
+    if not peak.empty:
+
+        p1, p2, p3, p4 = st.columns(4)
+        p1.metric("Best Observatory",
+                  peak.iloc[0]["observatory"].replace(
+                      " Observatory", "").replace(" Telescope", ""))
+        p2.metric("Peak Hour",        peak.iloc[0]["peak_hour"])
+        p3.metric("Peak Score",       f"{peak.iloc[0]['peak_score']} / 100")
+        p4.metric("Good Hours Tonight", f"{peak.iloc[0]['total_good_hours']}h")
+
+        st.markdown("---")
+
+        # Observatory selector
+        selected_obs = st.selectbox(
+            "Select observatory to see hourly breakdown",
+            peak["observatory"].tolist(),
+            key="peak_selector"
+        )
+
+        selected_row  = peak[peak["observatory"] == selected_obs].iloc[0]
+        hourly        = pd.DataFrame(selected_row["hourly_data"])
+
+        st.markdown(f"**{selected_obs}** — "
+                    f"Peak at {selected_row['peak_hour']} · "
+                    f"Best window: {selected_row['window_start']} → "
+                    f"{selected_row['window_end']} · "
+                    f"{selected_row['total_good_hours']} good hours")
+
+        st.markdown("---")
+
+        # Hourly chart
+        import matplotlib.pyplot as plt
+        import matplotlib.patches as mpatches
+        import io
+
+        fig, ax = plt.subplots(figsize=(14, 5))
+        hours   = [h["hour"] for h in selected_row["hourly_data"]]
+        scores  = [h["combined_score"] for h in selected_row["hourly_data"]]
+        colors  = []
+        for s in scores:
+            if s >= 80:   colors.append("#1D9E75")
+            elif s >= 60: colors.append("#378ADD")
+            elif s >= 40: colors.append("#EF9F27")
+            elif s > 0:   colors.append("#E24B4A")
+            else:         colors.append("#444441")
+
+        bars = ax.bar(range(24), scores, color=colors, width=0.8)
+
+        # Mark peak hour
+        peak_idx = scores.index(max(scores))
+        ax.bar(peak_idx, scores[peak_idx],
+               color="#1D9E75", width=0.8,
+               edgecolor="white", linewidth=2)
+        ax.annotate(
+            f"Peak\n{hours[peak_idx]}\n{scores[peak_idx]:.0f}/100",
+            xy=(peak_idx, scores[peak_idx]),
+            xytext=(peak_idx, scores[peak_idx] + 8),
+            ha="center", fontsize=9, color="white",
+            fontweight="bold"
+        )
+
+        ax.set_xticks(range(24))
+        ax.set_xticklabels(
+            [f"{h:02d}:00" for h in range(24)],
+            rotation=45, fontsize=8
+        )
+        ax.set_ylim(0, 115)
+        ax.set_ylabel("Combined Observing Score", fontsize=10)
+        ax.set_title(
+            f"Hourly Observing Score — {selected_obs} — "
+            f"{datetime.utcnow().strftime('%Y-%m-%d')} UTC",
+            fontsize=12, fontweight="bold"
+        )
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.set_facecolor("#0E1117")
+        fig.patch.set_facecolor("#0E1117")
+        ax.tick_params(colors="white")
+        ax.yaxis.label.set_color("white")
+        ax.title.set_color("white")
+        ax.spines["left"].set_color("#444441")
+        ax.spines["bottom"].set_color("#444441")
+
+        legend = [
+            mpatches.Patch(color="#1D9E75", label="Excellent (80+)"),
+            mpatches.Patch(color="#378ADD", label="Good (60-79)"),
+            mpatches.Patch(color="#EF9F27", label="Marginal (40-59)"),
+            mpatches.Patch(color="#E24B4A", label="Poor (<40)"),
+            mpatches.Patch(color="#444441", label="Daytime")
+        ]
+        ax.legend(handles=legend, loc="upper left",
+                  fontsize=8, facecolor="#0E1117",
+                  labelcolor="white")
+
+        buf = io.BytesIO()
+        plt.tight_layout()
+        plt.savefig(buf, format="png", dpi=150,
+                    facecolor="#0E1117", bbox_inches="tight")
+        buf.seek(0)
+        st.image(buf, use_container_width=True)
+        plt.close()
+
+        st.markdown("---")
+
+        # Hourly data table
+        st.subheader("Hourly breakdown table")
+        hourly_display = hourly[[
+            "hour", "sun_altitude", "moon_altitude",
+            "darkness_score", "moon_score",
+            "weather_score", "combined_score", "is_dark"
+        ]].rename(columns={
+            "hour":           "Hour (UTC)",
+            "sun_altitude":   "Sun Alt (°)",
+            "moon_altitude":  "Moon Alt (°)",
+            "darkness_score": "Darkness Score",
+            "moon_score":     "Moon Score",
+            "weather_score":  "Weather Score",
+            "combined_score": "Combined Score",
+            "is_dark":        "Is Dark"
+        })
+        st.dataframe(hourly_display, hide_index=True, height=400)
+
+        st.markdown("---")
+
+        # Top 10 peak times across all observatories
+        st.subheader("Top 10 observatories by peak score tonight")
+        top10_peak = peak.head(10)[[
+            "observatory", "country", "peak_hour",
+            "peak_score", "window_start", "window_end",
+            "total_good_hours", "weather_score"
+        ]].rename(columns={
+            "observatory":      "Observatory",
+            "country":          "Country",
+            "peak_hour":        "Peak Hour",
+            "peak_score":       "Peak Score",
+            "window_start":     "Window Start",
+            "window_end":       "Window End",
+            "total_good_hours": "Good Hours",
+            "weather_score":    "Weather Score"
+        })
+        st.dataframe(top10_peak, hide_index=True)
+
+        # Download
+        csv = peak[[
+            "observatory", "country", "peak_hour",
+            "peak_score", "window_start", "window_end",
+            "total_good_hours", "weather_score"
+        ]].to_csv(index=False)
+        st.download_button(
+            label="Download peak times for all observatories",
+            data=csv,
+            file_name=f"peak_times_{datetime.utcnow().strftime('%Y-%m-%d')}.csv",
+            mime="text/csv"
+        )
+
+with tab5:
     st.subheader("🔬 Observatory detail view")
     selected = st.selectbox(
         "Select an observatory",
