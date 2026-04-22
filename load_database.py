@@ -3,115 +3,103 @@ import json
 import os
 from datetime import datetime
 
-# ── Connect to (or create) the database ──────────────────────────
 def get_connection():
     os.makedirs("data/silver", exist_ok=True)
     conn = sqlite3.connect("data/silver/observatory_weather.db")
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
-# ── Create tables if they don't exist ────────────────────────────
 def create_tables(conn):
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS observatories (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            name        TEXT NOT NULL,
-            country     TEXT,
-            latitude    REAL,
-            longitude   REAL,
-            altitude_m  INTEGER,
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            name       TEXT NOT NULL,
+            country    TEXT,
+            latitude   REAL,
+            longitude  REAL,
+            altitude_m INTEGER,
+            mpc_code   TEXT,
             UNIQUE(name)
         );
 
         CREATE TABLE IF NOT EXISTS weather_readings (
-            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-            observatory_id      INTEGER REFERENCES observatories(id),
-            timestamp_utc       TEXT,
-            cloud_cover_pct     REAL,
-            humidity_pct        REAL,
-            wind_speed_ms       REAL,
-            temperature_c       REAL,
-            precipitation_mm    REAL,
-            UNIQUE(observatory_id, timestamp_utc)
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            observatory_id   INTEGER REFERENCES observatories(id),
+            fetch_date       TEXT,
+            fetch_time       TEXT,
+            fetch_datetime   TEXT,
+            cloud_cover_pct  REAL,
+            humidity_pct     REAL,
+            wind_speed_ms    REAL,
+            temperature_c    REAL,
+            precipitation_mm REAL,
+            UNIQUE(observatory_id, fetch_date)
         );
     """)
     conn.commit()
     print("  Tables ready.")
 
-# ── Insert one observatory (skip if already exists) ───────────────
 def insert_observatory(conn, record):
     conn.execute("""
         INSERT OR IGNORE INTO observatories
-            (name, country, latitude, longitude, altitude_m)
-        VALUES (?, ?, ?, ?, ?)
+            (name, country, latitude, longitude, altitude_m, mpc_code)
+        VALUES (?, ?, ?, ?, ?, ?)
     """, (
         record["observatory_name"],
-        record["country"],
+        record.get("country", "Unknown"),
         record["latitude"],
         record["longitude"],
-        record["altitude_m"]
+        record.get("altitude_m", 0),
+        record.get("mpc_code", "")
     ))
     conn.commit()
-
     row = conn.execute(
         "SELECT id FROM observatories WHERE name = ?",
         (record["observatory_name"],)
     ).fetchone()
-
     return row[0]
 
-# ── Insert one weather reading (skip if duplicate) ────────────────
 def insert_reading(conn, observatory_id, record):
+    now            = datetime.utcnow()
+    fetch_date     = now.strftime("%Y-%m-%d")
+    fetch_time     = now.strftime("%H:%M UTC")
+    fetch_datetime = now.strftime("%Y-%m-%d %H:%M UTC")
+    conn.execute(
+        "DELETE FROM weather_readings WHERE observatory_id = ? AND fetch_date = ?",
+        (observatory_id, fetch_date)
+    )
     conn.execute("""
-        INSERT OR IGNORE INTO weather_readings
-            (observatory_id, timestamp_utc, cloud_cover_pct,
-             humidity_pct, wind_speed_ms, temperature_c, precipitation_mm)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO weather_readings
+            (observatory_id, fetch_date, fetch_time, fetch_datetime,
+             cloud_cover_pct, humidity_pct, wind_speed_ms,
+             temperature_c, precipitation_mm)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
-        observatory_id,
-        record["timestamp_utc"],
-        record["cloud_cover_pct"],
-        record["humidity_pct"],
-        record["wind_speed_ms"],
-        record["temperature_c"],
+        observatory_id, fetch_date, fetch_time, fetch_datetime,
+        record["cloud_cover_pct"], record["humidity_pct"],
+        record["wind_speed_ms"], record["temperature_c"],
         record["precipitation_mm"]
     ))
     conn.commit()
 
-# ── Main runner ───────────────────────────────────────────────────
 def main():
-    print(f"\n Loading data into SQLite — {datetime.utcnow().strftime('%Y-%m-%d %H:%M')} UTC\n")
-
-    # Find today's bronze file
-    date_str = datetime.utcnow().strftime("%Y-%m-%d")
+    print(f"\n Loading into SQLite — {datetime.utcnow().strftime('%Y-%m-%d %H:%M')} UTC\n")
+    date_str    = datetime.utcnow().strftime("%Y-%m-%d")
     bronze_file = f"data/bronze/raw_weather_{date_str}.json"
-
     if not os.path.exists(bronze_file):
-        print(f"  [ERROR] Bronze file not found: {bronze_file}")
-        print("  Run fetch_weather.py first.")
+        print(f"  [ERROR] File not found: {bronze_file}")
         return
-
-    # Load the JSON
     with open(bronze_file, "r") as f:
         records = json.load(f)
-
-    print(f"  Found {len(records)} records in {bronze_file}")
-
-    # Connect and set up tables
+    print(f"  Found {len(records)} records")
     conn = get_connection()
     create_tables(conn)
-
-    # Insert each record
-    inserted = 0
     for record in records:
         obs_id = insert_observatory(conn, record)
         insert_reading(conn, obs_id, record)
-        inserted += 1
         print(f"  Loaded → {record['observatory_name']}")
-
     conn.close()
-    print(f"\n Done. {inserted} records loaded into data/silver/observatory_weather.db\n")
-
+    print(f"\n Done. {len(records)} records loaded.\n")
 
 if __name__ == "__main__":
     main()

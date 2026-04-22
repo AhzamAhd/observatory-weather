@@ -1,0 +1,762 @@
+[
+  {
+    "code": "225",
+    "name": "Northwood Ridge Observatory",
+    "latitude": 43.0357,
+    "longitude": -71.175,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "446",
+    "name": "8  Kingsnake Observatory, Seguin",
+    "latitude": 29.4002,
+    "longitude": -97.8334,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "625",
+    "name": "1  Kihei-AMOS Remote Maui Experimental Site",
+    "latitude": 20.6184,
+    "longitude": -156.4317,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "664",
+    "name": "Manastash Ridge Observatory",
+    "latitude": 46.7573,
+    "longitude": -120.7225,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "686",
+    "name": "9  U. of Minn. Infrared Obs., Mt. Lemmon",
+    "latitude": 32.263,
+    "longitude": -110.7908,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "715",
+    "name": "4  Jornada Observatory, Las Cruces",
+    "latitude": 32.209,
+    "longitude": -106.7241,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "738",
+    "name": "Observatory of the State University of Missouri",
+    "latitude": 38.7566,
+    "longitude": -92.3267,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "759",
+    "name": "0  Nashville",
+    "latitude": 35.8697,
+    "longitude": -86.8053,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "777",
+    "name": "5  Toronto",
+    "latitude": 43.4724,
+    "longitude": -79.3983,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "798",
+    "name": "2  Yale Observatory, Bethany",
+    "latitude": 41.235,
+    "longitude": -72.9846,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "835",
+    "name": "4  Drum Hill Station, Chelmsford",
+    "latitude": 42.4188,
+    "longitude": -71.3572,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "865",
+    "name": "9  Emmy Observatory, New Paltz",
+    "latitude": 41.5144,
+    "longitude": -74.1208,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "926",
+    "name": "2  Tenagra II Observatory, Nogales",
+    "latitude": 31.29,
+    "longitude": -110.8791,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "G62",
+    "name": "1  Sunriver Nature Center Observatory, Sunriver",
+    "latitude": 43.6837,
+    "longitude": -121.4531,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "G86",
+    "name": "0  Tucson-Winterhaven",
+    "latitude": 32.0963,
+    "longitude": -110.9303,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "H09",
+    "name": "9  Antelope Hills Observatory, Bennett",
+    "latitude": 39.5037,
+    "longitude": -104.4114,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "H43",
+    "name": "3  Conway",
+    "latitude": 34.9062,
+    "longitude": -92.5002,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "H70",
+    "name": "7  Asheville",
+    "latitude": 35.4157,
+    "longitude": -82.5542,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "H94",
+    "name": "2  Cedar Knolls",
+    "latitude": 40.6339,
+    "longitude": -74.4561,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "U69",
+    "name": "2  iTelescope SRO Observatory, Auberry",
+    "latitude": 36.8846,
+    "longitude": -119.413,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "302",
+    "name": "University of the Andes station",
+    "latitude": 8.6156,
+    "longitude": -71.12,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "443",
+    "name": "3  Obs. Astronomico Plomer, Buenos Aires",
+    "latitude": -34.4521,
+    "longitude": -58.5344,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "800",
+    "name": "1  Harvard Observatory, Arequipa",
+    "latitude": -16.2702,
+    "longitude": -71.5489,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "806",
+    "name": "8  Santiago-Cerro Cal\u00e1n",
+    "latitude": -33.2164,
+    "longitude": -70.5487,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "812",
+    "name": "3  Vi\u00f1a del Mar",
+    "latitude": -32.7811,
+    "longitude": -71.5457,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "829",
+    "name": "1  Complejo Astronomico El Leoncito",
+    "latitude": -31.6268,
+    "longitude": -69.3021,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "839",
+    "name": "6  La Plata",
+    "latitude": -34.7252,
+    "longitude": -57.9322,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "861",
+    "name": "7  Bar\u00e3o Geraldo",
+    "latitude": -22.6417,
+    "longitude": -47.0796,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "G43",
+    "name": "2  Observatorio Buenaventura Suarez, San Luis",
+    "latitude": -32.9753,
+    "longitude": -66.3121,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "I04",
+    "name": "7  Mamalluca Observatory",
+    "latitude": -29.8201,
+    "longitude": -70.6848,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "I10",
+    "name": "0  CAO, San Pedro de Atacama (until 2012)",
+    "latitude": -22.8145,
+    "longitude": -68.18,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "I30",
+    "name": "1  Observatorio Geminis Austral",
+    "latitude": -32.8085,
+    "longitude": -60.6583,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "I35",
+    "name": "2  Sidoli",
+    "latitude": -34.6262,
+    "longitude": -58.4428,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "I48",
+    "name": "8  Observatorio El Catalejo, Santa Rosa",
+    "latitude": -36.45,
+    "longitude": -64.3243,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "I77",
+    "name": "4  CEAMIG-REA Observatory, Belo Horizonte",
+    "latitude": -19.7057,
+    "longitude": -43.9975,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "001",
+    "name": "1  Crowborough",
+    "latitude": 50.8632,
+    "longitude": 0.1542,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "059",
+    "name": "4  Lomnick\u00fd \u0160t\u00edt",
+    "latitude": 49.0041,
+    "longitude": 20.2201,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "112",
+    "name": "0  Pleiade Observatory, Verona",
+    "latitude": 45.2914,
+    "longitude": 10.9039,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "159",
+    "name": "5  Monte Agliale",
+    "latitude": 43.8009,
+    "longitude": 10.5153,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "208",
+    "name": "4  Rivalta",
+    "latitude": 44.7553,
+    "longitude": 9.5875,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "458",
+    "name": "5  Guadarrama Observatory",
+    "latitude": 40.4549,
+    "longitude": -4.0194,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "515",
+    "name": "8  Volkssternwarte Dhaun, near Kirn",
+    "latitude": 49.6221,
+    "longitude": 7.4956,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "553",
+    "name": "4  Chorz\u00f3w",
+    "latitude": 50.109,
+    "longitude": 18.9938,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "601",
+    "name": "4  Engelhardt Observatory, Dresden",
+    "latitude": 50.8484,
+    "longitude": 13.7281,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "938",
+    "name": "9  Linhaceira",
+    "latitude": 39.3299,
+    "longitude": -8.3838,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "980",
+    "name": "0  Lancaster",
+    "latitude": 53.8483,
+    "longitude": -2.78,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "A23",
+    "name": "9  Weinheim",
+    "latitude": 49.3409,
+    "longitude": 8.6677,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "A61",
+    "name": "8  Tortona",
+    "latitude": 44.7082,
+    "longitude": 8.8581,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "B00",
+    "name": "2  Savigny-le-Temple",
+    "latitude": 48.3836,
+    "longitude": 2.5767,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "B41",
+    "name": "2  Zlin Observatory",
+    "latitude": 49.0262,
+    "longitude": 17.6925,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "C32",
+    "name": "4  Ka-Dar Observatory, TAU Station, Nizhny Arkhyz",
+    "latitude": 43.4558,
+    "longitude": 41.4258,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "G15",
+    "name": "0  Magroforte Observatory, Alessandria",
+    "latitude": 44.5796,
+    "longitude": 9.1183,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "J58",
+    "name": "9  Brynllefrith Observatory, Llantwit Fardre",
+    "latitude": 51.3653,
+    "longitude": -3.3356,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "K08",
+    "name": "3  Observatorio Lledoner, Vallirana",
+    "latitude": 41.1949,
+    "longitude": 1.88,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "K82",
+    "name": "4  Alphard Observatory, Ostuni",
+    "latitude": 40.4972,
+    "longitude": 17.5894,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "008",
+    "name": "8  Algiers-Bouzar\u00e9ah",
+    "latitude": 36.6134,
+    "longitude": 3.0355,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "087",
+    "name": "5  Helwan",
+    "latitude": 29.6904,
+    "longitude": 31.3411,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "535",
+    "name": "6  Palermo",
+    "latitude": 37.9226,
+    "longitude": 13.3578,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "A40",
+    "name": "6  Pieta",
+    "latitude": 35.7097,
+    "longitude": 14.4978,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "I53",
+    "name": "2  Armilla",
+    "latitude": 36.9541,
+    "longitude": -3.6217,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "I89",
+    "name": "4  iTelescope Observatory, Nerpio",
+    "latitude": 37.9767,
+    "longitude": -2.3261,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "J55",
+    "name": "3  Los Altos de Arguineguin Observatory",
+    "latitude": 27.609,
+    "longitude": -15.6856,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "L24",
+    "name": "3  Gauteng",
+    "latitude": -25.9493,
+    "longitude": 27.9289,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "129",
+    "name": "Ordubad",
+    "latitude": 38.9464,
+    "longitude": 45.92,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "210",
+    "name": "4  Alma-Ata",
+    "latitude": 42.9946,
+    "longitude": 76.9573,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "312",
+    "name": "Tsingtao field station, Xisha Islands",
+    "latitude": 16.7256,
+    "longitude": 112.334,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "343",
+    "name": "7  Younchun",
+    "latitude": 38.01,
+    "longitude": 127.1258,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "353",
+    "name": "9  Nishi Kobe",
+    "latitude": 34.5571,
+    "longitude": 135.0648,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "362",
+    "name": "8  Ray Observatory",
+    "latitude": 42.4497,
+    "longitude": 140.655,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "371",
+    "name": "1  Tokyo-Okayama",
+    "latitude": 34.3938,
+    "longitude": 133.5965,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "380",
+    "name": "2  Ishiki",
+    "latitude": 34.6335,
+    "longitude": 137.0349,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "390",
+    "name": "4  Utsunomiya",
+    "latitude": 36.3703,
+    "longitude": 139.8725,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "400",
+    "name": "1  Kitami",
+    "latitude": 43.5658,
+    "longitude": 143.7827,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "409",
+    "name": "4  Kiyose and Mizuho",
+    "latitude": 35.5824,
+    "longitude": 139.5211,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "867",
+    "name": "2  Saji Observatory",
+    "latitude": 35.1566,
+    "longitude": 134.1222,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "878",
+    "name": "9  Kagiya",
+    "latitude": 34.8025,
+    "longitude": 136.9142,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "888",
+    "name": "7  Gekko",
+    "latitude": 34.9406,
+    "longitude": 138.9952,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "898",
+    "name": "9  Fujieda",
+    "latitude": 34.7172,
+    "longitude": 138.1883,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "C42",
+    "name": "9  Xingming Observatory, Mt. Nanshan",
+    "latitude": 43.2752,
+    "longitude": 87.1778,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "D34",
+    "name": "8  Kenting Observatory, Hengchun",
+    "latitude": 21.8129,
+    "longitude": 120.7839,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "D74",
+    "name": "0  Nakagawa",
+    "latitude": 33.7709,
+    "longitude": 134.6819,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "260",
+    "name": "6  Siding Spring Observatory-DSS",
+    "latitude": -31.1034,
+    "longitude": 149.0661,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "323",
+    "name": "3  Perth Observatory, Bickley",
+    "latitude": -31.8346,
+    "longitude": 116.135,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "422",
+    "name": "9  Loomberah",
+    "latitude": -31.1596,
+    "longitude": 151.0461,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "429",
+    "name": "2  Hawker",
+    "latitude": -35.0706,
+    "longitude": 149.04,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "467",
+    "name": "4  Auckland Observatory",
+    "latitude": -36.7214,
+    "longitude": 174.7766,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "907",
+    "name": "1  Melbourne",
+    "latitude": -37.6448,
+    "longitude": 144.9758,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "D87",
+    "name": "1  Brooklyn Park",
+    "latitude": -34.7452,
+    "longitude": 138.55,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "E11",
+    "name": "2  Frog Rock Observatory, Mudgee",
+    "latitude": -32.2811,
+    "longitude": 149.6627,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "E19",
+    "name": "8  Kingsgrove",
+    "latitude": -33.7658,
+    "longitude": 151.0958,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "E55",
+    "name": "1  GOTO South",
+    "latitude": -31.1028,
+    "longitude": 149.0641,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "566",
+    "name": "6  Haleakala-NEAT/GEODSS",
+    "latitude": 20.5782,
+    "longitude": -156.2576,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "568",
+    "name": "5  Maunakea",
+    "latitude": 19.701,
+    "longitude": -155.4722,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "608",
+    "name": "6  Haleakala-AMOS",
+    "latitude": 20.5782,
+    "longitude": -156.258,
+    "altitude_m": 0,
+    "country": "Unknown"
+  },
+  {
+    "code": "N43",
+    "name": "8  Plateau Observatory for Dome A, Kunlun Station",
+    "latitude": -80.3533,
+    "longitude": 77.1167,
+    "altitude_m": 0,
+    "country": "Unknown"
+  }
+]

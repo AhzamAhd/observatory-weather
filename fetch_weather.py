@@ -2,50 +2,19 @@ import requests
 import json
 import os
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# ── Observatory list ──────────────────────────────────────────────
-OBSERVATORIES = [
-    {
-        "name": "Mauna Kea Observatory",
-        "country": "USA",
-        "latitude": 19.8207,
-        "longitude": -155.4681,
-        "altitude_m": 4205
-    },
-    {
-        "name": "Paranal Observatory",
-        "country": "Chile",
-        "latitude": -24.6275,
-        "longitude": -70.4044,
-        "altitude_m": 2635
-    },
-    {
-        "name": "La Palma Observatory",
-        "country": "Spain",
-        "latitude": 28.7606,
-        "longitude": -17.8795,
-        "altitude_m": 2396
-    },
-    {
-        "name": "Cerro Pachon Observatory",
-        "country": "Chile",
-        "latitude": -30.2407,
-        "longitude": -70.7366,
-        "altitude_m": 2722
-    },
-    {
-        "name": "Himalayan Chandra Telescope",
-        "country": "India",
-        "latitude": 32.7794,
-        "longitude": 78.9627,
-        "altitude_m": 4500
-    }
-]
+def load_observatories():
+    path = "data/observatory_list.json"
+    if not os.path.exists(path):
+        print("  [ERROR] data/observatory_list.json not found.")
+        print("  Run build_observatory_list.py first.")
+        return []
+    with open(path, "r") as f:
+        return json.load(f)
 
-# ── Fetch function ────────────────────────────────────────────────
 def fetch_weather(observatory):
     url = "https://api.open-meteo.com/v1/forecast"
-
     params = {
         "latitude": observatory["latitude"],
         "longitude": observatory["longitude"],
@@ -58,63 +27,61 @@ def fetch_weather(observatory):
         ],
         "wind_speed_unit": "ms"
     }
-
     try:
-        response = requests.get(url, params=params, timeout=10)
+        response = requests.get(url, params=params, timeout=15)
         response.raise_for_status()
-        data = response.json()
-
-        current = data["current"]
-
+        current = response.json()["current"]
         return {
             "observatory_name": observatory["name"],
-            "country": observatory["country"],
+            "country": observatory.get("country", "Unknown"),
             "latitude": observatory["latitude"],
             "longitude": observatory["longitude"],
-            "altitude_m": observatory["altitude_m"],
-            "timestamp_utc": datetime.utcnow().isoformat(),
+            "altitude_m": observatory.get("altitude_m", 0),
+            "mpc_code": observatory.get("code", ""),
             "cloud_cover_pct": current.get("cloudcover"),
             "humidity_pct": current.get("relativehumidity_2m"),
             "wind_speed_ms": current.get("windspeed_10m"),
             "temperature_c": current.get("temperature_2m"),
             "precipitation_mm": current.get("precipitation")
         }
-
     except requests.exceptions.Timeout:
-        print(f"  [TIMEOUT]  {observatory['name']} took too long — skipping")
+        print(f"  [TIMEOUT] {observatory['name']}")
         return None
-
     except requests.exceptions.RequestException as e:
-        print(f"  [ERROR]    {observatory['name']} failed: {e}")
+        print(f"  [ERROR]   {observatory['name']} — {e}")
         return None
 
-
-# ── Main runner ───────────────────────────────────────────────────
-def main():
-    print(f"\n Starting weather fetch — {datetime.utcnow().strftime('%Y-%m-%d %H:%M')} UTC\n")
-
+def fetch_all_parallel(observatories, max_workers=20):
     results = []
+    failed  = 0
+    print(f"  Fetching {len(observatories)} observatories in parallel ({max_workers} threads)...\n")
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_obs = {executor.submit(fetch_weather, obs): obs for obs in observatories}
+        completed = 0
+        for future in as_completed(future_to_obs):
+            completed += 1
+            result = future.result()
+            if result:
+                results.append(result)
+                print(f"  [{completed:02d}/{len(observatories)}] {result['observatory_name'][:50]:<50} cloud={result['cloud_cover_pct']}%")
+            else:
+                failed += 1
+    return results, failed
 
-    for obs in OBSERVATORIES:
-        print(f"  Fetching → {obs['name']}...")
-        record = fetch_weather(obs)
-
-        if record:
-            results.append(record)
-            print(f"  Done      cloud={record['cloud_cover_pct']}%  "
-                  f"humidity={record['humidity_pct']}%  "
-                  f"wind={record['wind_speed_ms']} m/s")
-
-    # ── Save to Bronze layer JSON ─────────────────────────────────
+def main():
+    print(f"\n Starting parallel fetch — {datetime.utcnow().strftime('%Y-%m-%d %H:%M')} UTC\n")
+    observatories = load_observatories()
+    if not observatories:
+        return
+    print(f"  Loaded {len(observatories)} observatories\n")
+    results, failed = fetch_all_parallel(observatories, max_workers=20)
+    print(f"\n  Fetch complete — {len(results)} succeeded, {failed} failed\n")
     os.makedirs("data/bronze", exist_ok=True)
     date_str = datetime.utcnow().strftime("%Y-%m-%d")
     filename = f"data/bronze/raw_weather_{date_str}.json"
-
     with open(filename, "w") as f:
         json.dump(results, f, indent=2)
-
-    print(f"\n Saved {len(results)} records → {filename}\n")
-
+    print(f"  Saved {len(results)} records → {filename}\n")
 
 if __name__ == "__main__":
     main()
