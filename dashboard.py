@@ -12,6 +12,7 @@ from object_visibility import (get_best_observatories_for_object,
                                 calculate_visibility, OBJECTS,
                                 get_ephem_object)
 from peak_time import get_all_peak_times, calculate_hourly_scores
+from atmospheric import get_full_atmospheric_analysis
 
 st.set_page_config(
     page_title="Observatory Weather Tracker",
@@ -38,6 +39,8 @@ def load_data():
             w.wind_speed_ms,
             w.temperature_c,
             w.precipitation_mm,
+            w.surface_pressure,
+            w.jet_stream_ms,
             ROUND(MAX(0,
                 100
                 - (w.cloud_cover_pct * 0.50)
@@ -99,11 +102,12 @@ st.caption(
     f"· {len(OBJECTS)} astronomical objects"
 )
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "🌍 Live Weather Map",
     "🌙 Observing Windows",
     "🔭 Object Visibility",
     "⏰ Peak Observing Time",
+    "🌫️ Atmospheric Analysis",
     "🔬 Observatory Detail"
 ])
 
@@ -681,9 +685,237 @@ with tab4:
         )
 
 # ═══════════════════════════════════════════════════════
-# TAB 5 — Observatory Detail
+# TAB 5 — Atmospheric Analysis
 # ═══════════════════════════════════════════════════════
 with tab5:
+    st.subheader("🌫️ Atmospheric Analysis")
+    st.caption(
+        "Seeing index, Precipitable Water Vapor (PWV), and "
+        "Jet Stream impact for every observatory. "
+        "Essential for professional telescope scheduling."
+    )
+
+    # Calculate atmospheric data for all observatories
+    atm_results = []
+    for _, row in df.iterrows():
+        record = {
+            "temperature_c":    row["temperature_c"],
+            "wind_speed_ms":    row["wind_speed_ms"],
+            "humidity_pct":     row["humidity_pct"],
+            "altitude_m":       row["altitude_m"],
+            "surface_pressure": row.get("surface_pressure"),
+            "jet_stream_ms":    row.get("jet_stream_ms"),
+            "latitude":         row["latitude"]
+        }
+        atm = get_full_atmospheric_analysis(record)
+        atm_results.append({
+            "observatory":    row["observatory"],
+            "country":        row["country"],
+            "altitude_m":     row["altitude_m"],
+            "weather_score":  row["observation_score"],
+            **atm
+        })
+
+    atm_df = pd.DataFrame(atm_results).sort_values(
+        "seeing_arcsec", ascending=True
+    )
+
+    # Summary metrics
+    a1, a2, a3, a4 = st.columns(4)
+    best_seeing = atm_df.iloc[0]
+    best_pwv    = atm_df.sort_values(
+        "pwv_mm", ascending=True).iloc[0]
+    low_jet     = atm_df[
+        atm_df["jet_impact"] == "Negligible"]
+
+    a1.metric("Best Seeing",
+              f"{best_seeing['seeing_arcsec']}\"",
+              best_seeing["observatory"].replace(
+                  " Observatory", ""))
+    a2.metric("Lowest PWV",
+              f"{best_pwv['pwv_mm']} mm",
+              best_pwv["observatory"].replace(
+                  " Observatory", ""))
+    a3.metric("Calm Jet Stream Sites", len(low_jet))
+    a4.metric("Observatories Analysed", len(atm_df))
+
+    st.markdown("---")
+
+    # World map coloured by seeing
+    st.subheader("World map — atmospheric seeing index")
+    st.caption(
+        "Circle colour shows estimated seeing in arcseconds. "
+        "Green = exceptional, Red = poor."
+    )
+
+    m_atm = folium.Map(
+        location=[20, 0], zoom_start=2,
+        tiles="CartoDB positron"
+    )
+
+    for _, row in atm_df.iterrows():
+        obs_row = df[
+            df["observatory"] == row["observatory"]].iloc[0]
+        color   = row["seeing_color"]
+
+        popup_html = f"""
+            <div style='font-family:sans-serif;width:220px'>
+                <b>{row['observatory']}</b><br>
+                {row['country']} · {row['altitude_m']}m<br>
+                <hr style='margin:4px 0'>
+                <b>Seeing:</b> {row['seeing_arcsec']}"
+                [{row['seeing_quality']}]<br>
+                <b>PWV:</b> {row['pwv_mm']} mm
+                [{row['pwv_quality']}]<br>
+                <b>Jet stream:</b> {row['jet_stream_ms']} m/s
+                [{row['jet_impact']}]<br>
+                <hr style='margin:4px 0'>
+                Weather score: {row['weather_score']}/100
+            </div>
+        """
+        folium.CircleMarker(
+            location=[obs_row["latitude"],
+                      obs_row["longitude"]],
+            radius=8,
+            color=color,
+            fill=True,
+            fill_color=color,
+            fill_opacity=0.85,
+            popup=folium.Popup(popup_html, max_width=230),
+            tooltip=f"{row['observatory']} — "
+                    f"Seeing {row['seeing_arcsec']}\" "
+                    f"[{row['seeing_quality']}]"
+        ).add_to(m_atm)
+
+    st_folium(m_atm, width=None, height=500)
+
+    sc1, sc2, sc3, sc4, sc5, sc6 = st.columns(6)
+    sc1.markdown("🟢 **< 0.5\"** Exceptional")
+    sc2.markdown("🟩 **< 1.0\"** Excellent")
+    sc3.markdown("🔵 **< 1.5\"** Good")
+    sc4.markdown("🟡 **< 2.5\"** Average")
+    sc5.markdown("🔴 **< 3.5\"** Poor")
+    sc6.markdown("🟥 **> 3.5\"** Very Poor")
+
+    st.markdown("---")
+
+    # Three sub-tabs for each metric
+    seeing_tab, pwv_tab, jet_tab = st.tabs([
+        "👁️ Seeing Index",
+        "💧 Precipitable Water Vapor",
+        "🌪️ Jet Stream"
+    ])
+
+    with seeing_tab:
+        st.subheader("Atmospheric seeing rankings")
+        st.caption(
+            "Seeing measures atmospheric turbulence. "
+            "Lower arcseconds = sharper images. "
+            "Professional telescopes need < 1.5\" to operate "
+            "at full resolution."
+        )
+        for _, row in atm_df.iterrows():
+            bar_val = max(0, min(1,
+                1 - (row["seeing_arcsec"] - 0.3) / 4.7))
+            st.markdown(
+                f"**{row['observatory']}** — "
+                f"{row['seeing_arcsec']}\" "
+                f"[{row['seeing_quality']}] · "
+                f"{row['country']}"
+            )
+            st.progress(
+                bar_val,
+                text=f"Seeing {row['seeing_arcsec']}\" · "
+                     f"Alt {row['altitude_m']}m · "
+                     f"Wind {row.get('weather_score', 0)}/100 "
+                     f"weather"
+            )
+
+    with pwv_tab:
+        st.subheader("Precipitable Water Vapor rankings")
+        st.caption(
+            "PWV measures water vapour in the atmosphere. "
+            "Critical for infrared and radio astronomy. "
+            "< 2mm is excellent for IR work. "
+            "Sites like ALMA require < 1mm."
+        )
+        pwv_sorted = atm_df.sort_values(
+            "pwv_mm", ascending=True)
+        for _, row in pwv_sorted.iterrows():
+            bar_val = max(0, min(1,
+                1 - (row["pwv_mm"] / 30)))
+            st.markdown(
+                f"**{row['observatory']}** — "
+                f"{row['pwv_mm']} mm "
+                f"[{row['pwv_quality']}] · "
+                f"{row['country']}"
+            )
+            st.progress(
+                bar_val,
+                text=f"PWV {row['pwv_mm']} mm · "
+                     f"Altitude {row['altitude_m']}m"
+            )
+
+    with jet_tab:
+        st.subheader("Jet stream impact rankings")
+        st.caption(
+            "The jet stream at ~10km altitude causes the worst "
+            "atmospheric seeing when directly overhead. "
+            "Below 20 m/s is ideal. Above 60 m/s degrades "
+            "image quality severely."
+        )
+        jet_sorted = atm_df.sort_values(
+            "jet_stream_ms", ascending=True)
+        for _, row in jet_sorted.iterrows():
+            js  = row["jet_stream_ms"] or 0
+            bar_val = max(0, min(1, 1 - (js / 100)))
+            st.markdown(
+                f"**{row['observatory']}** — "
+                f"{js} m/s "
+                f"[{row['jet_impact']}] · "
+                f"{row['country']}"
+            )
+            st.progress(
+                bar_val,
+                text=f"Jet stream {js} m/s · "
+                     f"Impact: {row['jet_impact']}"
+            )
+
+    st.markdown("---")
+
+    # Full atmospheric table
+    st.subheader("Complete atmospheric data table")
+    atm_display = atm_df[[
+        "observatory", "country", "altitude_m",
+        "seeing_arcsec", "seeing_quality",
+        "pwv_mm", "pwv_quality",
+        "jet_stream_ms", "jet_impact",
+        "weather_score"
+    ]].rename(columns={
+        "observatory":   "Observatory",
+        "country":       "Country",
+        "altitude_m":    "Altitude (m)",
+        "seeing_arcsec": "Seeing (\")",
+        "seeing_quality":"Seeing Quality",
+        "pwv_mm":        "PWV (mm)",
+        "pwv_quality":   "PWV Quality",
+        "jet_stream_ms": "Jet Stream (m/s)",
+        "jet_impact":    "Jet Impact",
+        "weather_score": "Weather Score"
+    })
+    st.dataframe(atm_display, hide_index=True, height=600)
+
+    st.download_button(
+        label="Download atmospheric analysis as CSV",
+        data=atm_display.to_csv(index=False),
+        file_name=f"atmospheric_analysis_"
+                  f"{datetime.utcnow().strftime('%Y-%m-%d')}.csv",
+        mime="text/csv"
+    )
+# ═══════════════════════════════════════════════════════
+# TAB 5 — Observatory Detail
+# ═══════════════════════════════════════════════════════
+with tab6:
     st.subheader("🔬 Observatory detail view")
     selected = st.selectbox(
         "Select an observatory",

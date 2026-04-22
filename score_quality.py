@@ -10,41 +10,57 @@ def create_scoring_view(conn):
     conn.executescript("""
         DROP VIEW IF EXISTS observation_quality;
         CREATE VIEW observation_quality AS
-        SELECT
-            o.name         AS observatory,
-            o.country,
-            o.altitude_m,
-            o.mpc_code,
-            w.fetch_date,
-            w.fetch_time,
-            w.fetch_datetime,
-            w.cloud_cover_pct,
-            w.humidity_pct,
-            w.wind_speed_ms,
-            w.temperature_c,
-            ROUND(MAX(0,
-                100
-                - (w.cloud_cover_pct * 0.50)
-                - (CASE WHEN w.humidity_pct > 85 THEN (w.humidity_pct - 85) * 2.0 ELSE 0 END)
-                - (CASE WHEN w.wind_speed_ms > 15 THEN (w.wind_speed_ms - 15) * 2.0 ELSE 0 END)
-            ), 1) AS observation_score,
-            CASE
-                WHEN (100 - (w.cloud_cover_pct * 0.50)
-                    - (CASE WHEN w.humidity_pct > 85 THEN (w.humidity_pct - 85) * 2.0 ELSE 0 END)
-                    - (CASE WHEN w.wind_speed_ms > 15 THEN (w.wind_speed_ms - 15) * 2.0 ELSE 0 END)
-                ) >= 80 THEN 'Excellent'
-                WHEN (100 - (w.cloud_cover_pct * 0.50)
-                    - (CASE WHEN w.humidity_pct > 85 THEN (w.humidity_pct - 85) * 2.0 ELSE 0 END)
-                    - (CASE WHEN w.wind_speed_ms > 15 THEN (w.wind_speed_ms - 15) * 2.0 ELSE 0 END)
-                ) >= 60 THEN 'Good'
-                WHEN (100 - (w.cloud_cover_pct * 0.50)
-                    - (CASE WHEN w.humidity_pct > 85 THEN (w.humidity_pct - 85) * 2.0 ELSE 0 END)
-                    - (CASE WHEN w.wind_speed_ms > 15 THEN (w.wind_speed_ms - 15) * 2.0 ELSE 0 END)
-                ) >= 40 THEN 'Marginal'
-                ELSE 'Poor'
-            END AS condition
-        FROM weather_readings w
-        JOIN observatories o ON w.observatory_id = o.id;
+SELECT
+    o.name         AS observatory,
+    o.country,
+    o.altitude_m,
+    o.mpc_code,
+    w.fetch_date,
+    w.fetch_time,
+    w.fetch_datetime,
+    w.cloud_cover_pct,
+    w.humidity_pct,
+    w.wind_speed_ms,
+    w.temperature_c,
+    w.surface_pressure,
+    w.dewpoint_c,
+    w.jet_stream_ms,
+    w.wind_speed_80m,
+    w.wind_speed_120m,
+    w.rh_700hpa,
+    w.rh_500hpa,
+    w.rh_300hpa,
+    ROUND(MAX(0,
+        100
+        - (w.cloud_cover_pct * 0.50)
+        - (CASE WHEN w.humidity_pct > 85
+           THEN (w.humidity_pct - 85) * 2.0 ELSE 0 END)
+        - (CASE WHEN w.wind_speed_ms > 15
+           THEN (w.wind_speed_ms - 15) * 2.0 ELSE 0 END)
+    ), 1) AS observation_score,
+    CASE
+        WHEN (100 - (w.cloud_cover_pct * 0.50)
+            - (CASE WHEN w.humidity_pct > 85
+               THEN (w.humidity_pct - 85) * 2.0 ELSE 0 END)
+            - (CASE WHEN w.wind_speed_ms > 15
+               THEN (w.wind_speed_ms - 15) * 2.0 ELSE 0 END)
+        ) >= 80 THEN 'Excellent'
+        WHEN (100 - (w.cloud_cover_pct * 0.50)
+            - (CASE WHEN w.humidity_pct > 85
+               THEN (w.humidity_pct - 85) * 2.0 ELSE 0 END)
+            - (CASE WHEN w.wind_speed_ms > 15
+               THEN (w.wind_speed_ms - 15) * 2.0 ELSE 0 END)
+        ) >= 60 THEN 'Good'
+        WHEN (100 - (w.cloud_cover_pct * 0.50)
+            - (CASE WHEN w.humidity_pct > 85
+               THEN (w.humidity_pct - 85) * 2.0 ELSE 0 END)
+            - (CASE WHEN w.wind_speed_ms > 15
+               THEN (w.wind_speed_ms - 15) * 2.0 ELSE 0 END)
+        ) >= 40 THEN 'Marginal'
+        ELSE 'Poor'
+    END AS condition
+FROM weather_readings w
+JOIN observatories o ON w.observatory_id = o.id;
     """)
     conn.commit()
     print("  Scoring view created.")
