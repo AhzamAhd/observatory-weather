@@ -3,9 +3,10 @@ import math
 from datetime import datetime, timedelta
 import pandas as pd
 import sqlite3
+from object_visibility import get_ephem_object, OBJECTS
 
 def get_observer(lat, lon):
-    obs = ephem.Observer()
+    obs          = ephem.Observer()
     obs.lat      = str(lat)
     obs.long     = str(lon)
     obs.pressure = 0
@@ -23,44 +24,78 @@ def get_moon_altitude_and_phase(obs, dt):
     moon.compute(obs)
     return math.degrees(float(moon.alt)), moon.phase
 
+def get_object_altitude(obs, dt, object_name):
+    obj_info = OBJECTS.get(object_name)
+    if not obj_info:
+        return None
+    obs.date = dt.strftime("%Y/%m/%d %H:%M:%S")
+    target   = get_ephem_object(object_name, obj_info)
+    target.compute(obs)
+    return math.degrees(float(target.alt))
+
 def calculate_darkness_score(sun_alt):
-    if sun_alt > 0:       return 0    # daytime
-    elif sun_alt > -6:    return 20   # civil twilight
-    elif sun_alt > -12:   return 50   # nautical twilight
-    elif sun_alt > -18:   return 80   # astronomical twilight
-    else:                 return 100  # full darkness
+    if sun_alt > 0:       return 0
+    elif sun_alt > -6:    return 20
+    elif sun_alt > -12:   return 50
+    elif sun_alt > -18:   return 80
+    else:                 return 100
 
 def calculate_moon_score(moon_alt, moon_phase):
     if moon_alt <= 0:
-        return 100   # moon below horizon — no penalty
+        return 100
     penalty = (moon_phase / 100) * 40 * (moon_alt / 90)
     return max(0, round(100 - penalty, 1))
 
-def calculate_hourly_scores(lat, lon, weather_score, date=None):
+def calculate_object_score(object_alt, min_alt=15):
+    if object_alt is None or object_alt < min_alt:
+        return 0
+    if object_alt >= 60:   return 100
+    elif object_alt >= 40: return 80
+    elif object_alt >= 20: return 60
+    else:                  return 40
+
+def calculate_hourly_scores(lat, lon, weather_score,
+                             date=None, object_name=None):
     if date is None:
         date = datetime.utcnow()
 
-    obs = get_observer(lat, lon)
-
+    obs   = get_observer(lat, lon)
     start = date.replace(hour=0, minute=0, second=0, microsecond=0)
     hours = []
 
     for h in range(24):
         dt = start + timedelta(hours=h)
 
-        sun_alt                  = get_sun_altitude(obs, dt)
-        moon_alt, moon_phase     = get_moon_altitude_and_phase(obs, dt)
-        darkness_score           = calculate_darkness_score(sun_alt)
-        moon_score               = calculate_moon_score(moon_alt, moon_phase)
+        sun_alt              = get_sun_altitude(obs, dt)
+        moon_alt, moon_phase = get_moon_altitude_and_phase(obs, dt)
+        darkness_score       = calculate_darkness_score(sun_alt)
+        moon_score           = calculate_moon_score(moon_alt, moon_phase)
 
-        if darkness_score == 0:
-            combined = 0   # daytime — no observing
+        obj_alt   = None
+        obj_score = None
+
+        if object_name:
+            obj_alt   = get_object_altitude(obs, dt, object_name)
+            obj_score = calculate_object_score(obj_alt)
+
+            if darkness_score == 0 or obj_score == 0:
+                combined = 0
+            else:
+                combined = round(
+                    weather_score * 0.35 +
+                    darkness_score * 0.25 +
+                    moon_score     * 0.20 +
+                    obj_score      * 0.20
+                , 1)
         else:
-            combined = round(
-                weather_score * 0.40 +
-                darkness_score * 0.35 +
-                moon_score     * 0.25
-            , 1)
+            if darkness_score == 0:
+                combined = 0
+            else:
+                combined = round(
+                    weather_score * 0.40 +
+                    darkness_score * 0.35 +
+                    moon_score     * 0.25
+                , 1)
 
         hours.append({
             "hour":            dt.strftime("%H:00 UTC"),
@@ -68,6 +103,8 @@ def calculate_hourly_scores(lat, lon, weather_score, date=None):
             "sun_altitude":    round(sun_alt, 1),
             "moon_altitude":   round(moon_alt, 1),
             "moon_phase_pct":  round(moon_phase, 1),
+            "object_altitude": round(obj_alt, 1) if obj_alt is not None else None,
+            "object_score":    obj_score,
             "darkness_score":  darkness_score,
             "moon_score":      moon_score,
             "weather_score":   weather_score,
@@ -78,8 +115,10 @@ def calculate_hourly_scores(lat, lon, weather_score, date=None):
 
     return hours
 
-def get_peak_time(lat, lon, weather_score, date=None):
-    hours   = calculate_hourly_scores(lat, lon, weather_score, date)
+def get_peak_time(lat, lon, weather_score,
+                  date=None, object_name=None):
+    hours   = calculate_hourly_scores(
+        lat, lon, weather_score, date, object_name)
     df      = pd.DataFrame(hours)
     dark_df = df[df["is_dark"]]
 
@@ -88,24 +127,25 @@ def get_peak_time(lat, lon, weather_score, date=None):
 
     peak = dark_df.loc[dark_df["combined_score"].idxmax()]
 
-    dark_hours    = dark_df[dark_df["is_observable"]]
-    window_start  = dark_hours.iloc[0]["hour"]  if not dark_hours.empty else "N/A"
-    window_end    = dark_hours.iloc[-1]["hour"] if not dark_hours.empty else "N/A"
-    total_hours   = len(dark_hours)
+    dark_hours   = dark_df[dark_df["is_observable"]]
+    window_start = dark_hours.iloc[0]["hour"]  if not dark_hours.empty else "N/A"
+    window_end   = dark_hours.iloc[-1]["hour"] if not dark_hours.empty else "N/A"
+    total_hours  = len(dark_hours)
 
     return {
-        "peak_hour":          peak["hour"],
-        "peak_score":         peak["combined_score"],
-        "peak_darkness":      peak["darkness_score"],
-        "peak_moon_score":    peak["moon_score"],
-        "window_start":       window_start,
-        "window_end":         window_end,
-        "total_good_hours":   total_hours,
-        "moon_phase_pct":     round(dark_df["moon_phase_pct"].mean(), 1),
-        "hourly_data":        hours
+        "peak_hour":        peak["hour"],
+        "peak_score":       peak["combined_score"],
+        "peak_darkness":    peak["darkness_score"],
+        "peak_moon_score":  peak["moon_score"],
+        "peak_obj_alt":     peak.get("object_altitude"),
+        "window_start":     window_start,
+        "window_end":       window_end,
+        "total_good_hours": total_hours,
+        "moon_phase_pct":   round(dark_df["moon_phase_pct"].mean(), 1),
+        "hourly_data":      hours
     }
 
-def get_all_peak_times():
+def get_all_peak_times(object_name=None):
     conn = sqlite3.connect("data/silver/observatory_weather.db")
     df   = pd.read_sql("""
         SELECT
@@ -132,7 +172,8 @@ def get_all_peak_times():
             peak = get_peak_time(
                 row["latitude"],
                 row["longitude"],
-                row["weather_score"]
+                row["weather_score"],
+                object_name=object_name
             )
             if peak:
                 results.append({
@@ -141,6 +182,7 @@ def get_all_peak_times():
                     "weather_score":    row["weather_score"],
                     "peak_hour":        peak["peak_hour"],
                     "peak_score":       peak["peak_score"],
+                    "peak_obj_alt":     peak["peak_obj_alt"],
                     "window_start":     peak["window_start"],
                     "window_end":       peak["window_end"],
                     "total_good_hours": peak["total_good_hours"],
@@ -156,11 +198,14 @@ def get_all_peak_times():
     )
 
 if __name__ == "__main__":
-    print("\n Testing peak time calculator...\n")
-    peak = get_peak_time(19.8207, -155.4681, 95)
+    print("\n Testing object-aware peak time...\n")
+    peak = get_peak_time(
+        19.8207, -155.4681, 95,
+        object_name="M42 — Orion Nebula"
+    )
     if peak:
-        print(f"  Peak hour       : {peak['peak_hour']}")
-        print(f"  Peak score      : {peak['peak_score']}")
-        print(f"  Good window     : {peak['window_start']} → {peak['window_end']}")
-        print(f"  Total good hours: {peak['total_good_hours']}h")
-        print(f"  Moon phase      : {peak['moon_phase_pct']}%\n")
+        print(f"  Peak hour    : {peak['peak_hour']}")
+        print(f"  Peak score   : {peak['peak_score']}")
+        print(f"  Object alt   : {peak['peak_obj_alt']}°")
+        print(f"  Good window  : {peak['window_start']} → {peak['window_end']}")
+        print(f"  Good hours   : {peak['total_good_hours']}h\n")

@@ -2,10 +2,15 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 import folium
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+import io
 from streamlit_folium import st_folium
 from datetime import datetime
 from observing_window import get_all_windows
-from object_visibility import get_best_observatories_for_object, calculate_visibility, OBJECTS
+from object_visibility import (get_best_observatories_for_object,
+                                calculate_visibility, OBJECTS,
+                                get_ephem_object)
 from peak_time import get_all_peak_times, calculate_hourly_scores
 
 st.set_page_config(
@@ -36,21 +41,29 @@ def load_data():
             ROUND(MAX(0,
                 100
                 - (w.cloud_cover_pct * 0.50)
-                - (CASE WHEN w.humidity_pct > 85 THEN (w.humidity_pct - 85) * 2.0 ELSE 0 END)
-                - (CASE WHEN w.wind_speed_ms > 15 THEN (w.wind_speed_ms - 15) * 2.0 ELSE 0 END)
+                - (CASE WHEN w.humidity_pct > 85
+                   THEN (w.humidity_pct - 85) * 2.0 ELSE 0 END)
+                - (CASE WHEN w.wind_speed_ms > 15
+                   THEN (w.wind_speed_ms - 15) * 2.0 ELSE 0 END)
             ), 1) AS observation_score,
             CASE
                 WHEN (100 - (w.cloud_cover_pct * 0.50)
-                    - (CASE WHEN w.humidity_pct > 85 THEN (w.humidity_pct - 85) * 2.0 ELSE 0 END)
-                    - (CASE WHEN w.wind_speed_ms > 15 THEN (w.wind_speed_ms - 15) * 2.0 ELSE 0 END)
+                    - (CASE WHEN w.humidity_pct > 85
+                       THEN (w.humidity_pct - 85) * 2.0 ELSE 0 END)
+                    - (CASE WHEN w.wind_speed_ms > 15
+                       THEN (w.wind_speed_ms - 15) * 2.0 ELSE 0 END)
                 ) >= 80 THEN 'Excellent'
                 WHEN (100 - (w.cloud_cover_pct * 0.50)
-                    - (CASE WHEN w.humidity_pct > 85 THEN (w.humidity_pct - 85) * 2.0 ELSE 0 END)
-                    - (CASE WHEN w.wind_speed_ms > 15 THEN (w.wind_speed_ms - 15) * 2.0 ELSE 0 END)
+                    - (CASE WHEN w.humidity_pct > 85
+                       THEN (w.humidity_pct - 85) * 2.0 ELSE 0 END)
+                    - (CASE WHEN w.wind_speed_ms > 15
+                       THEN (w.wind_speed_ms - 15) * 2.0 ELSE 0 END)
                 ) >= 60 THEN 'Good'
                 WHEN (100 - (w.cloud_cover_pct * 0.50)
-                    - (CASE WHEN w.humidity_pct > 85 THEN (w.humidity_pct - 85) * 2.0 ELSE 0 END)
-                    - (CASE WHEN w.wind_speed_ms > 15 THEN (w.wind_speed_ms - 15) * 2.0 ELSE 0 END)
+                    - (CASE WHEN w.humidity_pct > 85
+                       THEN (w.humidity_pct - 85) * 2.0 ELSE 0 END)
+                    - (CASE WHEN w.wind_speed_ms > 15
+                       THEN (w.wind_speed_ms - 15) * 2.0 ELSE 0 END)
                 ) >= 40 THEN 'Marginal'
                 ELSE 'Poor'
             END AS condition
@@ -65,10 +78,6 @@ def load_data():
 def load_windows():
     return get_all_windows()
 
-@st.cache_data(ttl=300)
-def load_peak_times():
-    return get_all_peak_times()
-
 def score_color(score):
     if score >= 80:   return "#1D9E75"
     elif score >= 60: return "#378ADD"
@@ -81,12 +90,13 @@ def condition_emoji(condition):
 
 df  = load_data()
 win = load_windows()
-peak = load_peak_times()
 
 st.title("🔭 Global Observatory Weather Tracker")
 st.caption(
-    f"Last updated: {df['fetch_datetime'].iloc[0] if not df.empty else 'No data'} "
-    f"· {len(df)} observatories monitored"
+    f"Last updated: "
+    f"{df['fetch_datetime'].iloc[0] if not df.empty else 'No data'} "
+    f"· {len(df)} observatories monitored "
+    f"· {len(OBJECTS)} astronomical objects"
 )
 
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
@@ -102,20 +112,20 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 # ═══════════════════════════════════════════════════════
 with tab1:
     c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        st.metric("Total Observatories", len(df))
-    with c2:
-        st.metric("Excellent Tonight", len(df[df["condition"] == "Excellent"]))
-    with c3:
-        st.metric("Average Score", f"{round(df['observation_score'].mean(), 1)} / 100")
-    with c4:
-        best = df.iloc[0]["observatory"].replace(" Observatory", "").replace(" Telescope", "")
-        st.metric("Best Site Tonight", best)
+    c1.metric("Total Observatories", len(df))
+    c2.metric("Excellent Tonight",
+              len(df[df["condition"] == "Excellent"]))
+    c3.metric("Average Score",
+              f"{round(df['observation_score'].mean(), 1)} / 100")
+    c4.metric("Best Site Tonight",
+              df.iloc[0]["observatory"].replace(
+                  " Observatory", "").replace(" Telescope", ""))
 
     st.markdown("---")
     st.subheader("World map — live observation quality")
 
-    m = folium.Map(location=[20, 0], zoom_start=2, tiles="CartoDB positron")
+    m = folium.Map(location=[20, 0], zoom_start=2,
+                   tiles="CartoDB positron")
     for _, row in df.iterrows():
         color = score_color(row["observation_score"])
         popup_html = f"""
@@ -141,7 +151,8 @@ with tab1:
             fill_color=color,
             fill_opacity=0.85,
             popup=folium.Popup(popup_html, max_width=220),
-            tooltip=f"{row['observatory']} — {row['observation_score']}/100"
+            tooltip=f"{row['observatory']} — "
+                    f"{row['observation_score']}/100"
         ).add_to(m)
 
     st_folium(m, width=None, height=500)
@@ -158,7 +169,9 @@ with tab1:
     with col_left:
         for _, row in df.iterrows():
             emoji = condition_emoji(row["condition"])
-            st.markdown(f"{emoji} **{row['observatory']}** — {row['country']}")
+            st.markdown(
+                f"{emoji} **{row['observatory']}** "
+                f"— {row['country']}")
             st.progress(
                 int(row["observation_score"]) / 100,
                 text=f"{row['observation_score']}/100 · "
@@ -168,10 +181,11 @@ with tab1:
             )
     with col_right:
         st.dataframe(
-            df[["observatory", "observation_score", "condition"]].rename(columns={
-                "observatory": "Observatory",
+            df[["observatory", "observation_score",
+                "condition"]].rename(columns={
+                "observatory":       "Observatory",
                 "observation_score": "Score",
-                "condition": "Condition"
+                "condition":         "Condition"
             }),
             hide_index=True,
             height=700
@@ -182,26 +196,25 @@ with tab1:
 # ═══════════════════════════════════════════════════════
 with tab2:
     st.subheader("🌙 Tonight's Observing Windows")
-    st.caption("Scores adjusted for moon phase and position. "
-               "Dark hours calculated using astronomical twilight (-18°).")
+    st.caption(
+        "Scores adjusted for moon phase and position. "
+        "Dark hours calculated using astronomical twilight (-18°)."
+    )
 
     if not win.empty:
-        moon_phase  = win.iloc[0]["moon_phase"]
-        moon_pct    = win.iloc[0]["moon_phase_pct"]
-        best_site   = win.iloc[0]["observatory"]
-        best_score  = win.iloc[0]["final_score"]
-
         w1, w2, w3, w4 = st.columns(4)
-        w1.metric("Moon Phase", moon_phase)
-        w2.metric("Moon Illumination", f"{moon_pct}%")
+        w1.metric("Moon Phase",        win.iloc[0]["moon_phase"])
+        w2.metric("Moon Illumination",
+                  f"{win.iloc[0]['moon_phase_pct']}%")
         w3.metric("Best Site Tonight",
-                  best_site.replace(" Observatory", ""))
-        w4.metric("Best Score (moon-adjusted)", f"{best_score} / 100")
+                  win.iloc[0]["observatory"].replace(
+                      " Observatory", ""))
+        w4.metric("Best Score (moon-adjusted)",
+                  f"{win.iloc[0]['final_score']} / 100")
 
         st.markdown("---")
         st.subheader("Top 10 sites for tonight")
-        top10 = win.head(10)
-        for _, row in top10.iterrows():
+        for _, row in win.head(10).iterrows():
             emoji = condition_emoji(row["quality"])
             with st.expander(
                 f"{emoji} {row['observatory']} — "
@@ -210,10 +223,14 @@ with tab2:
                 f"({row['dark_hours']}h dark)"
             ):
                 d1, d2, d3, d4 = st.columns(4)
-                d1.metric("Weather Score",  f"{row['weather_score']}/100")
-                d2.metric("Moon Penalty",   f"-{row['moon_penalty']}")
-                d3.metric("Final Score",    f"{row['final_score']}/100")
-                d4.metric("Dark Hours",     f"{row['dark_hours']}h")
+                d1.metric("Weather Score",
+                          f"{row['weather_score']}/100")
+                d2.metric("Moon Penalty",
+                          f"-{row['moon_penalty']}")
+                d3.metric("Final Score",
+                          f"{row['final_score']}/100")
+                d4.metric("Dark Hours",
+                          f"{row['dark_hours']}h")
                 m1, m2, m3 = st.columns(3)
                 m1.metric("Moon Phase", row["moon_phase"])
                 m2.metric("Moon Rise",  row["moon_rise"])
@@ -239,11 +256,11 @@ with tab2:
             "quality":        "Quality"
         })
         st.dataframe(display_df, hide_index=True, height=600)
-        csv = display_df.to_csv(index=False)
         st.download_button(
             label="Download tonight's window table as CSV",
-            data=csv,
-            file_name=f"observing_windows_{datetime.utcnow().strftime('%Y-%m-%d')}.csv",
+            data=display_df.to_csv(index=False),
+            file_name=f"observing_windows_"
+                      f"{datetime.utcnow().strftime('%Y-%m-%d')}.csv",
             mime="text/csv"
         )
 
@@ -262,19 +279,40 @@ with tab3:
     with col_filter:
         obj_type = st.selectbox(
             "Filter by type",
-            ["All", "Planets", "Deep Sky Objects", "Stars"]
+            ["All", "Planets", "Dwarf Planets & Asteroids",
+             "Galaxies", "Nebulae", "Star Clusters",
+             "Famous Stars", "Special Objects",
+             "Full Messier Catalogue", "NGC Objects"]
         )
+
     type_map = {
-        "All":              None,
-        "Planets":          "planet",
-        "Deep Sky Objects": "deep_sky",
-        "Stars":            "star"
+        "All":                       None,
+        "Planets":                   "planet",
+        "Dwarf Planets & Asteroids": ["dwarf_planet", "asteroid"],
+        "Galaxies":                  "galaxy",
+        "Nebulae":                   "nebula",
+        "Star Clusters":             "cluster",
+        "Famous Stars":              "star",
+        "Special Objects":           "special",
+        "Full Messier Catalogue":    "messier",
+        "NGC Objects":               "ngc"
     }
-    selected_type    = type_map[obj_type]
+
+    selected_type = type_map[obj_type]
     filtered_objects = {
         k: v for k, v in OBJECTS.items()
-        if selected_type is None or v["type"] == selected_type
+        if selected_type is None
+        or (isinstance(selected_type, list)
+            and v["type"] in selected_type)
+        or (selected_type == "messier"
+            and k.startswith("M") and "—" in k)
+        or (selected_type == "ngc"
+            and k.startswith("NGC"))
+        or (isinstance(selected_type, str)
+            and selected_type not in ["messier", "ngc"]
+            and v["type"] == selected_type)
     }
+
     with col_select:
         selected_object = st.selectbox(
             "Select target object",
@@ -284,32 +322,37 @@ with tab3:
     st.markdown("---")
 
     if selected_object:
-        with st.spinner(f"Calculating visibility for {selected_object}..."):
-            best_obs = get_best_observatories_for_object(selected_object, df)
+        with st.spinner(
+            f"Calculating visibility for {selected_object}..."
+        ):
+            best_obs = get_best_observatories_for_object(
+                selected_object, df)
 
         if best_obs.empty:
-            st.warning(f"{selected_object} is currently below the horizon "
-                       f"at all monitored observatories.")
+            st.warning(
+                f"{selected_object} is currently below the horizon "
+                f"at all monitored observatories."
+            )
         else:
             m1, m2, m3, m4 = st.columns(4)
             m1.metric("Observatories with view", len(best_obs))
             m2.metric("Best observatory",
                       best_obs.iloc[0]["observatory"].replace(
-                          " Observatory", "").replace(" Telescope", ""))
+                          " Observatory", "").replace(
+                          " Telescope", ""))
             m3.metric("Best altitude",
                       f"{best_obs.iloc[0]['altitude_deg']}°")
             m4.metric("Combined score",
                       f"{best_obs.iloc[0]['combined_score']} / 100")
 
             st.markdown("---")
-
-            sample_vis     = calculate_visibility(
+            sample_vis = calculate_visibility(
                 df.iloc[0]["latitude"],
                 df.iloc[0]["longitude"],
                 selected_object
             )
-            obj_type_label = filtered_objects[selected_object]["type"].replace(
-                "_", " ").title()
+            obj_type_label = filtered_objects[
+                selected_object]["type"].replace("_", " ").title()
             st.info(
                 f"**{selected_object}** is a {obj_type_label}. "
                 f"Currently visible from **{len(best_obs)}** of "
@@ -318,24 +361,28 @@ with tab3:
                 f"{sample_vis['min_altitude']}° above horizon."
             )
 
-            st.subheader(f"Best sites to observe {selected_object} tonight")
-            top10 = best_obs.head(10)
-            for _, row in top10.iterrows():
+            st.subheader(
+                f"Best sites to observe {selected_object} tonight")
+            for _, row in best_obs.head(10).iterrows():
                 qual  = row["visibility_quality"]
                 emoji = {"Excellent": "🟢", "Good": "🔵",
                          "Marginal": "🟡"}.get(qual, "⚪")
                 with st.expander(
                     f"{emoji} {row['observatory']} — "
                     f"Combined {row['combined_score']}/100 · "
-                    f"Altitude {row['altitude_deg']}° {row['direction']} · "
-                    f"{qual}"
+                    f"Altitude {row['altitude_deg']}° "
+                    f"{row['direction']} · {qual}"
                 ):
                     c1, c2, c3, c4, c5 = st.columns(5)
-                    c1.metric("Altitude",       f"{row['altitude_deg']}°")
-                    c2.metric("Direction",      row["direction"])
-                    c3.metric("Weather Score",  f"{row['weather_score']}/100")
-                    c4.metric("Hours Visible",  f"{row['hours_visible']}h")
-                    c5.metric("Combined Score", f"{row['combined_score']}/100")
+                    c1.metric("Altitude",
+                              f"{row['altitude_deg']}°")
+                    c2.metric("Direction",    row["direction"])
+                    c3.metric("Weather Score",
+                              f"{row['weather_score']}/100")
+                    c4.metric("Hours Visible",
+                              f"{row['hours_visible']}h")
+                    c5.metric("Combined Score",
+                              f"{row['combined_score']}/100")
                     st.caption(
                         f"Rises: {row['rise_time']} · "
                         f"Sets: {row['set_time']} · "
@@ -362,68 +409,133 @@ with tab3:
                 "visibility_quality": "Quality"
             })
             st.dataframe(display, hide_index=True, height=500)
-            csv = display.to_csv(index=False)
             st.download_button(
-                label=f"Download visibility table for {selected_object}",
-                data=csv,
-                file_name=f"visibility_{selected_object.replace(' ', '_')}"
-                          f"_{datetime.utcnow().strftime('%Y-%m-%d')}.csv",
+                label=f"Download visibility table for "
+                      f"{selected_object}",
+                data=display.to_csv(index=False),
+                file_name=f"visibility_"
+                          f"{selected_object.replace(' ', '_')}_"
+                          f"{datetime.utcnow().strftime('%Y-%m-%d')}"
+                          f".csv",
                 mime="text/csv"
             )
 
-# ═══════════════════════════════════════════════════════
-# TAB 4 — Observatory Detail
-# ═══════════════════════════════════════════════════════
 # ═══════════════════════════════════════════════════════
 # TAB 4 — Peak Observing Time
 # ═══════════════════════════════════════════════════════
 with tab4:
     st.subheader("⏰ Peak Observing Time Calculator")
     st.caption(
-        "Find the single best hour to observe tonight at each "
-        "observatory. Combines weather, darkness, and moon position "
-        "into an hourly score across all 24 hours."
+        "Find the best hour to observe tonight at each observatory. "
+        "Toggle on a target object to factor in its altitude "
+        "alongside weather, darkness, and moon position."
     )
 
-    if not peak.empty:
+    use_object           = st.toggle(
+        "Factor in a specific target object", value=False)
+    selected_peak_object = None
 
+    if use_object:
+        pk_col1, pk_col2 = st.columns([1, 2])
+        with pk_col1:
+            pk_type = st.selectbox(
+                "Object type",
+                ["All", "Planets", "Galaxies", "Nebulae",
+                 "Star Clusters", "Famous Stars",
+                 "Full Messier Catalogue", "NGC Objects"],
+                key="peak_type"
+            )
+        pk_type_map = {
+            "All":                    None,
+            "Planets":                "planet",
+            "Galaxies":               "galaxy",
+            "Nebulae":                "nebula",
+            "Star Clusters":          "cluster",
+            "Famous Stars":           "star",
+            "Full Messier Catalogue": "messier",
+            "NGC Objects":            "ngc"
+        }
+        pk_selected_type = pk_type_map[pk_type]
+        pk_filtered = {
+            k: v for k, v in OBJECTS.items()
+            if pk_selected_type is None
+            or (pk_selected_type == "messier"
+                and k.startswith("M") and "—" in k)
+            or (pk_selected_type == "ngc"
+                and k.startswith("NGC"))
+            or (isinstance(pk_selected_type, str)
+                and pk_selected_type not in ["messier", "ngc"]
+                and v["type"] == pk_selected_type)
+        }
+        with pk_col2:
+            selected_peak_object = st.selectbox(
+                "Select target object",
+                list(pk_filtered.keys()),
+                key="peak_object"
+            )
+
+    with st.spinner(
+        "Calculating peak times across all observatories..."
+    ):
+        peak = get_all_peak_times(
+            object_name=selected_peak_object)
+
+    if selected_peak_object:
+        st.success(
+            f"Peak times calculated with "
+            f"**{selected_peak_object}** altitude factored in."
+        )
+
+    if not peak.empty:
         p1, p2, p3, p4 = st.columns(4)
         p1.metric("Best Observatory",
                   peak.iloc[0]["observatory"].replace(
-                      " Observatory", "").replace(" Telescope", ""))
-        p2.metric("Peak Hour",        peak.iloc[0]["peak_hour"])
-        p3.metric("Peak Score",       f"{peak.iloc[0]['peak_score']} / 100")
-        p4.metric("Good Hours Tonight", f"{peak.iloc[0]['total_good_hours']}h")
+                      " Observatory", "").replace(
+                      " Telescope", ""))
+        p2.metric("Peak Hour",    peak.iloc[0]["peak_hour"])
+        p3.metric("Peak Score",
+                  f"{peak.iloc[0]['peak_score']} / 100")
+        p4.metric("Good Hours Tonight",
+                  f"{peak.iloc[0]['total_good_hours']}h")
 
         st.markdown("---")
 
-        # Observatory selector
         selected_obs = st.selectbox(
             "Select observatory to see hourly breakdown",
             peak["observatory"].tolist(),
             key="peak_selector"
         )
 
-        selected_row  = peak[peak["observatory"] == selected_obs].iloc[0]
-        hourly        = pd.DataFrame(selected_row["hourly_data"])
+        selected_row = peak[
+            peak["observatory"] == selected_obs].iloc[0]
 
-        st.markdown(f"**{selected_obs}** — "
-                    f"Peak at {selected_row['peak_hour']} · "
-                    f"Best window: {selected_row['window_start']} → "
-                    f"{selected_row['window_end']} · "
-                    f"{selected_row['total_good_hours']} good hours")
+        st.markdown(
+            f"**{selected_obs}** — "
+            f"Peak at {selected_row['peak_hour']} · "
+            f"Best window: {selected_row['window_start']} → "
+            f"{selected_row['window_end']} · "
+            f"{selected_row['total_good_hours']} good hours"
+        )
+
+        if selected_peak_object and selected_row.get("peak_obj_alt"):
+            st.info(
+                f"**{selected_peak_object}** reaches "
+                f"**{selected_row['peak_obj_alt']}°** altitude "
+                f"at peak observing time."
+            )
 
         st.markdown("---")
 
         # Hourly chart
-        import matplotlib.pyplot as plt
-        import matplotlib.patches as mpatches
-        import io
+        fig, ax  = plt.subplots(figsize=(14, 5))
+        hours    = [h["hour"]
+                    for h in selected_row["hourly_data"]]
+        scores   = [h["combined_score"]
+                    for h in selected_row["hourly_data"]]
+        obj_alts = [h.get("object_altitude")
+                    for h in selected_row["hourly_data"]]
 
-        fig, ax = plt.subplots(figsize=(14, 5))
-        hours   = [h["hour"] for h in selected_row["hourly_data"]]
-        scores  = [h["combined_score"] for h in selected_row["hourly_data"]]
-        colors  = []
+        colors = []
         for s in scores:
             if s >= 80:   colors.append("#1D9E75")
             elif s >= 60: colors.append("#378ADD")
@@ -431,19 +543,34 @@ with tab4:
             elif s > 0:   colors.append("#E24B4A")
             else:         colors.append("#444441")
 
-        bars = ax.bar(range(24), scores, color=colors, width=0.8)
+        ax.bar(range(24), scores, color=colors, width=0.8)
 
-        # Mark peak hour
+        # Object altitude overlay
+        if selected_peak_object and any(
+            a is not None for a in obj_alts
+        ):
+            scaled = [
+                (a / 90 * 100) if a is not None and a > 0 else 0
+                for a in obj_alts
+            ]
+            ax.plot(range(24), scaled, color="white",
+                    linewidth=1.5, linestyle="--",
+                    alpha=0.7, label="Object altitude (scaled)")
+            ax.legend(loc="upper right", fontsize=8,
+                      facecolor="#0E1117", labelcolor="white")
+
+        # Peak marker
         peak_idx = scores.index(max(scores))
         ax.bar(peak_idx, scores[peak_idx],
                color="#1D9E75", width=0.8,
                edgecolor="white", linewidth=2)
         ax.annotate(
-            f"Peak\n{hours[peak_idx]}\n{scores[peak_idx]:.0f}/100",
+            f"Peak\n{hours[peak_idx]}\n"
+            f"{scores[peak_idx]:.0f}/100",
             xy=(peak_idx, scores[peak_idx]),
             xytext=(peak_idx, scores[peak_idx] + 8),
-            ha="center", fontsize=9, color="white",
-            fontweight="bold"
+            ha="center", fontsize=9,
+            color="white", fontweight="bold"
         )
 
         ax.set_xticks(range(24))
@@ -454,9 +581,11 @@ with tab4:
         ax.set_ylim(0, 115)
         ax.set_ylabel("Combined Observing Score", fontsize=10)
         ax.set_title(
-            f"Hourly Observing Score — {selected_obs} — "
-            f"{datetime.utcnow().strftime('%Y-%m-%d')} UTC",
-            fontsize=12, fontweight="bold"
+            f"Hourly Observing Score — {selected_obs}"
+            + (f" — {selected_peak_object}"
+               if selected_peak_object else "")
+            + f" — {datetime.utcnow().strftime('%Y-%m-%d')} UTC",
+            fontsize=11, fontweight="bold"
         )
         ax.spines["top"].set_visible(False)
         ax.spines["right"].set_visible(False)
@@ -468,78 +597,92 @@ with tab4:
         ax.spines["left"].set_color("#444441")
         ax.spines["bottom"].set_color("#444441")
 
-        legend = [
-            mpatches.Patch(color="#1D9E75", label="Excellent (80+)"),
-            mpatches.Patch(color="#378ADD", label="Good (60-79)"),
-            mpatches.Patch(color="#EF9F27", label="Marginal (40-59)"),
-            mpatches.Patch(color="#E24B4A", label="Poor (<40)"),
-            mpatches.Patch(color="#444441", label="Daytime")
+        legend_items = [
+            mpatches.Patch(color="#1D9E75",
+                           label="Excellent (80+)"),
+            mpatches.Patch(color="#378ADD",
+                           label="Good (60-79)"),
+            mpatches.Patch(color="#EF9F27",
+                           label="Marginal (40-59)"),
+            mpatches.Patch(color="#E24B4A",
+                           label="Poor (<40)"),
+            mpatches.Patch(color="#444441",
+                           label="Daytime")
         ]
-        ax.legend(handles=legend, loc="upper left",
+        ax.legend(handles=legend_items, loc="upper left",
                   fontsize=8, facecolor="#0E1117",
                   labelcolor="white")
 
         buf = io.BytesIO()
         plt.tight_layout()
         plt.savefig(buf, format="png", dpi=150,
-                    facecolor="#0E1117", bbox_inches="tight")
+                    facecolor="#0E1117",
+                    bbox_inches="tight")
         buf.seek(0)
         st.image(buf, use_container_width=True)
         plt.close()
 
         st.markdown("---")
-
-        # Hourly data table
         st.subheader("Hourly breakdown table")
-        hourly_display = hourly[[
-            "hour", "sun_altitude", "moon_altitude",
-            "darkness_score", "moon_score",
-            "weather_score", "combined_score", "is_dark"
-        ]].rename(columns={
+        hourly = pd.DataFrame(selected_row["hourly_data"])
+        cols   = ["hour", "sun_altitude", "moon_altitude",
+                  "darkness_score", "moon_score",
+                  "weather_score", "combined_score", "is_dark"]
+        rename = {
             "hour":           "Hour (UTC)",
             "sun_altitude":   "Sun Alt (°)",
             "moon_altitude":  "Moon Alt (°)",
-            "darkness_score": "Darkness Score",
+            "darkness_score": "Darkness",
             "moon_score":     "Moon Score",
-            "weather_score":  "Weather Score",
-            "combined_score": "Combined Score",
+            "weather_score":  "Weather",
+            "combined_score": "Combined",
             "is_dark":        "Is Dark"
-        })
-        st.dataframe(hourly_display, hide_index=True, height=400)
+        }
+        if selected_peak_object:
+            cols.insert(4, "object_altitude")
+            rename["object_altitude"] = "Object Alt (°)"
+        st.dataframe(
+            hourly[cols].rename(columns=rename),
+            hide_index=True, height=400
+        )
 
         st.markdown("---")
+        st.subheader(
+            "Top 10 observatories by peak score tonight")
+        st.dataframe(
+            peak.head(10)[[
+                "observatory", "country", "peak_hour",
+                "peak_score", "window_start", "window_end",
+                "total_good_hours", "weather_score"
+            ]].rename(columns={
+                "observatory":      "Observatory",
+                "country":          "Country",
+                "peak_hour":        "Peak Hour",
+                "peak_score":       "Peak Score",
+                "window_start":     "Window Start",
+                "window_end":       "Window End",
+                "total_good_hours": "Good Hours",
+                "weather_score":    "Weather Score"
+            }),
+            hide_index=True
+        )
 
-        # Top 10 peak times across all observatories
-        st.subheader("Top 10 observatories by peak score tonight")
-        top10_peak = peak.head(10)[[
-            "observatory", "country", "peak_hour",
-            "peak_score", "window_start", "window_end",
-            "total_good_hours", "weather_score"
-        ]].rename(columns={
-            "observatory":      "Observatory",
-            "country":          "Country",
-            "peak_hour":        "Peak Hour",
-            "peak_score":       "Peak Score",
-            "window_start":     "Window Start",
-            "window_end":       "Window End",
-            "total_good_hours": "Good Hours",
-            "weather_score":    "Weather Score"
-        })
-        st.dataframe(top10_peak, hide_index=True)
-
-        # Download
-        csv = peak[[
-            "observatory", "country", "peak_hour",
-            "peak_score", "window_start", "window_end",
-            "total_good_hours", "weather_score"
-        ]].to_csv(index=False)
         st.download_button(
             label="Download peak times for all observatories",
-            data=csv,
-            file_name=f"peak_times_{datetime.utcnow().strftime('%Y-%m-%d')}.csv",
+            data=peak[[
+                "observatory", "country", "peak_hour",
+                "peak_score", "window_start", "window_end",
+                "total_good_hours", "weather_score"
+            ]].to_csv(index=False),
+            file_name=f"peak_times_"
+                      f"{datetime.utcnow().strftime('%Y-%m-%d')}"
+                      f".csv",
             mime="text/csv"
         )
 
+# ═══════════════════════════════════════════════════════
+# TAB 5 — Observatory Detail
+# ═══════════════════════════════════════════════════════
 with tab5:
     st.subheader("🔬 Observatory detail view")
     selected = st.selectbox(
@@ -550,7 +693,8 @@ with tab5:
     wrow = win[win["observatory"] == selected]
 
     d1, d2, d3, d4, d5 = st.columns(5)
-    d1.metric("Weather Score",  f"{row['observation_score']} / 100")
+    d1.metric("Weather Score",
+              f"{row['observation_score']} / 100")
     d2.metric("Cloud Cover",    f"{row['cloud_cover_pct']}%")
     d3.metric("Humidity",       f"{row['humidity_pct']}%")
     d4.metric("Wind Speed",     f"{row['wind_speed_ms']} m/s")
@@ -569,15 +713,18 @@ with tab5:
 
     st.markdown("---")
     st.info(
-        f"**{row['observatory']}** is located in {row['country']} "
-        f"at {row['altitude_m']}m altitude (MPC code: {row['mpc_code']}). "
+        f"**{row['observatory']}** is located in "
+        f"{row['country']} at {row['altitude_m']}m altitude "
+        f"(MPC code: {row['mpc_code']}). "
         f"Current weather condition: **{row['condition']}** "
         f"as of {row['fetch_datetime']}."
     )
 
 st.markdown("---")
 st.caption(
-    "Data from Open-Meteo · Observatory list from Minor Planet Center (MPC) · "
+    "Data from Open-Meteo · "
+    "Observatory list from Minor Planet Center (MPC) · "
     "Astronomical calculations via PyEphem · "
+    f"{len(OBJECTS)} objects in catalogue · "
     "Pipeline runs daily at 06:00 UTC via GitHub Actions"
 )
