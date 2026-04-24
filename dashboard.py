@@ -21,9 +21,9 @@ from semester_planning import build_calendar_data, get_best_months
 import calendar
 from educational_mode import (get_all_concepts,
                                get_concepts_by_category)
-from alert_system import (add_subscription,
-                           remove_subscription,
-                           load_subscriptions)
+from sheets_subscriptions import (add_subscription,
+                                   remove_subscription,
+                                   load_subscriptions)
 
 
 st.set_page_config(

@@ -10,50 +10,13 @@ from email.mime.multipart import MIMEMultipart
 # ── Config ────────────────────────────────────────────────────────
 SENDER_EMAIL    = os.environ.get("ALERT_EMAIL", "")
 SENDER_PASSWORD = os.environ.get("ALERT_PASSWORD", "")
-SUBSCRIPTIONS_FILE = "subscriptions.json"
 
-# ── Load subscriptions ────────────────────────────────────────────
-def load_subscriptions():
-    if not os.path.exists(SUBSCRIPTIONS_FILE):
-        return []
-    with open(SUBSCRIPTIONS_FILE, "r") as f:
-        return json.load(f)
-
-def save_subscriptions(subs):
-    with open(SUBSCRIPTIONS_FILE, "w") as f:
-        json.dump(subs, f, indent=2)
-
-def add_subscription(email, observatory,
-                     threshold=80, alert_type="above"):
-    subs = load_subscriptions()
-
-    # Check for duplicate
-    for sub in subs:
-        if (sub["email"] == email and
-                sub["observatory"] == observatory):
-            return False, "Already subscribed to this observatory."
-
-    subs.append({
-        "email":       email,
-        "observatory": observatory,
-        "threshold":   threshold,
-        "alert_type":  alert_type,
-        "active":      True,
-        "created_at":  datetime.utcnow().isoformat(),
-        "last_alerted": None
-    })
-    save_subscriptions(subs)
-    return True, "Subscribed successfully!"
-
-def remove_subscription(email, observatory):
-    subs    = load_subscriptions()
-    new_subs = [
-        s for s in subs
-        if not (s["email"] == email and
-                s["observatory"] == observatory)
-    ]
-    save_subscriptions(new_subs)
-    return len(subs) - len(new_subs) > 0
+from sheets_subscriptions import (
+    load_subscriptions,
+    add_subscription,
+    remove_subscription,
+    update_last_alerted
+)
 
 # ── Get current scores ────────────────────────────────────────────
 def get_current_scores():
@@ -350,11 +313,11 @@ def run_alert_checker():
             sent = send_email(
                 sub["email"], subject, html)
             if sent:
-                subs[i]["last_alerted"] = (
-                    datetime.utcnow().isoformat())
+                update_last_alerted(
+                    sub["email"], sub["observatory"])
                 alerts_sent += 1
 
-    save_subscriptions(subs)
+    
     print(
         f"\n  Done. {alerts_sent} alerts sent.\n")
 
