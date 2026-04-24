@@ -24,6 +24,7 @@ from educational_mode import (get_all_concepts,
 from sheets_subscriptions import (add_subscription,
                                    remove_subscription,
                                    load_subscriptions)
+from telescope_efficiency import get_all_efficiency_scores
 
 
 st.set_page_config(
@@ -32,9 +33,35 @@ st.set_page_config(
     layout="wide"
 )
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=3600)  # cache for 1 hour
+def load_atmospheric():
+    from atmospheric import get_full_atmospheric_analysis
+    df      = load_data()
+    results = []
+    for _, row in df.iterrows():
+        atm = get_full_atmospheric_analysis({
+            "temperature_c":    row["temperature_c"],
+            "wind_speed_ms":    row["wind_speed_ms"],
+            "humidity_pct":     row["humidity_pct"],
+            "altitude_m":       row["altitude_m"],
+            "surface_pressure": row.get("surface_pressure"),
+            "jet_stream_ms":    row.get("jet_stream_ms"),
+            "latitude":         row["latitude"]
+        })
+        results.append({
+            "observatory":  row["observatory"],
+            "country":      row["country"],
+            "altitude_m":   row["altitude_m"],
+            "weather_score": row["observation_score"],
+            **atm
+        })
+    return pd.DataFrame(results).sort_values(
+        "seeing_arcsec", ascending=True)
+
+@st.cache_data(ttl=3600)
 def load_data():
-    conn = sqlite3.connect("data/silver/observatory_weather.db")
+    conn = sqlite3.connect(
+        "data/silver/observatory_weather.db")
     df = pd.read_sql("""
         SELECT
             o.name         AS observatory,
@@ -64,21 +91,21 @@ def load_data():
             CASE
                 WHEN (100 - (w.cloud_cover_pct * 0.50)
                     - (CASE WHEN w.humidity_pct > 85
-                       THEN (w.humidity_pct - 85) * 2.0 ELSE 0 END)
+                       THEN (w.humidity_pct-85)*2 ELSE 0 END)
                     - (CASE WHEN w.wind_speed_ms > 15
-                       THEN (w.wind_speed_ms - 15) * 2.0 ELSE 0 END)
+                       THEN (w.wind_speed_ms-15)*2 ELSE 0 END)
                 ) >= 80 THEN 'Excellent'
                 WHEN (100 - (w.cloud_cover_pct * 0.50)
                     - (CASE WHEN w.humidity_pct > 85
-                       THEN (w.humidity_pct - 85) * 2.0 ELSE 0 END)
+                       THEN (w.humidity_pct-85)*2 ELSE 0 END)
                     - (CASE WHEN w.wind_speed_ms > 15
-                       THEN (w.wind_speed_ms - 15) * 2.0 ELSE 0 END)
+                       THEN (w.wind_speed_ms-15)*2 ELSE 0 END)
                 ) >= 60 THEN 'Good'
                 WHEN (100 - (w.cloud_cover_pct * 0.50)
                     - (CASE WHEN w.humidity_pct > 85
-                       THEN (w.humidity_pct - 85) * 2.0 ELSE 0 END)
+                       THEN (w.humidity_pct-85)*2 ELSE 0 END)
                     - (CASE WHEN w.wind_speed_ms > 15
-                       THEN (w.wind_speed_ms - 15) * 2.0 ELSE 0 END)
+                       THEN (w.wind_speed_ms-15)*2 ELSE 0 END)
                 ) >= 40 THEN 'Marginal'
                 ELSE 'Poor'
             END AS condition
@@ -89,9 +116,65 @@ def load_data():
     conn.close()
     return df
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=3600)
 def load_windows():
+    from precompute import load_precomputed
+    data = load_precomputed("observing_windows")
+    if not data.empty:
+        return data
+    from observing_window import get_all_windows
     return get_all_windows()
+
+@st.cache_data(ttl=3600)
+def load_peak_times_cached(object_name=None):
+    if object_name:
+        from peak_time import get_all_peak_times
+        return get_all_peak_times(object_name)
+    from precompute import load_precomputed
+    data = load_precomputed("peak_times")
+    if not data.empty:
+        return data
+    from peak_time import get_all_peak_times
+    return get_all_peak_times()
+
+@st.cache_data(ttl=3600)
+def load_atmospheric_cached():
+    from precompute import load_precomputed
+    data = load_precomputed("atmospheric")
+    if not data.empty:
+        return data
+    # Fallback — calculate live
+    df      = load_data()
+    results = []
+    for _, row in df.iterrows():
+        from atmospheric import get_full_atmospheric_analysis
+        atm = get_full_atmospheric_analysis({
+            "temperature_c":    row["temperature_c"],
+            "wind_speed_ms":    row["wind_speed_ms"],
+            "humidity_pct":     row["humidity_pct"],
+            "altitude_m":       row["altitude_m"],
+            "surface_pressure": row.get("surface_pressure"),
+            "jet_stream_ms":    row.get("jet_stream_ms"),
+            "latitude":         row["latitude"]
+        })
+        results.append({
+            "observatory":   row["observatory"],
+            "country":       row["country"],
+            "altitude_m":    row["altitude_m"],
+            "weather_score": row["observation_score"],
+            **atm
+        })
+    return pd.DataFrame(results).sort_values(
+        "seeing_arcsec", ascending=True)
+
+@st.cache_data(ttl=3600)
+def load_efficiency_cached(telescope_type="optical"):
+    from precompute import load_precomputed
+    data = load_precomputed(f"efficiency_{telescope_type}")
+    if not data.empty:
+        return data
+    from telescope_efficiency import get_all_efficiency_scores
+    return get_all_efficiency_scores(telescope_type)
 
 def score_color(score):
     if score >= 80:   return "#1D9E75"
@@ -105,6 +188,7 @@ def condition_emoji(condition):
 
 df  = load_data()
 win = load_windows()
+peak = load_peak_times_cached()
 
 st.title("🔭 Global Observatory Weather Tracker")
 st.caption(
@@ -114,7 +198,7 @@ st.caption(
     f"· {len(OBJECTS)} astronomical objects"
 )
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12 = st.tabs([
     "🌍 Live Weather Map",
     "🌙 Observing Windows",
     "🔭 Object Visibility",
@@ -125,6 +209,7 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11 = st.tabs([
     "📅 Semester Planning",
     "🎓 Learn Astronomy",
     "🔔 Alert Subscriptions",
+    "🏆 Telescope Efficiency",
     "🔬 Observatory Detail"
 ])
 
@@ -495,10 +580,8 @@ with tab4:
                 key="peak_object"
             )
 
-    with st.spinner(
-        "Calculating peak times across all observatories..."
-    ):
-        peak = get_all_peak_times(
+    with st.spinner(...):
+        peak = load_peak_times_cached(
             object_name=selected_peak_object)
 
     if selected_peak_object:
@@ -713,29 +796,9 @@ with tab5:
     )
 
     # Calculate atmospheric data for all observatories
-    atm_results = []
-    for _, row in df.iterrows():
-        record = {
-            "temperature_c":    row["temperature_c"],
-            "wind_speed_ms":    row["wind_speed_ms"],
-            "humidity_pct":     row["humidity_pct"],
-            "altitude_m":       row["altitude_m"],
-            "surface_pressure": row.get("surface_pressure"),
-            "jet_stream_ms":    row.get("jet_stream_ms"),
-            "latitude":         row["latitude"]
-        }
-        atm = get_full_atmospheric_analysis(record)
-        atm_results.append({
-            "observatory":    row["observatory"],
-            "country":        row["country"],
-            "altitude_m":     row["altitude_m"],
-            "weather_score":  row["observation_score"],
-            **atm
-        })
+    atm_df = load_atmospheric_cached()
 
-    atm_df = pd.DataFrame(atm_results).sort_values(
-        "seeing_arcsec", ascending=True
-    )
+    atm_df = load_atmospheric_cached()
 
     # Summary metrics
     a1, a2, a3, a4 = st.columns(4)
@@ -2091,12 +2154,512 @@ weather details and an observing tip.
 
 **Frequency** — Maximum one alert per subscription per day.
     """)
-
 # ═══════════════════════════════════════════════════════
-# TAB 11 — Observatory Detail
+# TAB 11 — Telescope Efficiency
 # ═══════════════════════════════════════════════════════
-
 with tab11:
+    st.subheader("🏆 Telescope Efficiency Score")
+    st.caption(
+        "The single most important number for planning. "
+        "Combines weather quality, dark hours, moon position, "
+        "seeing, PWV and jet stream into one efficiency score. "
+        "Answers: how many truly usable hours will this "
+        "telescope produce tonight?"
+    )
+
+    # Telescope type selector
+    tel_type = st.radio(
+        "Telescope type",
+        ["Optical", "Infrared", "Radio"],
+        horizontal=True,
+        help="Different telescope types weight atmospheric "
+             "conditions differently"
+    )
+    tel_type_key = tel_type.lower()
+
+    type_explanations = {
+        "Optical":  "Weighted for cloud cover (40%), dark hours (25%), moon (15%), seeing (12%)",
+        "Infrared": "Weighted for PWV (25%), cloud cover (30%), dark hours (20%), seeing (8%)",
+        "Radio":    "Weighted for PWV (45%), jet stream (20%), cloud cover (20%) — can observe through clouds"
+    }
+    st.info(f"**{tel_type}:** {type_explanations[tel_type]}")
+
+    with st.spinner(
+        f"Calculating {tel_type} telescope efficiency "
+        f"for all 95 observatories..."
+    ):
+        eff_df = load_efficiency_cached(tel_type_key)
+
+    if eff_df.empty:
+        st.error("No data available.")
+    else:
+        # Summary metrics
+        e1, e2, e3, e4, e5 = st.columns(5)
+        e1.metric(
+            "Best Site Tonight",
+            eff_df.iloc[0]["observatory"].replace(
+                " Observatory", "")[:18]
+        )
+        e2.metric(
+            "Top Efficiency Score",
+            f"{eff_df.iloc[0]['efficiency_score']}/100"
+        )
+        e3.metric(
+            "Top Grade",
+            eff_df.iloc[0]["grade"]
+        )
+        e4.metric(
+            "Max Usable Hours",
+            f"{eff_df.iloc[0]['usable_hours']}h"
+        )
+        e5.metric(
+            "A-grade Sites",
+            len(eff_df[eff_df["grade"].isin(
+                ["A+", "A", "A-"])])
+        )
+
+        st.markdown("---")
+
+        # World map coloured by efficiency
+        st.subheader(
+            f"World map — {tel_type} telescope efficiency")
+
+        m_eff = folium.Map(
+            location=[20, 0], zoom_start=2,
+            tiles="CartoDB positron"
+        )
+
+        for _, row in eff_df.iterrows():
+            score = row["efficiency_score"]
+            if score >= 80:   color = "#1D9E75"
+            elif score >= 65: color = "#378ADD"
+            elif score >= 50: color = "#EF9F27"
+            else:             color = "#E24B4A"
+
+            popup_html = f"""
+                <div style='font-family:sans-serif;
+                            width:220px'>
+                    <b>{row['observatory']}</b><br>
+                    {row['country']} · {row['altitude_m']}m
+                    <hr style='margin:4px 0'>
+                    <b>Efficiency: {row['efficiency_score']}/100
+                    [{row['grade']}]</b><br>
+                    Usable hours: {row['usable_hours']}h<br>
+                    Dark hours: {row['dark_hours']}h<br>
+                    Moon-free: {row['moon_free_pct']}%<br>
+                    Weather: {row['weather_score']}/100<br>
+                    Seeing: {row['seeing_arcsec']}"<br>
+                    PWV: {row['pwv_mm']}mm<br>
+                    Jet: {row['jet_impact']}
+                </div>
+            """
+            folium.CircleMarker(
+                location=[row["latitude"],
+                          row["longitude"]],
+                radius=9,
+                color=color,
+                fill=True,
+                fill_color=color,
+                fill_opacity=0.85,
+                popup=folium.Popup(
+                    popup_html, max_width=230),
+                tooltip=f"{row['observatory']} — "
+                        f"{row['efficiency_score']}/100 "
+                        f"[{row['grade']}] · "
+                        f"{row['usable_hours']}h usable"
+            ).add_to(m_eff)
+
+        st_folium(m_eff, width=None, height=480)
+
+        ec1, ec2, ec3, ec4 = st.columns(4)
+        ec1.markdown("🟢 **A grade** — 80+")
+        ec2.markdown("🔵 **B grade** — 65–79")
+        ec3.markdown("🟡 **C grade** — 50–64")
+        ec4.markdown("🔴 **D grade** — below 50")
+
+        st.markdown("---")
+
+        # Rankings
+        st.subheader(
+            f"Efficiency rankings — {tel_type} telescopes")
+
+        for _, row in eff_df.head(15).iterrows():
+            grade = row["grade"]
+            if grade in ["A+", "A"]:   emoji = "🟢"
+            elif grade == "A-":         emoji = "🟢"
+            elif grade in ["B+", "B"]: emoji = "🔵"
+            elif grade == "B-":         emoji = "🔵"
+            elif grade in ["C+", "C"]: emoji = "🟡"
+            else:                       emoji = "🔴"
+
+            with st.expander(
+                f"{emoji} **{grade}** — "
+                f"{row['observatory']} · "
+                f"Efficiency {row['efficiency_score']}/100 · "
+                f"{row['usable_hours']}h usable tonight"
+            ):
+                r1, r2, r3, r4, r5 = st.columns(5)
+                r1.metric("Efficiency",
+                          f"{row['efficiency_score']}/100")
+                r2.metric("Usable Hours",
+                          f"{row['usable_hours']}h")
+                r3.metric("Dark Hours",
+                          f"{row['dark_hours']}h")
+                r4.metric("Moon-free",
+                          f"{row['moon_free_pct']}%")
+                r5.metric("Weather Score",
+                          f"{row['weather_score']}/100")
+
+                st.markdown("**Score breakdown**")
+
+                components = row.get("components", {
+                   "weather": 0, "dark": 0, "moon": 0,
+                   "seeing": 0, "pwv": 0, "jet": 0,
+                   "altitude_bonus": 0
+              })
+                if isinstance(components, str):
+                    import json
+                    components = json.loads(components)
+                comp_cols  = st.columns(
+                    len(components))
+                labels = {
+                    "weather":       "☁️ Weather",
+                    "dark":          "🌑 Dark hours",
+                    "moon":          "🌙 Moon",
+                    "seeing":        "👁️ Seeing",
+                    "pwv":           "💧 PWV",
+                    "jet":           "🌪️ Jet stream",
+                    "altitude_bonus": "⛰️ Altitude"
+                }
+                for i, (key, val) in enumerate(
+                    components.items()
+                ):
+                    comp_cols[i].metric(
+                        labels.get(key, key),
+                        f"+{val}"
+                    )
+
+                # Component bar chart
+                import matplotlib.pyplot as plt
+                import io
+
+                fig, ax = plt.subplots(figsize=(8, 2))
+                keys    = list(labels.values())
+                vals    = list(components.values())
+                colors_comp = [
+                    "#1D9E75", "#378ADD", "#AFA9EC",
+                    "#5DCAA5", "#85B7EB", "#EF9F27",
+                    "#9FE1CB"
+                ]
+                ax.barh(keys, vals,
+                        color=colors_comp[:len(keys)],
+                        height=0.6)
+                ax.set_xlim(0, 45)
+                ax.set_xlabel("Points contributed",
+                              fontsize=8, color="white")
+                ax.set_facecolor("#0E1117")
+                fig.patch.set_facecolor("#0E1117")
+                ax.tick_params(colors="white",
+                               labelsize=8)
+                ax.xaxis.label.set_color("white")
+                ax.spines["top"].set_visible(False)
+                ax.spines["right"].set_visible(False)
+                ax.spines["left"].set_color("#444441")
+                ax.spines["bottom"].set_color("#444441")
+
+                buf = io.BytesIO()
+                plt.tight_layout()
+                plt.savefig(buf, format="png", dpi=120,
+                            facecolor="#0E1117",
+                            bbox_inches="tight")
+                buf.seek(0)
+                st.image(buf, use_container_width=True)
+                plt.close()
+
+                st.caption(
+                    f"{row['country']} · "
+                    f"{row['altitude_m']}m · "
+                    f"Seeing {row['seeing_arcsec']}\" · "
+                    f"PWV {row['pwv_mm']}mm · "
+                    f"Jet {row['jet_impact']}"
+                )
+
+        st.markdown("---")
+
+        # Full table
+        st.subheader("Complete efficiency table")
+        eff_display = eff_df[[
+            "observatory", "country", "grade",
+            "efficiency_score", "usable_hours",
+            "dark_hours", "moon_free_pct",
+            "weather_score", "seeing_arcsec",
+            "pwv_mm", "jet_impact"
+        ]].rename(columns={
+            "observatory":      "Observatory",
+            "country":          "Country",
+            "grade":            "Grade",
+            "efficiency_score": "Efficiency",
+            "usable_hours":     "Usable Hrs",
+            "dark_hours":       "Dark Hrs",
+            "moon_free_pct":    "Moon-free %",
+            "weather_score":    "Weather",
+            "seeing_arcsec":    "Seeing (\")",
+            "pwv_mm":           "PWV (mm)",
+            "jet_impact":       "Jet Impact"
+        })
+        st.dataframe(
+            eff_display, hide_index=True, height=500)
+
+        st.download_button(
+            label=f"Download {tel_type} efficiency "
+                  f"report as CSV",
+            data=eff_display.to_csv(index=False),
+            file_name=f"efficiency_{tel_type_key}_"
+                      f"{datetime.utcnow().strftime('%Y-%m-%d')}"
+                      f".csv",
+            mime="text/csv"
+        )
+        st.markdown("---")
+
+        # ── Cross type comparison ─────────────────────
+        st.subheader(
+            "🔀 Cross-telescope type comparison")
+        st.caption(
+            "See how the same observatory ranks "
+            "differently for optical, infrared and "
+            "radio telescopes. Sites with high rank "
+            "spread are highly specialised."
+        )
+
+        show_comparison = st.toggle(
+            "Show full cross-type comparison "
+            "(takes ~30 seconds to calculate)",
+            value=False,
+            key="cross_compare"
+        )
+
+        if show_comparison:
+            with st.spinner(
+                "Calculating all three telescope "
+                "types for all 95 observatories..."
+            ):
+                from telescope_efficiency import (
+                    get_cross_type_comparison)
+                cross_df = get_cross_type_comparison()
+
+            if not cross_df.empty:
+
+                # Summary stats
+                x1, x2, x3 = st.columns(3)
+                best_optical  = cross_df.sort_values(
+                    "optical_score",
+                    ascending=False).iloc[0]
+                best_infrared = cross_df.sort_values(
+                    "infrared_score",
+                    ascending=False).iloc[0]
+                best_radio    = cross_df.sort_values(
+                    "radio_score",
+                    ascending=False).iloc[0]
+
+                x1.metric(
+                    "🔭 Best optical site tonight",
+                    best_optical["observatory"].replace(
+                        " Observatory", "")[:20],
+                    f"{best_optical['optical_score']}/100"
+                )
+                x2.metric(
+                    "🌡️ Best infrared site tonight",
+                    best_infrared["observatory"].replace(
+                        " Observatory", "")[:20],
+                    f"{best_infrared['infrared_score']}/100"
+                )
+                x3.metric(
+                    "📡 Best radio site tonight",
+                    best_radio["observatory"].replace(
+                        " Observatory", "")[:20],
+                    f"{best_radio['radio_score']}/100"
+                )
+
+                st.markdown("---")
+
+                # Most specialised sites
+                st.subheader(
+                    "Most specialised observatories")
+                st.caption(
+                    "High rank spread means the site "
+                    "is dramatically better for one "
+                    "telescope type than others."
+                )
+
+                specialised = cross_df.sort_values(
+                    "rank_spread", ascending=False
+                ).head(10)
+
+                for _, row in specialised.iterrows():
+                    opt_r  = int(row["optical_rank"])
+                    ir_r   = int(row["infrared_rank"])
+                    rad_r  = int(row["radio_rank"])
+                    spread = int(row["rank_spread"])
+
+                    best   = row["best_type"]
+                    emoji  = {
+                        "Optical":  "🔭",
+                        "Infrared": "🌡️",
+                        "Radio":    "📡"
+                    }.get(best, "🔭")
+
+                    with st.expander(
+                        f"{emoji} **{row['observatory']}** "
+                        f"— Best for {best} · "
+                        f"Rank spread: {spread} positions"
+                    ):
+                        c1, c2, c3 = st.columns(3)
+                        c1.metric(
+                            "🔭 Optical",
+                            f"Rank #{opt_r}",
+                            f"{row['optical_score']}/100 "
+                            f"[{row['optical_grade']}]"
+                        )
+                        c2.metric(
+                            "🌡️ Infrared",
+                            f"Rank #{ir_r}",
+                            f"{row['infrared_score']}/100 "
+                            f"[{row['infrared_grade']}]"
+                        )
+                        c3.metric(
+                            "📡 Radio",
+                            f"Rank #{rad_r}",
+                            f"{row['radio_score']}/100 "
+                            f"[{row['radio_grade']}]"
+                        )
+
+                        # Why explanation
+                        pwv    = row["pwv_mm"]
+                        seeing = row["seeing_arcsec"]
+                        jet    = row["jet_impact"]
+                        alt    = row["altitude_m"]
+
+                        reasons = []
+                        if pwv and pwv < 2:
+                            reasons.append(
+                                f"very low PWV ({pwv}mm) "
+                                f"— excellent for infrared")
+                        if pwv and pwv > 10:
+                            reasons.append(
+                                f"high PWV ({pwv}mm) "
+                                f"— poor for infrared/radio")
+                        if seeing and seeing < 0.8:
+                            reasons.append(
+                                f"exceptional seeing "
+                                f"({seeing}\") "
+                                f"— ideal for optical")
+                        if jet in ["Negligible", "Low"]:
+                            reasons.append(
+                                f"calm jet stream "
+                                f"({jet}) "
+                                f"— good for radio")
+                        if jet in ["High", "Severe"]:
+                            reasons.append(
+                                f"strong jet stream "
+                                f"({jet}) "
+                                f"— hurts radio work")
+                        if alt > 4000:
+                            reasons.append(
+                                f"very high altitude "
+                                f"({alt}m) — less "
+                                f"atmosphere above")
+
+                        if reasons:
+                            st.info(
+                                "**Why this pattern:** "
+                                + " · ".join(reasons))
+
+                        st.caption(
+                            f"{row['country']} · "
+                            f"{alt}m · "
+                            f"Seeing {seeing}\" · "
+                            f"PWV {pwv}mm · "
+                            f"Jet {jet}"
+                        )
+
+                st.markdown("---")
+
+                # Full comparison table
+                st.subheader("Full comparison table")
+                cross_display = cross_df[[
+                    "observatory", "country",
+                    "altitude_m",
+                    "optical_rank", "optical_score",
+                    "optical_grade",
+                    "infrared_rank", "infrared_score",
+                    "infrared_grade",
+                    "radio_rank", "radio_score",
+                    "radio_grade",
+                    "best_type", "rank_spread",
+                    "pwv_mm", "seeing_arcsec",
+                    "jet_impact"
+                ]].rename(columns={
+                    "observatory":     "Observatory",
+                    "country":         "Country",
+                    "altitude_m":      "Alt (m)",
+                    "optical_rank":    "Opt Rank",
+                    "optical_score":   "Opt Score",
+                    "optical_grade":   "Opt Grade",
+                    "infrared_rank":   "IR Rank",
+                    "infrared_score":  "IR Score",
+                    "infrared_grade":  "IR Grade",
+                    "radio_rank":      "Radio Rank",
+                    "radio_score":     "Radio Score",
+                    "radio_grade":     "Radio Grade",
+                    "best_type":       "Best For",
+                    "rank_spread":     "Rank Spread",
+                    "pwv_mm":          "PWV (mm)",
+                    "seeing_arcsec":   "Seeing (\")",
+                    "jet_impact":      "Jet Impact"
+                })
+                st.dataframe(
+                    cross_display,
+                    hide_index=True,
+                    height=500
+                )
+
+                st.download_button(
+                    label="Download cross-type "
+                          "comparison as CSV",
+                    data=cross_display.to_csv(
+                        index=False),
+                    file_name=f"cross_type_comparison_"
+                              f"{datetime.utcnow().strftime('%Y-%m-%d')}"
+                              f".csv",
+                    mime="text/csv"
+                )
+        # ── What makes this different ─────────────────
+        st.markdown("---")
+        st.subheader("💡 Why efficiency score matters")
+        st.markdown(f"""
+A site with a perfect **100/100 weather score** but
+only **3 dark hours** is less useful than a site with
+**85/100 weather** and **10 dark hours**.
+
+The efficiency score captures this by combining:
+
+- **How good the weather is** — cloud, humidity, wind
+- **How many hours of darkness are available** tonight
+- **How much of the dark time is moon-free**
+- **How sharp the images will be** — atmospheric seeing
+- **{'PWV for infrared transmission' if tel_type == 'Infrared' else 'Jet stream impact on upper atmosphere' if tel_type == 'Radio' else 'Overall atmospheric stability'}**
+
+The **usable hours** estimate tells you exactly how many
+hours of high-quality science you can realistically
+expect from each site tonight — the number telescope
+schedulers actually care about.
+        """)
+
+# ═══════════════════════════════════════════════════════
+# TAB 12 — Observatory Detail
+# ═══════════════════════════════════════════════════════
+
+with tab12:
     st.subheader("🔬 Observatory detail view")
     selected = st.selectbox(
         "Select an observatory",

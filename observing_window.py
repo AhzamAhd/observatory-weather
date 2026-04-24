@@ -4,6 +4,13 @@ import pandas as pd
 from datetime import datetime, timedelta
 import math
 
+from functools import lru_cache
+
+@lru_cache(maxsize=200)
+def _cached_twilight(lat, lon, date_str):
+    # wrap your existing get_twilight_times logic here
+    pass
+
 def get_moon_phase(date):
     moon = ephem.Moon(date.strftime("%Y/%m/%d"))
     phase = moon.phase
