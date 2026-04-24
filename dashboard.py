@@ -13,6 +13,18 @@ from object_visibility import (get_best_observatories_for_object,
                                 get_ephem_object)
 from peak_time import get_all_peak_times, calculate_hourly_scores
 from atmospheric import get_full_atmospheric_analysis
+from historical_reliability import (calculate_reliability_scores,
+                                     get_grade_color,
+                                     get_trend_emoji)
+from site_comparison import compare_sites
+from semester_planning import build_calendar_data, get_best_months
+import calendar
+from educational_mode import (get_all_concepts,
+                               get_concepts_by_category)
+from alert_system import (add_subscription,
+                           remove_subscription,
+                           load_subscriptions)
+
 
 st.set_page_config(
     page_title="Observatory Weather Tracker",
@@ -102,12 +114,17 @@ st.caption(
     f"· {len(OBJECTS)} astronomical objects"
 )
 
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11 = st.tabs([
     "🌍 Live Weather Map",
     "🌙 Observing Windows",
     "🔭 Object Visibility",
     "⏰ Peak Observing Time",
     "🌫️ Atmospheric Analysis",
+    "📊 Historical Reliability",
+    "⚖️ Site Comparison",
+    "📅 Semester Planning",
+    "🎓 Learn Astronomy",
+    "🔔 Alert Subscriptions",
     "🔬 Observatory Detail"
 ])
 
@@ -913,9 +930,1173 @@ with tab5:
         mime="text/csv"
     )
 # ═══════════════════════════════════════════════════════
-# TAB 5 — Observatory Detail
+# TAB 6 — Historical Reliability
 # ═══════════════════════════════════════════════════════
 with tab6:
+    st.subheader("📊 Historical Reliability Scoring")
+    st.caption(
+        "Reliability grades based on accumulated daily weather "
+        "data. The longer the pipeline runs, the more accurate "
+        "these scores become. Updated automatically every day."
+    )
+
+    days_option = st.selectbox(
+        "Analysis window",
+        [7, 14, 30, 60, 90],
+        index=2,
+        format_func=lambda x: f"Last {x} days"
+    )
+
+    with st.spinner(
+        f"Calculating reliability scores over "
+        f"last {days_option} days..."
+    ):
+        hist_df = calculate_reliability_scores(days=days_option)
+
+    if hist_df.empty:
+        st.warning(
+            "Not enough historical data yet. "
+            "The pipeline needs to run for at least 2 days "
+            "to show trends. Check back tomorrow!"
+        )
+        st.info(
+            "💡 Every day the pipeline runs at 06:00 UTC "
+            "via GitHub Actions, adding another day of data. "
+            "After 7 days you will see meaningful reliability "
+            "scores. After 30 days the grades become very "
+            "accurate."
+        )
+    else:
+        # Summary metrics
+        h1, h2, h3, h4 = st.columns(4)
+        h1.metric("Observatories Ranked",  len(hist_df))
+        h2.metric("Days of Data",
+                  hist_df.iloc[0]["days_of_data"])
+        h3.metric("Best Reliability Grade",
+                  f"{hist_df.iloc[0]['observatory'].replace(' Observatory', '')[:20]} "
+                  f"— {hist_df.iloc[0]['grade']}")
+        h4.metric("Most Consistent Site",
+                  hist_df.sort_values(
+                      "consistency",
+                      ascending=False
+                  ).iloc[0]["observatory"].replace(
+                      " Observatory", "")[:20])
+
+        st.markdown("---")
+
+        # Grade distribution
+        st.subheader("Grade distribution")
+        grade_counts = hist_df["grade"].value_counts()
+        gc1, gc2, gc3, gc4, gc5 = st.columns(5)
+        a_grades  = sum(grade_counts.get(g, 0)
+                        for g in ["A+", "A", "A-"])
+        b_grades  = sum(grade_counts.get(g, 0)
+                        for g in ["B+", "B", "B-"])
+        c_grades  = sum(grade_counts.get(g, 0)
+                        for g in ["C+", "C", "C-"])
+        d_grades  = grade_counts.get("D", 0)
+        gc1.metric("A grades (Excellent)", a_grades)
+        gc2.metric("B grades (Good)",      b_grades)
+        gc3.metric("C grades (Average)",   c_grades)
+        gc4.metric("D grades (Poor)",      d_grades)
+        gc5.metric("Improving trend 📈",
+                   len(hist_df[
+                       hist_df["trend"].str.contains(
+                           "Improving")]))
+
+        st.markdown("---")
+
+        # Rankings
+        st.subheader(
+            f"Reliability rankings — last {days_option} days")
+
+        for _, row in hist_df.iterrows():
+            grade_color = get_grade_color(row["grade"])
+            trend_emoji = get_trend_emoji(row["trend"])
+
+            with st.expander(
+                f"**{row['grade']}** — "
+                f"{row['observatory']} · "
+                f"Reliability {row['reliability_score']}/100 · "
+                f"{row['pct_excellent']}% excellent nights · "
+                f"{trend_emoji} {row['trend']}"
+            ):
+                r1, r2, r3, r4, r5 = st.columns(5)
+                r1.metric("Reliability Score",
+                          f"{row['reliability_score']}/100")
+                r2.metric("Average Score",
+                          f"{row['avg_score']}/100")
+                r3.metric("Consistency",
+                          f"{row['consistency']}/100")
+                r4.metric("% Excellent Nights",
+                          f"{row['pct_excellent']}%")
+                r5.metric("Days of Data",
+                          row["days_of_data"])
+
+                n1, n2, n3 = st.columns(3)
+                n1.metric("Excellent Nights (80+)",
+                          row["excellent_nights"])
+                n2.metric("Good Nights (60+)",
+                          row["good_nights"])
+                n3.metric("Poor Nights (<40)",
+                          row["poor_nights"])
+
+                d1, d2, d3 = st.columns(3)
+                d1.metric("Best Day",   row["best_day"])
+                d2.metric("Worst Day",  row["worst_day"])
+                d3.metric("Trend",      row["trend"])
+
+                # Mini score history chart
+                if row["daily_scores"]:
+                    import matplotlib.pyplot as plt
+                    import io
+
+                    dates  = [d["fetch_date"]
+                              for d in row["daily_scores"]]
+                    scores = [d["daily_score"]
+                              for d in row["daily_scores"]]
+
+                    fig, ax = plt.subplots(figsize=(10, 2))
+                    ax.fill_between(
+                        range(len(scores)), scores,
+                        alpha=0.3, color=grade_color)
+                    ax.plot(
+                        range(len(scores)), scores,
+                        color=grade_color, linewidth=2)
+                    ax.axhline(
+                        y=80, color="#1D9E75",
+                        linestyle="--", alpha=0.5,
+                        linewidth=1, label="Excellent")
+                    ax.axhline(
+                        y=60, color="#378ADD",
+                        linestyle="--", alpha=0.5,
+                        linewidth=1, label="Good")
+                    ax.set_ylim(0, 105)
+                    ax.set_xticks(range(len(dates)))
+                    ax.set_xticklabels(
+                        dates, rotation=45, fontsize=7)
+                    ax.set_ylabel("Score", fontsize=8)
+                    ax.set_facecolor("#0E1117")
+                    fig.patch.set_facecolor("#0E1117")
+                    ax.tick_params(colors="white",
+                                   labelsize=7)
+                    ax.yaxis.label.set_color("white")
+                    ax.spines["top"].set_visible(False)
+                    ax.spines["right"].set_visible(False)
+                    ax.spines["left"].set_color("#444441")
+                    ax.spines["bottom"].set_color("#444441")
+                    ax.legend(
+                        fontsize=7, facecolor="#0E1117",
+                        labelcolor="white",
+                        loc="upper right")
+                    buf = io.BytesIO()
+                    plt.tight_layout()
+                    plt.savefig(
+                        buf, format="png", dpi=120,
+                        facecolor="#0E1117",
+                        bbox_inches="tight")
+                    buf.seek(0)
+                    st.image(buf, use_container_width=True)
+                    plt.close()
+
+                st.caption(
+                    f"{row['country']} · "
+                    f"{row['altitude_m']}m altitude · "
+                    f"Score range: {row['min_score']} — "
+                    f"{row['max_score']}"
+                )
+
+        st.markdown("---")
+
+        # Full table
+        st.subheader("Complete reliability table")
+        hist_display = hist_df[[
+            "observatory", "country", "grade",
+            "reliability_score", "avg_score",
+            "consistency", "pct_excellent",
+            "pct_good", "pct_poor",
+            "days_of_data", "trend"
+        ]].rename(columns={
+            "observatory":       "Observatory",
+            "country":           "Country",
+            "grade":             "Grade",
+            "reliability_score": "Reliability",
+            "avg_score":         "Avg Score",
+            "consistency":       "Consistency",
+            "pct_excellent":     "% Excellent",
+            "pct_good":          "% Good",
+            "pct_poor":          "% Poor",
+            "days_of_data":      "Days",
+            "trend":             "Trend"
+        })
+        st.dataframe(hist_display, hide_index=True,
+                     height=600)
+
+        st.download_button(
+            label="Download reliability report as CSV",
+            data=hist_display.to_csv(index=False),
+            file_name=f"reliability_"
+                      f"{datetime.utcnow().strftime('%Y-%m-%d')}"
+                      f".csv",
+            mime="text/csv"
+        )
+# ═══════════════════════════════════════════════════════
+# TAB 7 — Site Comparison
+# ═══════════════════════════════════════════════════════
+with tab7:
+    st.subheader("⚖️ Comparative Site Analysis")
+    st.caption(
+        "Select 2 to 5 observatories to compare side by side. "
+        "Useful for telescope time proposals and site selection. "
+        "Combines current conditions, historical reliability, "
+        "atmospheric seeing, PWV, and jet stream impact."
+    )
+
+    # Observatory selector
+    all_obs = df["observatory"].tolist()
+    selected_sites = st.multiselect(
+        "Select observatories to compare (2–5)",
+        all_obs,
+        default=all_obs[:3],
+        max_selections=5
+    )
+
+    comp_days = st.selectbox(
+        "Historical window",
+        [7, 14, 30],
+        index=0,
+        format_func=lambda x: f"Last {x} days",
+        key="comp_days"
+    )
+
+    if len(selected_sites) < 2:
+        st.warning(
+            "Please select at least 2 observatories to compare.")
+    else:
+        with st.spinner(
+            f"Comparing {len(selected_sites)} sites..."
+        ):
+            comp_df = compare_sites(selected_sites, comp_days)
+
+        if comp_df.empty:
+            st.error("Could not load comparison data.")
+        else:
+            st.markdown("---")
+
+            # ── Current conditions comparison ─────────────────
+            st.subheader("Current conditions")
+            cols = st.columns(len(comp_df))
+            for i, (_, row) in enumerate(comp_df.iterrows()):
+                with cols[i]:
+                    score = row["today_score"]
+                    if score >= 80:   color = "🟢"
+                    elif score >= 60: color = "🔵"
+                    elif score >= 40: color = "🟡"
+                    else:             color = "🔴"
+                    st.markdown(
+                        f"### {color} {row['observatory'].replace(' Observatory', '').replace(' Telescope', '')[:20]}")
+                    st.metric("Today's Score",
+                              f"{score}/100")
+                    st.metric("Cloud Cover",
+                              f"{row['cloud_cover_pct']}%")
+                    st.metric("Humidity",
+                              f"{row['humidity_pct']}%")
+                    st.metric("Wind Speed",
+                              f"{row['wind_speed_ms']} m/s")
+                    st.metric("Temperature",
+                              f"{row['temperature_c']}°C")
+
+            st.markdown("---")
+
+            # ── Atmospheric comparison ────────────────────────
+            st.subheader("Atmospheric conditions")
+            cols2 = st.columns(len(comp_df))
+            for i, (_, row) in enumerate(comp_df.iterrows()):
+                with cols2[i]:
+                    st.markdown(
+                        f"**{row['observatory'].replace(' Observatory', '')[:20]}**")
+                    st.metric("Seeing",
+                              f"{row['seeing_arcsec']}\"",
+                              row["seeing_quality"])
+                    st.metric("PWV",
+                              f"{row['pwv_mm']} mm",
+                              row["pwv_quality"])
+                    st.metric("Jet Stream",
+                              f"{row['jet_stream_ms']} m/s",
+                              row["jet_impact"])
+                    st.metric("Altitude",
+                              f"{row['altitude_m']}m")
+
+            st.markdown("---")
+
+            # ── Historical comparison chart ───────────────────
+            st.subheader(
+                f"Score history — last {comp_days} days")
+
+            import matplotlib.pyplot as plt
+            import matplotlib.patches as mpatches
+            import io
+
+            colors_palette = [
+                "#1D9E75", "#378ADD", "#EF9F27",
+                "#E24B4A", "#AFA9EC"
+            ]
+
+            fig, ax = plt.subplots(figsize=(12, 5))
+
+            has_history = False
+            for i, (_, row) in enumerate(comp_df.iterrows()):
+                if row["daily_scores"]:
+                    has_history = True
+                    dates  = [d["fetch_date"]
+                              for d in row["daily_scores"]]
+                    scores = [d["daily_score"]
+                              for d in row["daily_scores"]]
+                    color  = colors_palette[
+                        i % len(colors_palette)]
+                    label  = row["observatory"].replace(
+                        " Observatory", "").replace(
+                        " Telescope", "")[:25]
+                    ax.plot(range(len(scores)), scores,
+                            color=color, linewidth=2,
+                            marker="o", markersize=4,
+                            label=label)
+                    ax.fill_between(
+                        range(len(scores)), scores,
+                        alpha=0.1, color=color)
+
+            if has_history:
+                ax.axhline(y=80, color="#1D9E75",
+                           linestyle="--", alpha=0.4,
+                           linewidth=1, label="Excellent (80)")
+                ax.axhline(y=60, color="#378ADD",
+                           linestyle="--", alpha=0.4,
+                           linewidth=1, label="Good (60)")
+                ax.set_ylim(0, 105)
+                ax.set_ylabel("Observation Score",
+                              fontsize=10)
+                ax.set_title(
+                    "Historical Score Comparison",
+                    fontsize=12, fontweight="bold")
+                ax.legend(fontsize=9,
+                          facecolor="#0E1117",
+                          labelcolor="white",
+                          loc="upper right")
+                ax.set_facecolor("#0E1117")
+                fig.patch.set_facecolor("#0E1117")
+                ax.tick_params(colors="white")
+                ax.yaxis.label.set_color("white")
+                ax.title.set_color("white")
+                ax.spines["top"].set_visible(False)
+                ax.spines["right"].set_visible(False)
+                ax.spines["left"].set_color("#444441")
+                ax.spines["bottom"].set_color("#444441")
+
+                buf = io.BytesIO()
+                plt.tight_layout()
+                plt.savefig(buf, format="png", dpi=150,
+                            facecolor="#0E1117",
+                            bbox_inches="tight")
+                buf.seek(0)
+                st.image(buf, use_container_width=True)
+                plt.close()
+            else:
+                st.info(
+                    "Not enough historical data yet. "
+                    "Come back after a few days of pipeline "
+                    "runs to see score trends here."
+                )
+
+            st.markdown("---")
+
+            # ── Bar chart comparison ──────────────────────────
+            st.subheader("Side by side metrics comparison")
+
+            metrics = {
+                "Today's Score":    "today_score",
+                "Avg Score":        "avg_score",
+                "% Excellent":      "pct_excellent",
+                "Consistency":      "consistency",
+                "Seeing (inverted)": "seeing_arcsec",
+                "PWV (inverted)":   "pwv_mm"
+            }
+
+            fig2, axes = plt.subplots(
+                2, 3, figsize=(14, 8))
+            axes = axes.flatten()
+            names = [
+                r["observatory"].replace(
+                    " Observatory", "").replace(
+                    " Telescope", "")[:15]
+                for _, r in comp_df.iterrows()
+            ]
+
+            for idx, (label, col) in enumerate(
+                metrics.items()
+            ):
+                ax = axes[idx]
+                vals = comp_df[col].tolist()
+
+                # Invert seeing and PWV
+                # (lower is better so invert for chart)
+                if "inverted" in label:
+                    plot_vals = [
+                        max(0, 100 - v * 10)
+                        if v is not None else 0
+                        for v in vals
+                    ]
+                else:
+                    plot_vals = [
+                        v if v is not None else 0
+                        for v in vals
+                    ]
+
+                bar_colors = [
+                    colors_palette[i % len(colors_palette)]
+                    for i in range(len(names))
+                ]
+                bars = ax.bar(names, plot_vals,
+                              color=bar_colors, width=0.6)
+
+                for bar, val in zip(bars, vals):
+                    display = (
+                        f"{val}\"" if "Seeing" in label
+                        else f"{val}mm" if "PWV" in label
+                        else f"{val}"
+                    )
+                    ax.text(
+                        bar.get_x() + bar.get_width() / 2,
+                        bar.get_height() + 1,
+                        display,
+                        ha="center", va="bottom",
+                        fontsize=8, color="white"
+                    )
+
+                ax.set_title(label, fontsize=10,
+                             fontweight="bold",
+                             color="white")
+                ax.set_ylim(0, 110)
+                ax.set_facecolor("#0E1117")
+                ax.tick_params(colors="white", labelsize=8)
+                ax.spines["top"].set_visible(False)
+                ax.spines["right"].set_visible(False)
+                ax.spines["left"].set_color("#444441")
+                ax.spines["bottom"].set_color("#444441")
+                ax.tick_params(axis="x", rotation=15)
+
+            fig2.patch.set_facecolor("#0E1117")
+            fig2.suptitle(
+                "Observatory Comparison Dashboard",
+                fontsize=14, fontweight="bold",
+                color="white", y=1.02)
+            buf2 = io.BytesIO()
+            plt.tight_layout()
+            plt.savefig(buf2, format="png", dpi=150,
+                        facecolor="#0E1117",
+                        bbox_inches="tight")
+            buf2.seek(0)
+            st.image(buf2, use_container_width=True)
+            plt.close()
+
+            st.markdown("---")
+
+            # ── Full comparison table ─────────────────────────
+            st.subheader("Full comparison table")
+            comp_display = comp_df[[
+                "observatory", "country", "altitude_m",
+                "today_score", "avg_score", "pct_excellent",
+                "consistency", "seeing_arcsec", "pwv_mm",
+                "jet_stream_ms", "jet_impact", "days_of_data"
+            ]].rename(columns={
+                "observatory":   "Observatory",
+                "country":       "Country",
+                "altitude_m":    "Altitude (m)",
+                "today_score":   "Today",
+                "avg_score":     "Avg Score",
+                "pct_excellent": "% Excellent",
+                "consistency":   "Consistency",
+                "seeing_arcsec": "Seeing (\")",
+                "pwv_mm":        "PWV (mm)",
+                "jet_stream_ms": "Jet (m/s)",
+                "jet_impact":    "Jet Impact",
+                "days_of_data":  "Days"
+            })
+            st.dataframe(comp_display,
+                         hide_index=True, height=300)
+
+            # Download
+            st.download_button(
+                label="Download comparison as CSV",
+                data=comp_display.to_csv(index=False),
+                file_name=f"site_comparison_"
+                          f"{datetime.utcnow().strftime('%Y-%m-%d')}"
+                          f".csv",
+                mime="text/csv"
+            )
+
+            # ── Proposal helper text ──────────────────────────
+            st.markdown("---")
+            st.subheader("📝 Proposal helper")
+            st.caption(
+                "Auto-generated text you can use in a telescope "
+                "time proposal to justify your site selection."
+            )
+
+            best = comp_df.iloc[0]
+            proposal_text = f"""
+Based on atmospheric monitoring data collected over the past {comp_days} days, {best['observatory']} demonstrates superior observing conditions compared to the {len(comp_df)-1} alternative site(s) considered.
+
+{best['observatory']} achieved an average observation quality score of {best['avg_score']}/100, with {best['pct_excellent']}% of monitored nights classified as excellent (score ≥ 80). The estimated atmospheric seeing of {best['seeing_arcsec']} arcseconds and precipitable water vapor of {best['pwv_mm']} mm place this site in the {best['seeing_quality']} category for optical observation quality.
+
+The jet stream impact at this site is currently assessed as {best['jet_impact']} at {best['jet_stream_ms']} m/s at 250hPa, indicating {'minimal' if best['jet_impact'] in ['Negligible', 'Low'] else 'moderate to significant'} upper-atmosphere turbulence.
+
+At {best['altitude_m']}m elevation in {best['country']}, this site {'benefits from reduced atmospheric water vapor compared to lower-altitude alternatives' if best['altitude_m'] > 2000 else 'provides accessible infrastructure while maintaining acceptable atmospheric conditions'}.
+
+Data sourced from automated atmospheric monitoring pipeline (Open-Meteo API) with daily updates via GitHub Actions.
+            """.strip()
+
+            st.text_area(
+                "Copy this into your proposal",
+                proposal_text,
+                height=250
+            )
+
+# ═══════════════════════════════════════════════════════
+# TAB 8 — Semester Planning Calendar
+# ═══════════════════════════════════════════════════════
+with tab8:
+    st.subheader("📅 Semester Planning Calendar")
+    st.caption(
+        "Plan your observing semester months in advance. "
+        "Shows predicted observation quality for every day "
+        "based on moon phase and dark hours. "
+        "Actual recorded scores shown where available."
+    )
+
+    # Controls
+    sp1, sp2, sp3 = st.columns(3)
+    with sp1:
+        sem_obs = st.selectbox(
+            "Select observatory",
+            df["observatory"].tolist(),
+            key="sem_obs"
+        )
+    with sp2:
+        current_year = datetime.utcnow().year
+        sem_year = st.selectbox(
+            "Year",
+            [current_year, current_year + 1],
+            key="sem_year"
+        )
+    with sp3:
+        sem_months = st.selectbox(
+            "Months to show",
+            [3, 6, 9, 12],
+            index=1,
+            key="sem_months"
+        )
+
+    start_month = st.selectbox(
+        "Starting month",
+        list(range(1, 13)),
+        index=datetime.utcnow().month - 1,
+        format_func=lambda x: calendar.month_name[x],
+        key="sem_start"
+    )
+
+    with st.spinner(
+        f"Building {sem_months}-month calendar for "
+        f"{sem_obs}..."
+    ):
+        cal_data  = build_calendar_data(
+            sem_obs, sem_year, start_month, sem_months)
+        best_months = get_best_months(
+            sem_obs, sem_year, sem_months)
+
+    st.markdown("---")
+
+    # Best months summary
+    st.subheader("Best months for observing")
+    bm_cols = st.columns(min(4, len(best_months)))
+    for i, (_, row) in enumerate(
+        best_months.head(4).iterrows()
+    ):
+        with bm_cols[i]:
+            st.metric(
+                row["month"],
+                f"{row['excellent_days']} excellent days",
+                f"Avg {row['avg_score']}/100"
+            )
+
+    st.markdown("---")
+
+    # Monthly bar chart
+    st.subheader("Monthly excellent days comparison")
+    import matplotlib.pyplot as plt
+    import io
+    import calendar as cal_module
+
+    fig, ax = plt.subplots(figsize=(12, 4))
+    month_names  = best_months["month"].tolist()
+    exc_days     = best_months["excellent_days"].tolist()
+    good_days    = best_months["good_days"].tolist()
+
+    x      = range(len(month_names))
+    width  = 0.35
+    bars1  = ax.bar(
+        [i - width/2 for i in x], exc_days,
+        width, label="Excellent nights",
+        color="#1D9E75", alpha=0.9)
+    bars2  = ax.bar(
+        [i + width/2 for i in x], good_days,
+        width, label="Good nights",
+        color="#378ADD", alpha=0.9)
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(month_names, rotation=45,
+                       fontsize=9, color="white")
+    ax.set_ylabel("Number of nights", color="white")
+    ax.set_title(
+        f"Observing Quality by Month — {sem_obs}",
+        fontsize=12, fontweight="bold", color="white")
+    ax.legend(facecolor="#0E1117", labelcolor="white",
+              fontsize=9)
+    ax.set_facecolor("#0E1117")
+    fig.patch.set_facecolor("#0E1117")
+    ax.tick_params(colors="white")
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.spines["left"].set_color("#444441")
+    ax.spines["bottom"].set_color("#444441")
+
+    buf = io.BytesIO()
+    plt.tight_layout()
+    plt.savefig(buf, format="png", dpi=150,
+                facecolor="#0E1117", bbox_inches="tight")
+    buf.seek(0)
+    st.image(buf, use_container_width=True)
+    plt.close()
+
+    st.markdown("---")
+
+    # Calendar heatmap for each month
+    st.subheader("Day by day calendar heatmap")
+    st.caption(
+        "🟢 Excellent · 🔵 Good · 🟡 Marginal · 🔴 Poor · "
+        "Bold = actual recorded data · Normal = estimated"
+    )
+
+    color_map = {
+        "Excellent": "#1D9E75",
+        "Good":      "#378ADD",
+        "Marginal":  "#EF9F27",
+        "Poor":      "#E24B4A"
+    }
+
+    for month_key, month_data in cal_data.items():
+        st.markdown(
+            f"### {month_data['month_name']} "
+            f"{month_data['year']}"
+        )
+
+        summary = month_data["summary"]
+        sc1, sc2, sc3, sc4 = st.columns(4)
+        sc1.metric("Avg Score",
+                   f"{summary['avg_score']}/100")
+        sc2.metric("Excellent Days",
+                   summary["excellent_days"])
+        sc3.metric("Good Days",
+                   summary["good_days"])
+        sc4.metric("New Moon Days",
+                   summary["new_moon_days"])
+
+        # Build calendar grid
+        days      = month_data["days"]
+        first_day = days[0]["weekday"]
+
+        # Header
+        day_cols = st.columns(7)
+        for i, d in enumerate(
+            ["Mon", "Tue", "Wed", "Thu",
+             "Fri", "Sat", "Sun"]
+        ):
+            day_cols[i].markdown(
+                f"<div style='text-align:center;"
+                f"color:#888780;font-size:12px'>"
+                f"<b>{d}</b></div>",
+                unsafe_allow_html=True
+            )
+
+        # Calendar rows
+        week_days = [None] * first_day + days
+        while len(week_days) % 7 != 0:
+            week_days.append(None)
+
+        for week_start in range(
+            0, len(week_days), 7
+        ):
+            week = week_days[week_start:week_start + 7]
+            cols = st.columns(7)
+            for i, day_data in enumerate(week):
+                if day_data is None:
+                    cols[i].markdown(" ")
+                else:
+                    color    = color_map.get(
+                        day_data["quality"], "#888780")
+                    score    = day_data["moon_adj_score"]
+                    day_num  = day_data["day"]
+                    moon_pct = day_data["moon_pct"]
+                    is_today = (
+                        day_data["date"] ==
+                        datetime.utcnow().strftime(
+                            "%Y-%m-%d"))
+                    border   = (
+                        "3px solid white"
+                        if is_today
+                        else "1px solid #333"
+                    )
+                    actual   = "★" if day_data[
+                        "is_actual"] else ""
+
+                    cols[i].markdown(
+                        f"<div style='"
+                        f"background:{color}22;"
+                        f"border:{border};"
+                        f"border-radius:6px;"
+                        f"padding:4px;"
+                        f"text-align:center;"
+                        f"margin:1px'>"
+                        f"<span style='color:{color};"
+                        f"font-weight:bold;"
+                        f"font-size:13px'>"
+                        f"{day_num}{actual}</span><br>"
+                        f"<span style='font-size:10px;"
+                        f"color:#ccc'>{score}</span><br>"
+                        f"<span style='font-size:9px;"
+                        f"color:#888'>"
+                        f"🌙{moon_pct:.0f}%</span>"
+                        f"</div>",
+                        unsafe_allow_html=True
+                    )
+
+        st.markdown("---")
+
+    # Semester recommendation
+    st.subheader("📝 Semester recommendation")
+    best_m   = best_months.iloc[0]
+    worst_m  = best_months.iloc[-1]
+    obs_name = sem_obs.replace(" Observatory", "").replace(
+        " Telescope", "")
+
+    recommendation = f"""
+SEMESTER OBSERVING RECOMMENDATION — {sem_obs.upper()}
+
+Best semester: {best_m['month']} {best_m['year']}
+— {best_m['excellent_days']} excellent nights expected
+— {best_m['good_days']} good nights expected
+— Average quality score: {best_m['avg_score']}/100
+— Best single night: {best_m['best_day']}
+
+Avoid: {worst_m['month']} {worst_m['year']}
+— Only {worst_m['excellent_days']} excellent nights expected
+— Average quality score: {worst_m['avg_score']}/100
+
+Key scheduling notes:
+— New moon periods offer the darkest skies for faint objects
+— Plan deep sky observations around new moon ± 5 days
+— Bright object work (planets, doubles) can use any phase
+— Allow 20% buffer for unexpected poor weather nights
+
+Data confidence: {'High — based on actual recorded data' 
+if any(d['is_actual'] for month in cal_data.values() 
+       for d in month['days']) 
+else 'Estimated — based on astronomical calculations'}
+
+Generated by Global Observatory Weather Tracker
+{datetime.utcnow().strftime('%Y-%m-%d %H:%M')} UTC
+    """.strip()
+
+    st.text_area(
+        "Copy for your proposal or planning document",
+        recommendation,
+        height=300
+    )
+
+    st.download_button(
+        label="Download semester plan as CSV",
+        data=best_months.to_csv(index=False),
+        file_name=f"semester_plan_{sem_obs.replace(' ', '_')}_"
+                  f"{sem_year}.csv",
+        mime="text/csv"
+    )
+
+# ═══════════════════════════════════════════════════════
+# TAB 9 — Educational Mode
+# ═══════════════════════════════════════════════════════
+with tab9:
+    st.subheader("🎓 Learn Astronomy — Educational Mode")
+    st.caption(
+        "Understand every metric on this dashboard. "
+        "From cloud cover to jet streams — explained for "
+        "students, educators, and curious minds."
+    )
+
+    categories = get_concepts_by_category()
+    concepts   = get_all_concepts()
+
+    # Category filter
+    selected_category = st.selectbox(
+        "Browse by category",
+        ["All"] + list(categories.keys())
+    )
+
+    if selected_category == "All":
+        concept_keys = list(concepts.keys())
+    else:
+        concept_keys = categories[selected_category]
+
+    st.markdown("---")
+
+    # Search
+    search = st.text_input(
+        "🔍 Search concepts",
+        placeholder="e.g. seeing, humidity, moon..."
+    )
+
+    if search:
+        concept_keys = [
+            k for k in concept_keys
+            if search.lower() in k.lower()
+            or search.lower() in concepts[k][
+                "title"].lower()
+            or search.lower() in concepts[k][
+                "simple"].lower()
+        ]
+
+    if not concept_keys:
+        st.warning(
+            "No concepts found. Try a different search term.")
+    else:
+        # Quick reference cards
+        st.subheader(
+            f"{'All concepts' if selected_category == 'All' else selected_category} "
+            f"— {len(concept_keys)} topics"
+        )
+
+        for key in concept_keys:
+            concept = concepts[key]
+            with st.expander(
+                f"{concept['emoji']} "
+                f"**{concept['title']}** — "
+                f"{concept['simple']}"
+            ):
+                col_left, col_right = st.columns([2, 1])
+
+                with col_left:
+                    st.markdown("**What it means**")
+                    st.markdown(concept["simple"])
+                    st.markdown("---")
+                    st.markdown("**In depth**")
+                    st.markdown(concept["detailed"])
+
+                with col_right:
+                    st.markdown("**Quick reference**")
+                    st.info(
+                        f"**Unit:** {concept['symbol']}\n\n"
+                        f"**Role:** {concept['weight']}"
+                    )
+                    if concept.get("formula"):
+                        st.markdown("**Formula used**")
+                        st.code(concept["formula"])
+                    if concept.get("fun_fact"):
+                        st.success(
+                            f"💡 **Did you know?**\n\n"
+                            f"{concept['fun_fact']}"
+                        )
+
+    st.markdown("---")
+
+    # Live explainer — connect concepts to real data
+    st.subheader(
+        "🔴 Live — understand tonight's data")
+    st.caption(
+        "See exactly how each concept applies to "
+        "real conditions right now."
+    )
+
+    live_obs = st.selectbox(
+        "Pick an observatory to explain",
+        df["observatory"].tolist(),
+        key="edu_obs"
+    )
+
+    live_row = df[
+        df["observatory"] == live_obs].iloc[0]
+    score    = live_row["observation_score"]
+    cloud    = live_row["cloud_cover_pct"]
+    humidity = live_row["humidity_pct"]
+    wind     = live_row["wind_speed_ms"]
+    temp     = live_row["temperature_c"]
+
+    st.markdown(
+        f"### {live_obs} — right now")
+
+    e1, e2, e3, e4 = st.columns(4)
+    e1.metric("Score", f"{score}/100")
+    e2.metric("Cloud", f"{cloud}%")
+    e3.metric("Humidity", f"{humidity}%")
+    e4.metric("Wind", f"{wind} m/s")
+
+    st.markdown("---")
+    st.markdown("**What this means in plain English:**")
+
+    # Cloud explanation
+    if cloud <= 10:
+        cloud_msg = f"☁️ Cloud cover is {cloud}% — the sky is essentially clear. This is ideal for all types of observation."
+    elif cloud <= 30:
+        cloud_msg = f"☁️ Cloud cover is {cloud}% — mostly clear with some thin cloud. Faint objects may be slightly affected."
+    elif cloud <= 60:
+        cloud_msg = f"☁️ Cloud cover is {cloud}% — partly cloudy. Only bright objects like planets and bright stars are reliable targets tonight."
+    else:
+        cloud_msg = f"☁️ Cloud cover is {cloud}% — heavily clouded. The dome at this observatory would likely be closed right now."
+    st.info(cloud_msg)
+
+    # Humidity explanation
+    if humidity <= 50:
+        hum_msg = f"💧 Humidity is {humidity}% — very dry air. Mirrors and lenses are safe from condensation. Excellent transparency."
+    elif humidity <= 70:
+        hum_msg = f"💧 Humidity is {humidity}% — acceptable. No immediate risk to optics but worth monitoring."
+    elif humidity <= 85:
+        hum_msg = f"💧 Humidity is {humidity}% — getting high. Operators will be watching carefully. Dew heaters on the telescope will be active."
+    else:
+        hum_msg = f"💧 Humidity is {humidity}% — above the 85% safety threshold. Real observatories would close or have already closed the dome to protect the mirrors."
+    st.info(hum_msg)
+
+    # Wind explanation
+    if wind <= 5:
+        wind_msg = f"💨 Wind is {wind} m/s — essentially calm. No mechanical vibration. Images will be sharp and stable."
+    elif wind <= 10:
+        wind_msg = f"💨 Wind is {wind} m/s — light breeze. Negligible effect on most telescopes. Larger dishes may show very slight motion."
+    elif wind <= 15:
+        wind_msg = f"💨 Wind is {wind} m/s — moderate wind. Smaller telescopes may show vibration. Large professional scopes can still operate."
+    else:
+        wind_msg = f"💨 Wind is {wind} m/s — above the 15 m/s threshold used in our scoring. Most professional observatories would close or restrict operations at this wind speed."
+    st.info(wind_msg)
+
+    # Score explanation
+    if score >= 80:
+        score_msg = f"⭐ Overall score is {score}/100 — Excellent. This is a good night for serious astronomy. Deep sky objects, faint galaxies, and nebulae are all viable targets."
+    elif score >= 60:
+        score_msg = f"⭐ Overall score is {score}/100 — Good. Suitable for most observation programmes. Bright targets will be sharp and photometry is reliable."
+    elif score >= 40:
+        score_msg = f"⭐ Overall score is {score}/100 — Marginal. Only bright targets recommended. Students can still observe planets and the Moon, but faint deep sky work is not advised."
+    else:
+        score_msg = f"⭐ Overall score is {score}/100 — Poor. Observing is not recommended tonight at this site. A real observatory operator would keep the dome closed."
+    st.success(score_msg)
+
+    st.markdown("---")
+
+    # Glossary
+    st.subheader("📖 Quick glossary")
+    glossary = {
+        "Arcsecond (\")":      "1/3600 of a degree. Unit for measuring very small angles in the sky.",
+        "Aperture":            "The diameter of a telescope's main mirror or lens. Larger = more light collected.",
+        "Seeing":              "Atmospheric turbulence that blurs stellar images. Measured in arcseconds.",
+        "PWV":                 "Precipitable Water Vapor. Total water in atmosphere above telescope. Critical for infrared.",
+        "Photometry":          "Precise measurement of a star's brightness. Requires stable, clear conditions.",
+        "Spectroscopy":        "Splitting starlight into its spectrum to measure composition, temperature, velocity.",
+        "Limiting magnitude":  "The faintest star visible under given conditions. Higher number = fainter stars seen.",
+        "Inversion layer":     "A layer of warm air trapping cool air below. Mauna Kea sits above Hawaii's inversion layer.",
+        "Dome seeing":         "Turbulence caused by warm air inside the telescope dome mixing with cold outside air.",
+        "Meridian":            "The imaginary line across the sky directly overhead, north to south. Objects are highest here.",
+        "Zenith":              "The point directly overhead. Objects at zenith have the least atmosphere to look through.",
+        "Airmass":             "How much atmosphere the telescope looks through. 1.0 at zenith, increases toward horizon.",
+        "Declination":         "Celestial equivalent of latitude. How far north or south of the celestial equator.",
+        "Right Ascension":     "Celestial equivalent of longitude. Measured in hours, minutes, seconds.",
+        "Altitude":            "Height above the horizon in degrees. 0° = horizon, 90° = zenith.",
+        "Azimuth":             "Compass direction of an object. 0° = North, 90° = East, 180° = South, 270° = West.",
+    }
+
+    for term, definition in glossary.items():
+        st.markdown(f"**{term}** — {definition}")
+
+# ═══════════════════════════════════════════════════════
+# TAB 10 — Alert Subscriptions
+# ═══════════════════════════════════════════════════════
+with tab10:
+    st.subheader("🔔 Alert Subscriptions")
+    st.caption(
+        "Get emailed automatically when observing conditions "
+        "at your chosen observatory cross a threshold. "
+        "Alerts are checked daily at 06:00 UTC."
+    )
+
+    # ── Subscribe form ────────────────────────────────────
+    st.subheader("Subscribe to alerts")
+    with st.form("subscribe_form"):
+        sub_email = st.text_input(
+            "Your email address",
+            placeholder="you@example.com"
+        )
+        sub_obs = st.selectbox(
+            "Observatory to monitor",
+            df["observatory"].tolist(),
+            key="sub_obs"
+        )
+        sub_threshold = st.slider(
+            "Alert threshold (score)",
+            min_value=40,
+            max_value=95,
+            value=80,
+            step=5,
+            help="You will be alerted when the score crosses this value"
+        )
+        sub_type = st.radio(
+            "Alert me when score is",
+            ["Above threshold (good conditions)",
+             "Below threshold (poor conditions)"],
+            help="Above = notify when it gets good. Below = notify when it gets bad."
+        )
+        submitted = st.form_submit_button(
+            "Subscribe", type="primary")
+
+        if submitted:
+            if not sub_email or "@" not in sub_email:
+                st.error(
+                    "Please enter a valid email address.")
+            else:
+                alert_type = (
+                    "above"
+                    if "Above" in sub_type
+                    else "below"
+                )
+                success, msg = add_subscription(
+                    sub_email, sub_obs,
+                    sub_threshold, alert_type
+                )
+                if success:
+                    st.success(
+                        f"✅ Subscribed! You will receive "
+                        f"an email when {sub_obs} scores "
+                        f"{'above' if alert_type == 'above' else 'below'} "
+                        f"{sub_threshold}/100."
+                    )
+                else:
+                    st.warning(msg)
+
+    st.markdown("---")
+
+    # ── Unsubscribe ───────────────────────────────────────
+    st.subheader("Unsubscribe")
+    with st.form("unsubscribe_form"):
+        unsub_email = st.text_input(
+            "Your email address",
+            placeholder="you@example.com",
+            key="unsub_email"
+        )
+        unsub_obs = st.selectbox(
+            "Observatory",
+            df["observatory"].tolist(),
+            key="unsub_obs"
+        )
+        unsub_submitted = st.form_submit_button(
+            "Unsubscribe")
+
+        if unsub_submitted:
+            removed = remove_subscription(
+                unsub_email, unsub_obs)
+            if removed:
+                st.success(
+                    f"✅ Unsubscribed from {unsub_obs}.")
+            else:
+                st.error(
+                    "Subscription not found.")
+
+    st.markdown("---")
+
+    # ── Current subscriptions ─────────────────────────────
+    st.subheader("Active subscriptions")
+    subs = load_subscriptions()
+
+    if not subs:
+        st.info(
+            "No active subscriptions yet. "
+            "Be the first to subscribe above!")
+    else:
+        active = [s for s in subs if s.get("active", True)]
+        st.metric("Total subscriptions", len(active))
+
+        for sub in active:
+            obs_score = df[
+                df["observatory"] == sub["observatory"]
+            ]
+            current_score = (
+                obs_score.iloc[0]["observation_score"]
+                if not obs_score.empty else "N/A"
+            )
+            alert_type = sub.get("alert_type", "above")
+
+            with st.expander(
+                f"📧 {sub['email']} → "
+                f"{sub['observatory']} · "
+                f"{'Above' if alert_type == 'above' else 'Below'} "
+                f"{sub['threshold']}/100 · "
+                f"Current score: {current_score}"
+            ):
+                s1, s2, s3, s4 = st.columns(4)
+                s1.metric(
+                    "Threshold",
+                    f"{sub['threshold']}/100")
+                s2.metric(
+                    "Alert type",
+                    "Above ↑" if alert_type == "above"
+                    else "Below ↓")
+                s3.metric(
+                    "Current score",
+                    f"{current_score}/100")
+                s4.metric(
+                    "Last alerted",
+                    sub.get("last_alerted", "Never"
+                            )[:10] if sub.get(
+                        "last_alerted") else "Never"
+                )
+                st.caption(
+                    f"Subscribed: "
+                    f"{sub.get('created_at', '')[:10]}"
+                )
+
+    st.markdown("---")
+
+    # ── How it works ──────────────────────────────────────
+    st.subheader("How alerts work")
+    st.markdown("""
+**1. Subscribe** — Enter your email, choose an observatory
+and a threshold score.
+
+**2. Daily check** — Every day at 06:00 UTC, the pipeline
+fetches fresh weather data for all 95 observatories.
+
+**3. Comparison** — Your threshold is compared against
+the current observation quality score.
+
+**4. Email sent** — If conditions cross your threshold,
+you receive a beautifully formatted email with full
+weather details and an observing tip.
+
+**Alert types:**
+- **Above threshold** — Great for planning. Get notified
+  when your favourite site reaches excellent conditions.
+- **Below threshold** — Great for operators. Get notified
+  when conditions drop, so you know to close the dome.
+
+**Frequency** — Maximum one alert per subscription per day.
+    """)
+
+# ═══════════════════════════════════════════════════════
+# TAB 11 — Observatory Detail
+# ═══════════════════════════════════════════════════════
+
+with tab11:
     st.subheader("🔬 Observatory detail view")
     selected = st.selectbox(
         "Select an observatory",

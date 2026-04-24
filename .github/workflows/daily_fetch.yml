@@ -37,7 +37,13 @@ jobs:
 
       - name: Run visualisation
         run: python visualize.py
-
+      
+      - name: Run alert checker
+        run: python alert_system.py
+        env:
+          ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
+          ALERT_PASSWORD: ${{ secrets.ALERT_PASSWORD }}
+          
       - name: Commit results to repo
         run: |
           git config --global user.name "github-actions"
