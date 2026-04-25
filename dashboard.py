@@ -25,7 +25,9 @@ from sheets_subscriptions import (add_subscription,
                                    remove_subscription,
                                    load_subscriptions)
 from telescope_efficiency import get_all_efficiency_scores
-
+from snr_calculator import (calculate_snr, get_snr_for_all_observatories,
+                              TELESCOPE_SPECS, OBJECT_MAGNITUDES,
+                              get_sky_brightness)
 
 st.set_page_config(
     page_title="Observatory Weather Tracker",
@@ -198,7 +200,7 @@ st.caption(
     f"· {len(OBJECTS)} astronomical objects"
 )
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12, tab13 = st.tabs([
     "🌍 Live Weather Map",
     "🌙 Observing Windows",
     "🔭 Object Visibility",
@@ -210,6 +212,7 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12 = st.t
     "🎓 Learn Astronomy",
     "🔔 Alert Subscriptions",
     "🏆 Telescope Efficiency",
+    "📡 SNR Calculator",
     "🔬 Observatory Detail"
 ])
 
@@ -2656,10 +2659,399 @@ schedulers actually care about.
         """)
 
 # ═══════════════════════════════════════════════════════
-# TAB 12 — Observatory Detail
+# TAB 12 — SNR Calculator
+# ═══════════════════════════════════════════════════════
+with tab12:
+    st.subheader("📡 Signal-to-Noise Ratio Calculator")
+    st.caption(
+        "Calculate how detectable your target object will be "
+        "tonight at each observatory. Shows full noise budget "
+        "breakdown — shot noise, sky background, dark current, "
+        "read noise and scintillation. "
+        "Accuracy: ~75% for point sources."
+    )
+
+    st.markdown("---")
+
+    # ── Controls ──────────────────────────────────────────
+    snr_col1, snr_col2, snr_col3 = st.columns(3)
+
+    with snr_col1:
+        # Object selector
+        snr_obj_type = st.selectbox(
+            "Object type",
+            ["All", "Planets", "Messier Objects",
+             "NGC Objects", "Famous Stars"],
+            key="snr_obj_type"
+        )
+
+        # Filter objects that have magnitudes
+        if snr_obj_type == "Planets":
+            obj_keys = [k for k in OBJECT_MAGNITUDES
+                       if k in ["Mercury", "Venus",
+                                "Mars", "Jupiter",
+                                "Saturn", "Uranus",
+                                "Neptune"]]
+        elif snr_obj_type == "Messier Objects":
+            obj_keys = [k for k in OBJECT_MAGNITUDES
+                       if k.startswith("M")]
+        elif snr_obj_type == "NGC Objects":
+            obj_keys = [k for k in OBJECT_MAGNITUDES
+                       if k.startswith("NGC")]
+        elif snr_obj_type == "Famous Stars":
+            obj_keys = [k for k in OBJECT_MAGNITUDES
+                       if not k.startswith(("M", "N",
+                           "Mercury", "Venus", "Mars",
+                           "Jupiter", "Saturn",
+                           "Uranus", "Neptune"))]
+        else:
+            obj_keys = list(OBJECT_MAGNITUDES.keys())
+
+        snr_object = st.selectbox(
+            "Select target object",
+            obj_keys,
+            key="snr_object"
+        )
+
+    with snr_col2:
+        # Custom magnitude option
+        use_custom_mag = st.toggle(
+            "Use custom magnitude",
+            value=False,
+            key="custom_mag_toggle"
+        )
+        if use_custom_mag:
+            object_mag = st.number_input(
+                "Object magnitude",
+                min_value=-5.0,
+                max_value=25.0,
+                value=float(OBJECT_MAGNITUDES.get(
+                    snr_object, 8.0)),
+                step=0.1,
+                key="custom_mag"
+            )
+        else:
+            object_mag = OBJECT_MAGNITUDES.get(
+                snr_object, 8.0)
+            st.metric(
+                "Object magnitude",
+                f"{object_mag} mag"
+            )
+
+        # Exposure time
+        exposure_preset = st.selectbox(
+            "Exposure time",
+            ["30 seconds", "1 minute", "5 minutes",
+             "10 minutes", "30 minutes", "1 hour",
+             "2 hours", "Custom"],
+            index=2,
+            key="exp_preset"
+        )
+
+        preset_map = {
+            "30 seconds": 30,
+            "1 minute":   60,
+            "5 minutes":  300,
+            "10 minutes": 600,
+            "30 minutes": 1800,
+            "1 hour":     3600,
+            "2 hours":    7200,
+        }
+
+        if exposure_preset == "Custom":
+            exposure_s = st.number_input(
+                "Custom exposure (seconds)",
+                min_value=1,
+                max_value=36000,
+                value=300,
+                key="custom_exp"
+            )
+        else:
+            exposure_s = preset_map[exposure_preset]
+
+    with snr_col3:
+        # Moon conditions
+        st.markdown("**Moon conditions**")
+        moon_phase_input = st.slider(
+            "Moon illumination %",
+            0, 100, 27,
+            key="snr_moon_phase"
+        )
+        moon_alt_input = st.slider(
+            "Moon altitude °",
+            -90, 90, 20,
+            key="snr_moon_alt"
+        )
+
+        sky_brightness = get_sky_brightness(
+            moon_phase_input, moon_alt_input)
+        st.metric(
+            "Sky brightness",
+            f"{sky_brightness} mag/arcsec²",
+            help="Higher = darker sky = better"
+        )
+
+    st.markdown("---")
+
+    # ── Single observatory deep dive ──────────────────────
+    st.subheader("Single observatory analysis")
+
+    snr_obs = st.selectbox(
+        "Select observatory",
+        df["observatory"].tolist(),
+        key="snr_obs"
+    )
+
+    obs_row   = df[df["observatory"] == snr_obs].iloc[0]
+    tel_specs = TELESCOPE_SPECS.get(
+        snr_obs, TELESCOPE_SPECS["default"])
+
+    # Get seeing for this observatory
+    atm_data = load_atmospheric_cached()
+    obs_atm  = atm_data[
+        atm_data["observatory"] == snr_obs]
+    seeing   = (obs_atm.iloc[0]["seeing_arcsec"]
+                if not obs_atm.empty else 1.5)
+    pwv      = (obs_atm.iloc[0]["pwv_mm"]
+                if not obs_atm.empty else None)
+
+    result = calculate_snr(
+        object_magnitude   = object_mag,
+        exposure_time_s    = exposure_s,
+        telescope_specs    = tel_specs,
+        sky_brightness_mag = sky_brightness,
+        seeing_arcsec      = seeing,
+        pwv_mm             = pwv
+    )
+
+    # SNR display
+    snr_val = result["snr"]
+    if snr_val >= 50:   snr_color = "#1D9E75"
+    elif snr_val >= 10: snr_color = "#378ADD"
+    elif snr_val >= 5:  snr_color = "#EF9F27"
+    else:               snr_color = "#E24B4A"
+
+    st.markdown(
+        f"<div style='background:{snr_color}22;"
+        f"border:1px solid {snr_color};"
+        f"border-radius:8px;padding:16px;"
+        f"text-align:center;margin:16px 0'>"
+        f"<div style='font-size:48px;"
+        f"font-weight:bold;color:{snr_color}'>"
+        f"SNR = {snr_val}</div>"
+        f"<div style='font-size:16px;"
+        f"color:{snr_color}'>"
+        f"{result['snr_quality']}</div>"
+        f"<div style='font-size:12px;color:#888;"
+        f"margin-top:4px'>"
+        f"{snr_object} · {snr_obs} · "
+        f"{exposure_preset if exposure_preset != 'Custom' else f'{exposure_s}s'}"
+        f"</div></div>",
+        unsafe_allow_html=True
+    )
+
+    # Key metrics
+    m1, m2, m3, m4, m5 = st.columns(5)
+    m1.metric("SNR",           snr_val)
+    m2.metric("Limiting mag",
+              result["limiting_magnitude"])
+    m3.metric("Telescope",
+              tel_specs.get("name",
+              f"{tel_specs['aperture_m']}m"))
+    m4.metric("Seeing",        f"{seeing}\"")
+    m5.metric("Sky brightness",
+              f"{sky_brightness} mag/arcsec²")
+
+    # Exposure times for SNR targets
+    st.markdown("**Time needed to reach SNR targets**")
+    t1, t2, t3, t4 = st.columns(4)
+    t1.metric("SNR = 5  (detection)",
+              result["time_for_snr5"])
+    t2.metric("SNR = 10 (clear detection)",
+              result["time_for_snr10"])
+    t3.metric("SNR = 50 (science quality)",
+              result["time_for_snr50"])
+    t4.metric("SNR = 100 (publication)",
+              result["time_for_snr100"])
+
+    # Noise budget chart
+    st.markdown("**Noise budget breakdown**")
+    budget = result["noise_budget"]
+
+    import matplotlib.pyplot as plt
+    import io
+
+    fig, (ax1, ax2) = plt.subplots(
+        1, 2, figsize=(12, 4))
+
+    # Bar chart
+    sources = list(budget.keys())
+    values  = list(budget.values())
+    colors  = ["#1D9E75", "#378ADD", "#EF9F27",
+                "#E24B4A", "#AFA9EC"]
+
+    bars = ax1.barh(sources, values,
+                    color=colors[:len(sources)],
+                    height=0.6)
+    for bar, val in zip(bars, values):
+        ax1.text(
+            bar.get_width() + 0.5,
+            bar.get_y() + bar.get_height() / 2,
+            f"{val:.1f}e⁻",
+            va="center", fontsize=9, color="white"
+        )
+    ax1.set_xlabel("Noise (electrons)",
+                   color="white", fontsize=9)
+    ax1.set_title("Noise sources",
+                  color="white", fontsize=11,
+                  fontweight="bold")
+    ax1.set_facecolor("#0E1117")
+    ax1.tick_params(colors="white", labelsize=9)
+    ax1.spines["top"].set_visible(False)
+    ax1.spines["right"].set_visible(False)
+    ax1.spines["left"].set_color("#444441")
+    ax1.spines["bottom"].set_color("#444441")
+
+    # Pie chart
+    non_zero = [(s, v) for s, v in
+                zip(sources, values) if v > 0]
+    if non_zero:
+        pie_sources = [x[0] for x in non_zero]
+        pie_values  = [x[1] for x in non_zero]
+        ax2.pie(
+            pie_values,
+            labels=pie_sources,
+            colors=colors[:len(pie_sources)],
+            autopct="%1.1f%%",
+            textprops={"color": "white",
+                       "fontsize": 9}
+        )
+        ax2.set_title("Noise distribution",
+                      color="white", fontsize=11,
+                      fontweight="bold")
+
+    fig.patch.set_facecolor("#0E1117")
+    buf = io.BytesIO()
+    plt.tight_layout()
+    plt.savefig(buf, format="png", dpi=150,
+                facecolor="#0E1117",
+                bbox_inches="tight")
+    buf.seek(0)
+    st.image(buf, use_container_width=True)
+    plt.close()
+
+    st.markdown("---")
+
+    # ── Compare across observatories ──────────────────────
+    st.subheader(
+        "SNR comparison across all observatories")
+    st.caption(
+        "Which observatory gives the best SNR "
+        "for your target tonight?"
+    )
+
+    with st.spinner(
+        "Calculating SNR for all observatories..."
+    ):
+        all_snr = get_snr_for_all_observatories(
+            object_name      = snr_object,
+            object_magnitude = object_mag,
+            exposure_time_s  = exposure_s,
+            observatories_df = df,
+            moon_phase_pct   = moon_phase_input,
+            moon_altitude_deg = moon_alt_input,
+            seeing_data      = atm_data,
+            pwv_data         = atm_data
+        )
+
+    if not all_snr.empty:
+        s1, s2, s3, s4 = st.columns(4)
+        s1.metric("Best observatory",
+                  all_snr.iloc[0]["observatory"].replace(
+                      " Observatory", "")[:20])
+        s2.metric("Best SNR",
+                  all_snr.iloc[0]["snr"])
+        s3.metric("Best telescope",
+                  all_snr.iloc[0]["telescope"])
+        s4.metric("Best aperture",
+                  f"{all_snr.iloc[0]['aperture_m']}m")
+
+        st.markdown("**Top 10 observatories by SNR**")
+        for _, row in all_snr.head(10).iterrows():
+            snr_v = row["snr"]
+            if snr_v >= 50:   ec = "#1D9E75"
+            elif snr_v >= 10: ec = "#378ADD"
+            elif snr_v >= 5:  ec = "#EF9F27"
+            else:             ec = "#E24B4A"
+
+            with st.expander(
+                f"**{row['observatory']}** — "
+                f"SNR {snr_v} · "
+                f"{row['snr_quality']} · "
+                f"{row['telescope']}"
+            ):
+                c1, c2, c3, c4, c5 = st.columns(5)
+                c1.metric("SNR",       snr_v)
+                c2.metric("Aperture",
+                          f"{row['aperture_m']}m")
+                c3.metric("Limit mag",
+                          row["limiting_mag"])
+                c4.metric("Time for SNR 10",
+                          row["time_snr10"])
+                c5.metric("Time for SNR 50",
+                          row["time_snr50"])
+                st.caption(
+                    f"{row['country']} · "
+                    f"Seeing {row['seeing']}\" · "
+                    f"Sky {row['sky_brightness']} "
+                    f"mag/arcsec²"
+                )
+
+        # Full table
+        st.markdown("**Full SNR table**")
+        snr_display = all_snr[[
+            "observatory", "country", "telescope",
+            "aperture_m", "snr", "snr_quality",
+            "limiting_mag", "time_snr5",
+            "time_snr10", "time_snr50"
+        ]].rename(columns={
+            "observatory":  "Observatory",
+            "country":      "Country",
+            "telescope":    "Telescope",
+            "aperture_m":   "Aperture (m)",
+            "snr":          "SNR",
+            "snr_quality":  "Quality",
+            "limiting_mag": "Limit Mag",
+            "time_snr5":    "Time SNR=5",
+            "time_snr10":   "Time SNR=10",
+            "time_snr50":   "Time SNR=50"
+        })
+        st.dataframe(snr_display,
+                     hide_index=True, height=500)
+
+        st.download_button(
+            label="Download SNR comparison as CSV",
+            data=snr_display.to_csv(index=False),
+            file_name=f"snr_{snr_object.replace(' ', '_')}_"
+                      f"{datetime.utcnow().strftime('%Y-%m-%d')}"
+                      f".csv",
+            mime="text/csv"
+        )
+
+    st.markdown("---")
+    st.caption(
+        "⚠️ SNR estimates are approximate (~75% accuracy "
+        "for point sources). For precise exposure times "
+        "use the official ETC for your telescope. "
+        "Extended objects (galaxies, nebulae) may be "
+        "overestimated by 2-10x."
+    )
+
+# ═══════════════════════════════════════════════════════
+# TAB 13 — Observatory Detail
 # ═══════════════════════════════════════════════════════
 
-with tab12:
+with tab13:
     st.subheader("🔬 Observatory detail view")
     selected = st.selectbox(
         "Select an observatory",

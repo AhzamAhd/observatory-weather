@@ -40,6 +40,7 @@ jobs:
       
       - name: Run alert checker
         run: python alert_system.py
+        continue-on-error: true
         env:
           ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
           ALERT_PASSWORD: ${{ secrets.ALERT_PASSWORD }}
