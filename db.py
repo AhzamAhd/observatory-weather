@@ -8,12 +8,6 @@ load_dotenv()
 
 # ── Connection helpers ────────────────────────────────────────────
 def get_connection():
-    """
-    Get a PostgreSQL connection to Supabase.
-    Works in local dev (.env), GitHub Actions (env vars),
-    and Streamlit Cloud (st.secrets).
-    """
-    # Try environment variables first
     host     = os.environ.get("SUPABASE_DB_HOST")
     user     = os.environ.get(
         "SUPABASE_DB_USER", "postgres")
@@ -21,7 +15,6 @@ def get_connection():
     port     = int(os.environ.get(
         "SUPABASE_DB_PORT", 5432))
 
-    # Fallback to Streamlit secrets
     if not host or not password:
         try:
             import streamlit as st
@@ -37,12 +30,8 @@ def get_connection():
 
     if not host or not password:
         raise ValueError(
-            "Database credentials not found. "
-            "Set SUPABASE_DB_HOST and "
-            "SUPABASE_DB_PASSWORD."
-        )
-    print(f"  Connecting as user: {user}")
-    print(f"  Connecting to host: {host}")
+            "Database credentials not found.")
+
     return psycopg2.connect(
         host     = host,
         port     = port,
