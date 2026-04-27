@@ -41,7 +41,8 @@ def get_connection():
             "Set SUPABASE_DB_HOST and "
             "SUPABASE_DB_PASSWORD."
         )
-
+    print(f"  Connecting as user: {user}")
+    print(f"  Connecting to host: {host}")
     return psycopg2.connect(
         host     = host,
         port     = port,
