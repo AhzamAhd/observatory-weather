@@ -25,6 +25,15 @@ jobs:
 
       - name: Install dependencies
         run: pip install -r requirements.txt
+      - name: Debug secrets
+        run: |
+          echo "Host: $SUPABASE_DB_HOST"
+          echo "User: $SUPABASE_DB_USER"
+          echo "Password length: ${#SUPABASE_DB_PASSWORD}"
+        env:
+          SUPABASE_DB_HOST: ${{ secrets.SUPABASE_DB_HOST }}
+          SUPABASE_DB_USER: ${{ secrets.SUPABASE_DB_USER }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
 
       - name: Run fetcher
         run: python fetch_weather.py
