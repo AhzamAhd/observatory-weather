@@ -20,9 +20,8 @@ from sheets_subscriptions import (
 
 # ── Get current scores ────────────────────────────────────────────
 def get_current_scores():
-    conn = sqlite3.connect(
-        "data/silver/observatory_weather.db")
-    df   = pd.read_sql("""
+    from db import query_df
+    return query_df("""
         SELECT
             o.name          AS observatory,
             o.country,
@@ -33,18 +32,23 @@ def get_current_scores():
             w.humidity_pct,
             w.wind_speed_ms,
             w.temperature_c,
-            ROUND(MAX(0,
+            ROUND(GREATEST(0,
                 100
                 - (w.cloud_cover_pct * 0.50)
                 - (CASE WHEN w.humidity_pct > 85
-                   THEN (w.humidity_pct - 85) * 2.0 ELSE 0 END)
+                   THEN (w.humidity_pct - 85) * 2.0
+                   ELSE 0 END)
                 - (CASE WHEN w.wind_speed_ms > 15
-                   THEN (w.wind_speed_ms - 15) * 2.0 ELSE 0 END)
-            ), 1) AS score
+                   THEN (w.wind_speed_ms - 15) * 2.0
+                   ELSE 0 END)
+            )::numeric, 1) AS score
         FROM weather_readings w
         JOIN observatories o ON w.observatory_id = o.id
+        WHERE w.fetch_date = (
+            SELECT MAX(fetch_date) FROM weather_readings
+        )
         ORDER BY o.name
-    """, conn)
+    """)
     conn.close()
     return df
 

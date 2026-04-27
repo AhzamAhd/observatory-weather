@@ -1,123 +1,74 @@
-import gspread
-import os
-import json
-from google.oauth2.service_account import Credentials
+from db import get_connection, query_df, fetch_one
 from datetime import datetime
 
-SHEET_ID = os.environ.get(
-    "SHEET_ID",
-    "1TLRSueeZUUz4aoc4-1yjcTqzQywjyebMI5nhG9RHirQ"
-)
-
-SCOPES = [
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive"
-]
-
-def get_sheet():
-    key_json = os.environ.get("GOOGLE_SHEETS_KEY")
-    if key_json:
-        info = json.loads(key_json)
-        creds = Credentials.from_service_account_info(
-            info, scopes=SCOPES)
-    else:
-        # Try streamlit secrets
-        try:
-            import streamlit as st
-            info  = dict(st.secrets["gcp_service_account"])
-            creds = Credentials.from_service_account_info(
-                info, scopes=SCOPES)
-        except Exception:
-            print("  [ERROR] No Google credentials found.")
-            return None
-
-    client = gspread.authorize(creds)
-    sheet  = client.open_by_key(SHEET_ID).sheet1
-    return sheet
-
 def load_subscriptions():
-    sheet = get_sheet()
-    if sheet is None:
+    df = query_df("""
+        SELECT email, observatory, threshold,
+               alert_type, active, created_at, last_alerted
+        FROM subscriptions
+        WHERE active = TRUE
+    """)
+    if df.empty:
         return []
-    try:
-        records = sheet.get_all_records()
-        return records
-    except Exception as e:
-        print(f"  [ERROR] Could not load subscriptions: {e}")
-        return []
+    return df.to_dict("records")
 
 def add_subscription(email, observatory,
                      threshold=80, alert_type="above"):
-    sheet = get_sheet()
-    if sheet is None:
-        return False, "Could not connect to Google Sheets."
-
     try:
-        # Check for duplicate
-        records = sheet.get_all_records()
-        for row in records:
-            if (row["email"] == email and
-                    row["observatory"] == observatory):
-                return False, "Already subscribed to this observatory."
-
-        # Add new row
-        sheet.append_row([
-            email,
-            observatory,
-            threshold,
-            alert_type,
-            "TRUE",
-            datetime.utcnow().isoformat(),
-            ""
-        ])
+        conn = get_connection()
+        cur  = conn.cursor()
+        cur.execute("""
+            INSERT INTO subscriptions
+                (email, observatory, threshold,
+                 alert_type, active, created_at)
+            VALUES (%s, %s, %s, %s, TRUE, NOW())
+            ON CONFLICT (email, observatory)
+            DO UPDATE SET
+                threshold  = EXCLUDED.threshold,
+                alert_type = EXCLUDED.alert_type,
+                active     = TRUE
+            RETURNING id
+        """, (email, observatory, threshold, alert_type))
+        conn.commit()
+        cur.close()
+        conn.close()
         return True, "Subscribed successfully!"
-
     except Exception as e:
         return False, f"Error: {e}"
 
 def remove_subscription(email, observatory):
-    sheet = get_sheet()
-    if sheet is None:
-        return False
-
     try:
-        records = sheet.get_all_records()
-        for i, row in enumerate(records):
-            if (row["email"] == email and
-                    row["observatory"] == observatory):
-                # Row 1 is headers so data starts at row 2
-                sheet.delete_rows(i + 2)
-                return True
-        return False
+        conn = get_connection()
+        cur  = conn.cursor()
+        cur.execute("""
+            DELETE FROM subscriptions
+            WHERE email = %s AND observatory = %s
+        """, (email, observatory))
+        deleted = cur.rowcount
+        conn.commit()
+        cur.close()
+        conn.close()
+        return deleted > 0
     except Exception as e:
-        print(f"  [ERROR] Could not remove subscription: {e}")
+        print(f"  [ERROR] {e}")
         return False
 
 def update_last_alerted(email, observatory):
-    sheet = get_sheet()
-    if sheet is None:
-        return
-
     try:
-        records = sheet.get_all_records()
-        for i, row in enumerate(records):
-            if (row["email"] == email and
-                    row["observatory"] == observatory):
-                # Column G is last_alerted (column 7)
-                sheet.update_cell(
-                    i + 2, 7,
-                    datetime.utcnow().isoformat()
-                )
-                return
+        conn = get_connection()
+        cur  = conn.cursor()
+        cur.execute("""
+            UPDATE subscriptions
+            SET last_alerted = NOW()
+            WHERE email = %s AND observatory = %s
+        """, (email, observatory))
+        conn.commit()
+        cur.close()
+        conn.close()
     except Exception as e:
-        print(f"  [ERROR] Could not update last alerted: {e}")
+        print(f"  [ERROR] {e}")
 
 if __name__ == "__main__":
-    print("\n Testing Google Sheets connection...\n")
-    sheet = get_sheet()
-    if sheet:
-        print("  Connected successfully!")
-        subs = load_subscriptions()
-        print(f"  Found {len(subs)} subscriptions")
-    else:
-        print("  Connection failed.")
+    print("\n  Testing subscriptions...\n")
+    subs = load_subscriptions()
+    print(f"  Found {len(subs)} active subscriptions\n")

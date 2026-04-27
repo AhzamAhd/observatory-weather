@@ -1,7 +1,7 @@
-import sqlite3
-import pandas as pd
 import json
+import pandas as pd
 from datetime import datetime
+from db import get_connection, query_df, fetch_one
 from observing_window import get_all_windows
 from peak_time import get_all_peak_times
 from telescope_efficiency import get_all_efficiency_scores
@@ -11,60 +11,53 @@ def precompute_all():
     print(f"\n Pre-computing dashboard data — "
           f"{datetime.utcnow().strftime('%Y-%m-%d %H:%M')} UTC\n")
 
-    conn = sqlite3.connect(
-        "data/silver/observatory_weather.db")
-
-    # Create precomputed table
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS precomputed (
-            key        TEXT PRIMARY KEY,
-            value      TEXT,
-            computed_at TEXT
-        )
-    """)
+    conn = get_connection()
+    cur  = conn.cursor()
 
     def save(key, data):
-        conn.execute("""
-            INSERT OR REPLACE INTO precomputed
+        cur.execute("""
+            INSERT INTO precomputed
                 (key, value, computed_at)
-            VALUES (?, ?, ?)
-        """, (key, json.dumps(data),
-               datetime.utcnow().isoformat()))
+            VALUES (%s, %s::jsonb, NOW())
+            ON CONFLICT (key) DO UPDATE SET
+                value       = EXCLUDED.value,
+                computed_at = EXCLUDED.computed_at
+        """, (key, json.dumps(data, default=str)))
         conn.commit()
         print(f"  Saved → {key}")
 
-    # Observing windows
+    # ── Observing windows ─────────────────────────────────
     print("  Computing observing windows...")
     win = get_all_windows()
     if not win.empty:
-        save("observing_windows",
-             win.to_dict("records"))
+        save("observing_windows", win.to_dict("records"))
 
-    # Peak times
+    # ── Peak times ────────────────────────────────────────
     print("  Computing peak times...")
     peak = get_all_peak_times()
     if not peak.empty:
-        save("peak_times",
-             peak.to_dict("records"))
+        save("peak_times", peak.to_dict("records"))
 
-    # Atmospheric
+    # ── Atmospheric analysis ──────────────────────────────
     print("  Computing atmospheric analysis...")
-    df = pd.read_sql("""
+    df = query_df("""
         SELECT o.name AS observatory, o.country,
                o.altitude_m, o.latitude, o.longitude,
                w.temperature_c, w.wind_speed_ms,
                w.humidity_pct, w.surface_pressure,
                w.jet_stream_ms,
-               ROUND(MAX(0,
-                   100-(w.cloud_cover_pct*0.50)
-                   -(CASE WHEN w.humidity_pct>85
-                     THEN (w.humidity_pct-85)*2 ELSE 0 END)
-                   -(CASE WHEN w.wind_speed_ms>15
-                     THEN (w.wind_speed_ms-15)*2 ELSE 0 END)
-               ),1) AS weather_score
+               ROUND(GREATEST(0,
+                   100 - (w.cloud_cover_pct * 0.50)
+                   - (CASE WHEN w.humidity_pct > 85
+                      THEN (w.humidity_pct - 85) * 2.0
+                      ELSE 0 END)
+                   - (CASE WHEN w.wind_speed_ms > 15
+                      THEN (w.wind_speed_ms - 15) * 2.0
+                      ELSE 0 END)
+               )::numeric, 1) AS weather_score
         FROM weather_readings w
-        JOIN observatories o ON w.observatory_id=o.id
-    """, conn)
+        JOIN observatories o ON w.observatory_id = o.id
+    """)
 
     atm_results = []
     for _, row in df.iterrows():
@@ -78,34 +71,38 @@ def precompute_all():
             "latitude":         row["latitude"]
         })
         atm_results.append({
-            "observatory":  row["observatory"],
-            "country":      row["country"],
-            "altitude_m":   row["altitude_m"],
-            "weather_score": row["weather_score"],
+            "observatory":   row["observatory"],
+            "country":       row["country"],
+            "altitude_m":    row["altitude_m"],
+            "weather_score": float(row["weather_score"]),
             **atm
         })
     save("atmospheric", atm_results)
 
-    # Efficiency scores
+    # ── Efficiency scores ─────────────────────────────────
     for tel_type in ["optical", "infrared", "radio"]:
         print(f"  Computing {tel_type} efficiency...")
         eff = get_all_efficiency_scores(tel_type)
         if not eff.empty:
-            save(f"efficiency_{tel_type}",
-                 eff.to_dict("records"))
+            save(
+                f"efficiency_{tel_type}",
+                eff.to_dict("records")
+            )
 
+    cur.close()
     conn.close()
-    print("\n  Pre-computation complete.\n")
+    print("\n  ✅ Pre-computation complete.\n")
 
 def load_precomputed(key):
-    conn = sqlite3.connect(
-        "data/silver/observatory_weather.db")
-    row  = conn.execute("""
-        SELECT value FROM precomputed WHERE key = ?
-    """, (key,)).fetchone()
-    conn.close()
+    row = fetch_one(
+        "SELECT value FROM precomputed WHERE key = %s",
+        [key]
+    )
     if row:
-        return pd.DataFrame(json.loads(row[0]))
+        value = row["value"]
+        if isinstance(value, str):
+            return pd.DataFrame(json.loads(value))
+        return pd.DataFrame(value)
     return pd.DataFrame()
 
 if __name__ == "__main__":

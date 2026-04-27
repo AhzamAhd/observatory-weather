@@ -61,10 +61,10 @@ def load_atmospheric():
         "seeing_arcsec", ascending=True)
 
 @st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600)
 def load_data():
-    conn = sqlite3.connect(
-        "data/silver/observatory_weather.db")
-    df = pd.read_sql("""
+    from db import query_df
+    return query_df("""
         SELECT
             o.name         AS observatory,
             o.country,
@@ -82,14 +82,16 @@ def load_data():
             w.precipitation_mm,
             w.surface_pressure,
             w.jet_stream_ms,
-            ROUND(MAX(0,
+            ROUND(GREATEST(0,
                 100
                 - (w.cloud_cover_pct * 0.50)
                 - (CASE WHEN w.humidity_pct > 85
-                   THEN (w.humidity_pct - 85) * 2.0 ELSE 0 END)
+                   THEN (w.humidity_pct - 85) * 2.0
+                   ELSE 0 END)
                 - (CASE WHEN w.wind_speed_ms > 15
-                   THEN (w.wind_speed_ms - 15) * 2.0 ELSE 0 END)
-            ), 1) AS observation_score,
+                   THEN (w.wind_speed_ms - 15) * 2.0
+                   ELSE 0 END)
+            )::numeric, 1) AS observation_score,
             CASE
                 WHEN (100 - (w.cloud_cover_pct * 0.50)
                     - (CASE WHEN w.humidity_pct > 85
@@ -113,8 +115,11 @@ def load_data():
             END AS condition
         FROM weather_readings w
         JOIN observatories o ON w.observatory_id = o.id
+        WHERE w.fetch_date = (
+            SELECT MAX(fetch_date) FROM weather_readings
+        )
         ORDER BY observation_score DESC
-    """, conn)
+    """)
     conn.close()
     return df
 
@@ -2815,13 +2820,51 @@ with tab12:
     pwv      = (obs_atm.iloc[0]["pwv_mm"]
                 if not obs_atm.empty else None)
 
+    # Force recalculation when inputs change
+    obs_row    = df[df["observatory"] == snr_obs].iloc[0]
+    tel_specs  = TELESCOPE_SPECS.get(
+        snr_obs, TELESCOPE_SPECS["default"])
+    atm_data   = load_atmospheric_cached()
+    obs_atm    = atm_data[
+        atm_data["observatory"] == snr_obs]
+    seeing     = (obs_atm.iloc[0]["seeing_arcsec"]
+              if not obs_atm.empty else 1.5) or 1.5
+    pwv        = (obs_atm.iloc[0]["pwv_mm"]
+              if not obs_atm.empty else None)
+
+    # Force fresh calculation every time
+    obs_row    = df[df["observatory"] == snr_obs].iloc[0]
+    tel_specs  = TELESCOPE_SPECS.get(
+        snr_obs, TELESCOPE_SPECS["default"])
+    atm_data   = load_atmospheric_cached()
+    obs_atm    = atm_data[
+        atm_data["observatory"] == snr_obs]
+
+    if not obs_atm.empty:
+        seeing_val = obs_atm.iloc[0].get("seeing_arcsec")
+        pwv_val    = obs_atm.iloc[0].get("pwv_mm")
+        seeing     = float(seeing_val) if seeing_val else 1.5
+        pwv        = float(pwv_val) if pwv_val else None
+    else:
+        seeing = 1.5
+        pwv    = None
+
+    # Debug display - remove later
+    st.caption(
+        f"DEBUG: obj={snr_object}, mag={object_mag}, "
+        f"obs={snr_obs}, exp={exposure_s}s, "
+        f"seeing={seeing}, sky={sky_brightness}"
+    )
+
     result = calculate_snr(
-        object_magnitude   = object_mag,
-        exposure_time_s    = exposure_s,
-        telescope_specs    = tel_specs,
-        sky_brightness_mag = sky_brightness,
-        seeing_arcsec      = seeing,
-        pwv_mm             = pwv
+        object_magnitude      = float(object_mag),
+        exposure_time_s       = int(exposure_s),
+        telescope_specs       = tel_specs,
+        sky_brightness_mag    = float(sky_brightness),
+        seeing_arcsec         = float(seeing),
+        object_name           = snr_object,
+        object_altitude_deg   = None,
+        pwv_mm                = pwv
     )
 
     # SNR display

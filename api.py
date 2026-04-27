@@ -54,8 +54,7 @@ app.add_middleware(
 )
 
 # ── Database helper ───────────────────────────────────────────────
-def get_db():
-    return sqlite3.connect("data/silver/observatory_weather.db")
+from db import query_df
 
 def scores_query(extra_where="", extra_params=None,
                  limit=None):
@@ -78,14 +77,16 @@ def scores_query(extra_where="", extra_params=None,
             w.precipitation_mm,
             w.surface_pressure,
             w.jet_stream_ms,
-            ROUND(MAX(0,
+            ROUND(GREATEST(0,
                 100
                 - (w.cloud_cover_pct * 0.50)
                 - (CASE WHEN w.humidity_pct > 85
-                   THEN (w.humidity_pct - 85) * 2.0 ELSE 0 END)
+                   THEN (w.humidity_pct - 85) * 2.0
+                   ELSE 0 END)
                 - (CASE WHEN w.wind_speed_ms > 15
-                   THEN (w.wind_speed_ms - 15) * 2.0 ELSE 0 END)
-            ), 1) AS observation_score,
+                   THEN (w.wind_speed_ms - 15) * 2.0
+                   ELSE 0 END)
+            )::numeric, 1) AS observation_score,
             CASE
                 WHEN (100 - (w.cloud_cover_pct * 0.50)
                     - (CASE WHEN w.humidity_pct > 85
@@ -109,14 +110,14 @@ def scores_query(extra_where="", extra_params=None,
             END AS condition
         FROM weather_readings w
         JOIN observatories o ON w.observatory_id = o.id
+        WHERE w.fetch_date = (
+            SELECT MAX(fetch_date) FROM weather_readings
+        )
         {extra_where}
         ORDER BY observation_score DESC
         {f'LIMIT {limit}' if limit else ''}
     """
-    conn = get_db()
-    df   = pd.read_sql(sql, conn, params=params)
-    conn.close()
-    return df
+    return query_df(sql, params)
 
 # ── Root endpoint ─────────────────────────────────────────────────
 @app.get("/", response_class=HTMLResponse, tags=["Info"])
@@ -179,18 +180,12 @@ def root():
 # ── Observatory endpoints ─────────────────────────────────────────
 @app.get("/observatories", tags=["Observatories"])
 def get_all_observatories():
-    """
-    Get a list of all monitored observatories
-    with their location and metadata.
-    """
-    conn = get_db()
-    df   = pd.read_sql("""
+    df = query_df("""
         SELECT name, country, latitude, longitude,
                altitude_m, mpc_code
         FROM observatories
         ORDER BY name
-    """, conn)
-    conn.close()
+    """)
     return {
         "count":         len(df),
         "observatories": df.to_dict("records"),
@@ -503,18 +498,12 @@ def get_stats():
 # ── Health check ──────────────────────────────────────────────────
 @app.get("/health", tags=["Info"])
 def health_check():
-    """
-    Check if the API and database are working.
-    """
     try:
-        conn  = get_db()
-        count = conn.execute(
-            "SELECT COUNT(*) FROM observatories"
-        ).fetchone()[0]
-        conn.close()
+        df = query_df(
+            "SELECT COUNT(*) AS count FROM observatories")
         return {
             "status":        "healthy",
-            "observatories": count,
+            "observatories": int(df.iloc[0]["count"]),
             "timestamp":     datetime.utcnow().isoformat()
         }
     except Exception as e:
