@@ -51,7 +51,7 @@ def insert_observatories_and_readings(records):
     now            = datetime.utcnow()
     fetch_date     = now.strftime("%Y-%m-%d")
     fetch_time     = now.strftime("%H:%M UTC")
-    fetch_datetime = now.strftime("%Y-%m-%d %H:%M UTC")
+    fetch_datetime = now.strftime("%Y-%m-%d %H:%M UTC")     
 
     weather_rows = []
     for r in records:

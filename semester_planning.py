@@ -1,9 +1,9 @@
-import sqlite3
 import pandas as pd
 import calendar
 from datetime import datetime, timedelta
 import ephem
 import math
+from db import query_df, fetch_one
 
 def get_moon_phase_for_date(date):
     moon      = ephem.Moon(date.strftime("%Y/%m/%d"))
@@ -35,42 +35,34 @@ def get_dark_hours_for_date(lat, lon, date):
     except Exception:
         return 0
 
-def get_historical_scores(observatory_name, days=90):
-    conn   = sqlite3.connect(
-        "data/silver/observatory_weather.db")
+def get_historical_scores(observatory_name, days=365):
     cutoff = (datetime.utcnow() - timedelta(days=days)
               ).strftime("%Y-%m-%d")
-    df     = pd.read_sql("""
+    return query_df("""
         SELECT
             w.fetch_date,
-            ROUND(MAX(0,
+            ROUND(GREATEST(0,
                 100
                 - (w.cloud_cover_pct * 0.50)
                 - (CASE WHEN w.humidity_pct > 85
-                   THEN (w.humidity_pct - 85) * 2.0 ELSE 0 END)
+                   THEN (w.humidity_pct - 85) * 2.0
+                   ELSE 0 END)
                 - (CASE WHEN w.wind_speed_ms > 15
-                   THEN (w.wind_speed_ms - 15) * 2.0 ELSE 0 END)
-            ), 1) AS daily_score
+                   THEN (w.wind_speed_ms - 15) * 2.0
+                   ELSE 0 END)
+            )::numeric, 1) AS daily_score
         FROM weather_readings w
         JOIN observatories o ON w.observatory_id = o.id
-        WHERE o.name = ?
-        AND w.fetch_date >= ?
+        WHERE o.name = %s
+        AND w.fetch_date >= %s
         ORDER BY w.fetch_date
-    """, conn, params=[observatory_name, cutoff])
-    conn.close()
-    return df
+    """, [observatory_name, cutoff])
 
 def get_observatory_location(observatory_name):
-    conn = sqlite3.connect(
-        "data/silver/observatory_weather.db")
-    row  = pd.read_sql("""
+    return fetch_one("""
         SELECT latitude, longitude, altitude_m, country
-        FROM observatories WHERE name = ?
-    """, conn, params=[observatory_name])
-    conn.close()
-    if row.empty:
-        return None
-    return row.iloc[0]
+        FROM observatories WHERE name = %s
+    """, [observatory_name])
 
 def build_calendar_data(observatory_name,
                          year=None, month_start=1,
@@ -82,11 +74,13 @@ def build_calendar_data(observatory_name,
     if loc is None:
         return {}
 
-    hist = get_historical_scores(observatory_name, days=365)
+    hist      = get_historical_scores(
+        observatory_name, days=365)
     hist_dict = {}
     if not hist.empty:
         for _, row in hist.iterrows():
-            hist_dict[row["fetch_date"]] = row["daily_score"]
+            date_key = str(row["fetch_date"])[:10]
+            hist_dict[date_key] = float(row["daily_score"])
 
     calendar_data = {}
 
@@ -97,34 +91,32 @@ def build_calendar_data(observatory_name,
         _, days_in_month = calendar.monthrange(yr, month)
         month_key = f"{yr}-{month:02d}"
         calendar_data[month_key] = {
-            "year":        yr,
-            "month":       month,
-            "month_name":  calendar.month_name[month],
-            "days":        []
+            "year":       yr,
+            "month":      month,
+            "month_name": calendar.month_name[month],
+            "days":       []
         }
 
         for day in range(1, days_in_month + 1):
             date     = datetime(yr, month, day)
             date_str = date.strftime("%Y-%m-%d")
 
-            moon_pct, moon_name = get_moon_phase_for_date(date)
+            moon_pct, moon_name = get_moon_phase_for_date(
+                date)
             dark_hours = get_dark_hours_for_date(
                 loc["latitude"], loc["longitude"], date)
 
-            # Use historical score if available
-            # else estimate from moon and season
             if date_str in hist_dict:
-                score        = hist_dict[date_str]
-                is_actual    = True
+                score     = hist_dict[date_str]
+                is_actual = True
             else:
-                # Estimate: penalise full moon, reward dark hours
                 moon_penalty = (moon_pct / 100) * 20
                 dark_bonus   = min(20, dark_hours * 2)
                 score        = max(
-                    0, min(100, 70 - moon_penalty + dark_bonus))
+                    0, min(100,
+                           70 - moon_penalty + dark_bonus))
                 is_actual    = False
 
-            # Moon penalty on score
             moon_adj_score = max(
                 0, score - (moon_pct / 100) * 15)
 
@@ -146,17 +138,21 @@ def build_calendar_data(observatory_name,
                 "is_actual":      is_actual
             })
 
-        # Monthly summary
-        days_list   = calendar_data[month_key]["days"]
-        scores      = [d["moon_adj_score"] for d in days_list]
-        excellent   = sum(
-            1 for d in days_list if d["quality"] == "Excellent")
-        good        = sum(
-            1 for d in days_list if d["quality"] == "Good")
-        poor        = sum(
-            1 for d in days_list if d["quality"] == "Poor")
+        days_list     = calendar_data[month_key]["days"]
+        scores        = [d["moon_adj_score"]
+                         for d in days_list]
+        excellent     = sum(
+            1 for d in days_list
+            if d["quality"] == "Excellent")
+        good          = sum(
+            1 for d in days_list
+            if d["quality"] == "Good")
+        poor          = sum(
+            1 for d in days_list
+            if d["quality"] == "Poor")
         new_moon_days = sum(
-            1 for d in days_list if d["moon_pct"] < 10)
+            1 for d in days_list
+            if d["moon_pct"] < 10)
 
         calendar_data[month_key]["summary"] = {
             "avg_score":      round(
@@ -167,17 +163,20 @@ def build_calendar_data(observatory_name,
             "new_moon_days":  new_moon_days,
             "best_day":       max(
                 days_list,
-                key=lambda x: x["moon_adj_score"])["date"],
+                key=lambda x: x["moon_adj_score"]
+            )["date"],
         }
 
     return calendar_data
 
-def get_best_months(observatory_name, year=None, months=12):
+def get_best_months(observatory_name,
+                    year=None, months=12):
     if year is None:
         year = datetime.utcnow().year
 
     data = build_calendar_data(
-        observatory_name, year, month_start=1, months=months)
+        observatory_name, year,
+        month_start=1, months=months)
 
     summary = []
     for month_key, month_data in data.items():
@@ -199,12 +198,9 @@ def get_best_months(observatory_name, year=None, months=12):
 
 
 if __name__ == "__main__":
-    conn  = sqlite3.connect(
-        "data/silver/observatory_weather.db")
-    name  = pd.read_sql(
-        "SELECT name FROM observatories LIMIT 1",
-        conn)["name"].iloc[0]
-    conn.close()
+    df   = query_df(
+        "SELECT name FROM observatories LIMIT 1")
+    name = df["name"].iloc[0]
 
     print(f"\n Building semester calendar for {name}...\n")
     best = get_best_months(name)

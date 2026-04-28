@@ -3097,47 +3097,185 @@ with tab12:
 # ═══════════════════════════════════════════════════════
 
 with tab13:
-    st.subheader("🔬 Observatory detail view")
+    st.subheader("🔬 Observatory Detail — Live View")
+    st.caption(
+        "Select any observatory for a complete live "
+        "analysis calculated in real time. Weather data "
+        "is updated hourly. Astronomical calculations "
+        "are computed fresh when you select a site."
+    )
+
     selected = st.selectbox(
         "Select an observatory",
-        df["observatory"].tolist()
+        df["observatory"].tolist(),
+        key="detail_obs"
     )
-    row  = df[df["observatory"] == selected].iloc[0]
-    wrow = win[win["observatory"] == selected]
 
-    d1, d2, d3, d4, d5 = st.columns(5)
-    d1.metric("Weather Score",
-              f"{row['observation_score']} / 100")
-    d2.metric("Cloud Cover",    f"{row['cloud_cover_pct']}%")
-    d3.metric("Humidity",       f"{row['humidity_pct']}%")
-    d4.metric("Wind Speed",     f"{row['wind_speed_ms']} m/s")
-    d5.metric("Temperature",    f"{row['temperature_c']}°C")
+    row = df[df["observatory"] == selected].iloc[0]
 
-    if not wrow.empty:
-        w = wrow.iloc[0]
-        st.markdown("---")
-        st.markdown("**Tonight's observing window**")
-        w1, w2, w3, w4, w5 = st.columns(5)
-        w1.metric("Dark Start",  w["dark_start"])
-        w2.metric("Dark End",    w["dark_end"])
-        w3.metric("Dark Hours",  f"{w['dark_hours']}h")
-        w4.metric("Moon Phase",  w["moon_phase"])
-        w5.metric("Final Score", f"{w['final_score']} / 100")
+    with st.spinner(
+        f"Calculating live conditions for "
+        f"{selected}..."
+    ):
+        from live_calculator import calculate_live_conditions
+        live = calculate_live_conditions(row)
+
+    # ── Header ────────────────────────────────────────────
+    score = live["observation_score"]
+    if score >= 80:   banner_color = "#1D9E75"
+    elif score >= 60: banner_color = "#378ADD"
+    elif score >= 40: banner_color = "#EF9F27"
+    else:             banner_color = "#E24B4A"
+
+    st.markdown(
+        f"<div style='background:{banner_color}22;"
+        f"border:2px solid {banner_color};"
+        f"border-radius:8px;padding:16px;"
+        f"margin-bottom:16px'>"
+        f"<h3 style='color:{banner_color};margin:0'>"
+        f"{selected}</h3>"
+        f"<p style='color:#ccc;margin:4px 0 0'>"
+        f"{live['country']} · "
+        f"{live['altitude_m']}m altitude · "
+        f"Score: {score}/100 · "
+        f"Sky: {live['sky_state']}</p>"
+        f"<p style='color:#888;font-size:12px;"
+        f"margin:4px 0 0'>"
+        f"Weather fetched: {live['fetch_datetime']} · "
+        f"Calculated: {live['calculated_at']}</p>"
+        f"</div>",
+        unsafe_allow_html=True
+    )
+
+    # ── Weather metrics ───────────────────────────────────
+    st.subheader("Current weather")
+    w1, w2, w3, w4, w5 = st.columns(5)
+    w1.metric("Score",
+              f"{live['observation_score']}/100")
+    w2.metric("Cloud Cover",
+              f"{live['cloud_cover_pct']}%")
+    w3.metric("Humidity",
+              f"{live['humidity_pct']}%")
+    w4.metric("Wind Speed",
+              f"{live['wind_speed_ms']} m/s")
+    w5.metric("Temperature",
+              f"{live['temperature_c']}°C")
+
+    st.markdown("---")
+
+    # ── Sky state ─────────────────────────────────────────
+    st.subheader("Current sky state")
+    s1, s2, s3, s4, s5 = st.columns(5)
+    s1.metric("Sky State",    live["sky_state"])
+    s2.metric("Sun Altitude", f"{live['sun_altitude']}°")
+    s3.metric("Moon Altitude",
+              f"{live['moon_altitude']}°")
+    s4.metric("Moon Phase",
+              f"{live['moon_phase_pct']}%")
+    s5.metric("Is Dark Now",
+              "Yes 🌑" if live["is_dark"] else "No ☀️")
+
+    st.markdown("---")
+
+    # ── Atmospheric analysis ──────────────────────────────
+    st.subheader("Atmospheric conditions")
+    a1, a2, a3 = st.columns(3)
+    a1.metric("Seeing",
+              f"{live['seeing_arcsec']}\"",
+              live["seeing_quality"])
+    a2.metric("PWV",
+              f"{live['pwv_mm']} mm",
+              live["pwv_quality"])
+    a3.metric("Jet Stream",
+              f"{live['jet_stream_ms']} m/s",
+              live["jet_impact"])
+
+    st.markdown("---")
+
+    # ── Tonight's window ──────────────────────────────────
+    st.subheader("Tonight's observing window")
+    tw1, tw2, tw3, tw4, tw5 = st.columns(5)
+    tw1.metric("Dark Start",  live["dark_start"])
+    tw2.metric("Dark End",    live["dark_end"])
+    tw3.metric("Dark Hours",  f"{live['dark_hours']}h")
+    tw4.metric("Moon Rise",   live["moon_rise"])
+    tw5.metric("Final Score", f"{live['final_score']}/100")
+
+    st.markdown("---")
+
+    # ── Peak observing time ───────────────────────────────
+    st.subheader("Peak observing time tonight")
+    p1, p2, p3 = st.columns(3)
+    p1.metric("Peak Hour",
+              live["peak_hour"])
+    p2.metric("Peak Score",
+              f"{live['peak_score']}/100")
+    p3.metric("Good Hours",
+              f"{live['total_good_hours']}h")
+
+    # Hourly chart
+    if live["hourly_data"]:
+        import matplotlib.pyplot as plt
+        import matplotlib.patches as mpatches
+        import io
+
+        hours  = [h["hour"]
+                  for h in live["hourly_data"]]
+        scores = [h["combined_score"]
+                  for h in live["hourly_data"]]
+        colors = []
+        for s in scores:
+            if s >= 80:   colors.append("#1D9E75")
+            elif s >= 60: colors.append("#378ADD")
+            elif s >= 40: colors.append("#EF9F27")
+            elif s > 0:   colors.append("#E24B4A")
+            else:         colors.append("#444441")
+
+        fig, ax = plt.subplots(figsize=(12, 3))
+        ax.bar(range(24), scores,
+               color=colors, width=0.8)
+
+        if scores:
+            peak_idx = scores.index(max(scores))
+            ax.bar(peak_idx, scores[peak_idx],
+                   color="#1D9E75", width=0.8,
+                   edgecolor="white", linewidth=2)
+
+        ax.set_xticks(range(24))
+        ax.set_xticklabels(
+            [f"{h:02d}:00" for h in range(24)],
+            rotation=45, fontsize=7)
+        ax.set_ylim(0, 110)
+        ax.set_ylabel("Score", fontsize=9)
+        ax.set_title(
+            f"Hourly observing score — {selected}",
+            fontsize=10, fontweight="bold",
+            color="white")
+        ax.set_facecolor("#0E1117")
+        fig.patch.set_facecolor("#0E1117")
+        ax.tick_params(colors="white")
+        ax.yaxis.label.set_color("white")
+        ax.title.set_color("white")
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.spines["left"].set_color("#444441")
+        ax.spines["bottom"].set_color("#444441")
+
+        buf = io.BytesIO()
+        plt.tight_layout()
+        plt.savefig(buf, format="png", dpi=120,
+                    facecolor="#0E1117",
+                    bbox_inches="tight")
+        buf.seek(0)
+        st.image(buf, use_container_width=True)
+        plt.close()
 
     st.markdown("---")
     st.info(
-        f"**{row['observatory']}** is located in "
-        f"{row['country']} at {row['altitude_m']}m altitude "
-        f"(MPC code: {row['mpc_code']}). "
-        f"Current weather condition: **{row['condition']}** "
-        f"as of {row['fetch_datetime']}."
+        f"**{selected}** is located at "
+        f"{live['latitude']}°, {live['longitude']}° "
+        f"in {live['country']} at "
+        f"{live['altitude_m']}m altitude. "
+        f"All astronomical calculations are performed "
+        f"live when you select this observatory."
     )
-
-st.markdown("---")
-st.caption(
-    "Data from Open-Meteo · "
-    "Observatory list from Minor Planet Center (MPC) · "
-    "Astronomical calculations via PyEphem · "
-    f"{len(OBJECTS)} objects in catalogue · "
-    "Pipeline runs daily at 06:00 UTC via GitHub Actions"
-)
