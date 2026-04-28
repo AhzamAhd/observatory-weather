@@ -842,8 +842,10 @@ with tab5:
     )
 
     for _, row in atm_df.iterrows():
-        obs_row = df[
-            df["observatory"] == row["observatory"]].iloc[0]
+        obs_match = df[df["observatory"] == row["observatory"]]
+        if obs_match.empty:
+            continue
+        obs_row = obs_match.iloc[0]
         color   = row["seeing_color"]
 
         popup_html = f"""
