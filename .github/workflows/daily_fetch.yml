@@ -25,13 +25,6 @@ jobs:
 
       - name: Install dependencies
         run: pip install -r requirements.txt
-      - name: Debug secrets
-        run: |
-          echo "Host length: ${#SUPABASE_DB_HOST}"
-          echo "User length: ${#SUPABASE_DB_USER}"
-          echo "Password length: ${#SUPABASE_DB_PASSWORD}"
-          echo "Host first chars: ${SUPABASE_DB_HOST:0:10}..."
-          echo "User first chars: ${SUPABASE_DB_USER:0:10}..."
         env:
           SUPABASE_DB_HOST: ${{ secrets.SUPABASE_DB_HOST }}
           SUPABASE_DB_USER: ${{ secrets.SUPABASE_DB_USER }}
