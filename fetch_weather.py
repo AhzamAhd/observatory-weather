@@ -134,7 +134,7 @@ def main():
 
     print(f"  Loaded {len(observatories)} observatories\n")
     results, failed = fetch_all_parallel(
-        observatories, max_workers=20)
+        observatories, max_workers=50)
     print(
         f"\n  Fetch complete — "
         f"{len(results)} succeeded, {failed} failed\n"
