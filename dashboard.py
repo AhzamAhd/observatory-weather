@@ -82,7 +82,6 @@ def load_atmospheric():
         "seeing_arcsec", ascending=True)
 
 @st.cache_data(ttl=3600)
-@st.cache_data(ttl=3600)
 def load_data():
     from db import query_df
     return query_df("""
