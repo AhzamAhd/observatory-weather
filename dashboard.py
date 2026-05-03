@@ -6,6 +6,13 @@ from comet_tracker import (get_current_comets,
                             get_comet_visibility,
                             magnitude_to_visibility,
                             comet_type_info)
+
+from reviews import (add_review, get_reviews,
+                     get_observatory_stats,
+                     get_top_rated_observatories,
+                     get_recent_reviews,
+                     get_rating_distribution,
+                     stars, rating_color)
 from datetime import datetime, timezone
 
 def utcnow():
@@ -234,8 +241,8 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12, tab13
     "📡 SNR Calculator",
     "🌌 Live Sky Chart",
     "📅 7-Day Forecast",
-    "📷 All-Sky Cameras",
     "☄️ Comet Tracker",
+    "⭐ Observatory Reviews",
     "🔬 Observatory Detail"
 ])
 
@@ -4018,10 +4025,478 @@ can brighten to magnitude 1 — or completely disintegrate.
     )
 
 # ═══════════════════════════════════════════════════════
-# TAB 16 — Observatory Detail
+# TAB 16 — Observatory Reviews
+# ═══════════════════════════════════════════════════════
+with tab16:
+    st.subheader("⭐ Observatory Reviews & Ratings")
+    st.caption(
+        "Share your experience visiting observatories "
+        "worldwide. Rate seeing conditions, darkness, "
+        "and accessibility. Help other astronomers "
+        "plan their visits."
+    )
+
+    # ── Summary metrics ───────────────────────────────────
+    recent   = get_recent_reviews(limit=100)
+    top_rated = get_top_rated_observatories(limit=20)
+
+    r1, r2, r3, r4 = st.columns(4)
+    r1.metric("Total Reviews",
+              len(recent) if not recent.empty else 0)
+    r2.metric("Observatories Reviewed",
+              len(top_rated) if not top_rated.empty else 0)
+    if not top_rated.empty:
+        r3.metric("Highest Rated",
+                  top_rated.iloc[0]["observatory"]
+                  .replace(" Observatory", "")[:20])
+        r4.metric("Top Rating",
+                  f"{top_rated.iloc[0]['avg_rating']}/5")
+    else:
+        r3.metric("Highest Rated", "No reviews yet")
+        r4.metric("Top Rating",    "—")
+
+    st.markdown("---")
+
+    # ── Tabs within tab ───────────────────────────────────
+    rev_tab1, rev_tab2, rev_tab3 = st.tabs([
+        "📝 Write a Review",
+        "🔍 Browse Reviews",
+        "🏆 Top Rated"
+    ])
+
+    # ── Write a review ────────────────────────────────────
+    with rev_tab1:
+        st.subheader("Share your experience")
+
+        with st.form("review_form"):
+            # Observatory selector
+            rev_obs = st.selectbox(
+                "Observatory visited",
+                df["observatory"].tolist(),
+                key="rev_obs"
+            )
+
+            # Reviewer name
+            rev_name = st.text_input(
+                "Your name or username",
+                placeholder="e.g. AstroEnthusiast99"
+            )
+
+            # Overall rating
+            st.markdown("**Overall rating**")
+            rev_rating = st.slider(
+                "Overall rating",
+                min_value=1,
+                max_value=5,
+                value=4,
+                key="rev_rating"
+            )
+            st.markdown(stars(rev_rating))
+
+            # Sub-ratings
+            st.markdown("**Detailed ratings**")
+            sub1, sub2, sub3 = st.columns(3)
+            with sub1:
+                seeing_r = st.slider(
+                    "Seeing conditions",
+                    1, 5, 4,
+                    key="seeing_r",
+                    help="1 = very poor, 5 = exceptional"
+                )
+                st.caption(stars(seeing_r))
+            with sub2:
+                dark_r = st.slider(
+                    "Sky darkness",
+                    1, 5, 4,
+                    key="dark_r",
+                    help="1 = heavily light polluted, 5 = pristine dark sky"
+                )
+                st.caption(stars(dark_r))
+            with sub3:
+                access_r = st.slider(
+                    "Accessibility",
+                    1, 5, 3,
+                    key="access_r",
+                    help="1 = very difficult to reach, 5 = easy access"
+                )
+                st.caption(stars(access_r))
+
+            # Visit details
+            st.markdown("**Visit details**")
+            d1, d2 = st.columns(2)
+            with d1:
+                visit_date = st.date_input(
+                    "Date of visit",
+                    key="visit_date"
+                )
+            with d2:
+                telescope = st.text_input(
+                    "Telescope used",
+                    placeholder="e.g. 10-inch Dobsonian"
+                )
+
+            objects = st.text_input(
+                "Objects observed",
+                placeholder="e.g. M42, Jupiter, Andromeda Galaxy"
+            )
+
+            # Review text
+            review_text = st.text_area(
+                "Your review",
+                placeholder=(
+                    "Describe your experience — "
+                    "seeing conditions, what you observed, "
+                    "tips for other visitors..."
+                ),
+                height=150
+            )
+
+            submitted = st.form_submit_button(
+                "Submit Review",
+                type="primary"
+            )
+
+            if submitted:
+                if not rev_name:
+                    st.error(
+                        "Please enter your name.")
+                elif not review_text:
+                    st.error(
+                        "Please write a review.")
+                else:
+                    success, msg = add_review(
+                        observatory      = rev_obs,
+                        reviewer_name    = rev_name,
+                        rating           = rev_rating,
+                        review_text      = review_text,
+                        visit_date       = str(
+                            visit_date),
+                        telescope_used   = telescope,
+                        objects_observed = objects,
+                        seeing_rating    = seeing_r,
+                        darkness_rating  = dark_r,
+                        access_rating    = access_r
+                    )
+                    if success:
+                        st.success(
+                            f"✅ Thank you {rev_name}! "
+                            f"Your review of {rev_obs} "
+                            f"has been submitted."
+                        )
+                        st.balloons()
+                    else:
+                        st.error(msg)
+
+    # ── Browse reviews ────────────────────────────────────
+    with rev_tab2:
+        st.subheader("Browse observatory reviews")
+
+        browse_obs = st.selectbox(
+            "Select observatory",
+            ["All observatories"] +
+            df["observatory"].tolist(),
+            key="browse_obs"
+        )
+
+        if browse_obs == "All observatories":
+            reviews_df = get_recent_reviews(limit=50)
+            stats      = None
+        else:
+            reviews_df = get_reviews(
+                observatory=browse_obs, limit=50)
+            stats      = get_observatory_stats(
+                browse_obs)
+
+        # Show stats for selected observatory
+        if stats and stats["total_reviews"]:
+            st.markdown("---")
+            st.subheader(
+                f"Stats for {browse_obs}")
+
+            color = rating_color(stats["avg_rating"])
+            st.markdown(
+                f"<div style='background:{color}22;"
+                f"border:2px solid {color};"
+                f"border-radius:8px;"
+                f"padding:16px;margin-bottom:16px'>"
+                f"<div style='font-size:36px;"
+                f"font-weight:bold;color:{color}'>"
+                f"{'⭐' * int(round(float(stats['avg_rating'])))}"
+                f"</div>"
+                f"<div style='font-size:24px;"
+                f"color:{color};font-weight:bold'>"
+                f"{stats['avg_rating']} / 5</div>"
+                f"<div style='color:#888;font-size:13px'>"
+                f"Based on {stats['total_reviews']} "
+                f"{'review' if stats['total_reviews'] == 1 else 'reviews'}"
+                f"</div></div>",
+                unsafe_allow_html=True
+            )
+
+            s1, s2, s3, s4 = st.columns(4)
+            s1.metric("Total Reviews",
+                      stats["total_reviews"])
+            s2.metric("Avg Seeing",
+                      f"{stats['avg_seeing']}/5"
+                      if stats["avg_seeing"] else "N/A")
+            s3.metric("Avg Darkness",
+                      f"{stats['avg_darkness']}/5"
+                      if stats["avg_darkness"] else "N/A")
+            s4.metric("Avg Access",
+                      f"{stats['avg_access']}/5"
+                      if stats["avg_access"] else "N/A")
+
+            # Rating distribution chart
+            dist = get_rating_distribution(browse_obs)
+            if not dist.empty:
+                import matplotlib.pyplot as plt
+                import io
+
+                fig, ax = plt.subplots(figsize=(6, 2))
+                all_ratings = {1: 0, 2: 0,
+                               3: 0, 4: 0, 5: 0}
+                for _, row in dist.iterrows():
+                    all_ratings[row["rating"]] = \
+                        row["count"]
+
+                rating_labels = [
+                    f"{'⭐' * r}" for r in range(5, 0, -1)]
+                rating_vals   = [
+                    all_ratings[r]
+                    for r in range(5, 0, -1)]
+                bar_colors    = [
+                    "#1D9E75", "#378ADD",
+                    "#EF9F27", "#E24B4A", "#888"
+                ]
+
+                ax.barh(
+                    rating_labels,
+                    rating_vals,
+                    color=bar_colors,
+                    height=0.6
+                )
+                for i, val in enumerate(rating_vals):
+                    if val > 0:
+                        ax.text(
+                            val + 0.05, i,
+                            str(val),
+                            va="center",
+                            color="white",
+                            fontsize=9
+                        )
+                ax.set_xlabel(
+                    "Number of reviews",
+                    color="white", fontsize=8)
+                ax.set_facecolor("#0E1117")
+                fig.patch.set_facecolor("#0E1117")
+                ax.tick_params(
+                    colors="white", labelsize=9)
+                ax.spines["top"].set_visible(False)
+                ax.spines["right"].set_visible(False)
+                ax.spines["left"].set_color("#444441")
+                ax.spines["bottom"].set_color(
+                    "#444441")
+
+                buf = io.BytesIO()
+                plt.tight_layout()
+                plt.savefig(
+                    buf, format="png", dpi=120,
+                    facecolor="#0E1117",
+                    bbox_inches="tight"
+                )
+                buf.seek(0)
+                st.image(buf, width="stretch")
+                plt.close()
+
+        st.markdown("---")
+
+        # Display reviews
+        if reviews_df is None or reviews_df.empty:
+            st.info(
+                "No reviews yet for this observatory. "
+                "Be the first to leave a review!"
+            )
+        else:
+            st.subheader(
+                f"{len(reviews_df)} "
+                f"{'review' if len(reviews_df) == 1 else 'reviews'}"
+            )
+
+            for _, rev in reviews_df.iterrows():
+                rating    = rev.get("rating", 0)
+                color     = rating_color(rating)
+                name      = rev.get(
+                    "reviewer_name", "Anonymous")
+                date      = str(rev.get(
+                    "created_at", ""))[:10]
+                visit     = rev.get(
+                    "visit_date", "")
+                telescope = rev.get(
+                    "telescope_used", "")
+                objects   = rev.get(
+                    "objects_observed", "")
+                text      = rev.get(
+                    "review_text", "")
+
+                # Show observatory name if browsing all
+                obs_header = ""
+                if browse_obs == "All observatories":
+                    obs_header = (
+                        f"**{rev.get('observatory', '')}**"
+                        f" · "
+                    )
+
+                with st.expander(
+                    f"{'⭐' * int(rating)} "
+                    f"{obs_header}"
+                    f"**{name}** · "
+                    f"{'Visited ' + str(visit) if visit else ''} "
+                    f"· Reviewed {date}"
+                ):
+                    st.markdown(
+                        f"<div style='background:{color}11;"
+                        f"border-left:3px solid {color};"
+                        f"padding:12px;border-radius:4px;"
+                        f"margin-bottom:8px'>"
+                        f"{text}"
+                        f"</div>",
+                        unsafe_allow_html=True
+                    )
+
+                    if telescope or objects:
+                        d1, d2 = st.columns(2)
+                        if telescope:
+                            d1.caption(
+                                f"🔭 {telescope}")
+                        if objects:
+                            d2.caption(
+                                f"🌌 {objects}")
+
+                    sr = rev.get("seeing_rating")
+                    dr = rev.get("darkness_rating")
+                    ar = rev.get("access_rating")
+
+                    if any([sr, dr, ar]):
+                        sub1, sub2, sub3 = st.columns(3)
+                        if sr:
+                            sub1.metric(
+                                "Seeing",
+                                f"{'⭐' * int(sr)}")
+                        if dr:
+                            sub2.metric(
+                                "Darkness",
+                                f"{'⭐' * int(dr)}")
+                        if ar:
+                            sub3.metric(
+                                "Access",
+                                f"{'⭐' * int(ar)}")
+
+    # ── Top rated ─────────────────────────────────────────
+    with rev_tab3:
+        st.subheader("🏆 Top rated observatories")
+        st.caption(
+            "Ranked by average visitor rating. "
+            "Based on real reviews from astronomers "
+            "who have visited these sites."
+        )
+
+        if top_rated.empty:
+            st.info(
+                "No reviews yet. Be the first to "
+                "review an observatory!"
+            )
+        else:
+            for i, (_, row) in enumerate(
+                top_rated.iterrows()
+            ):
+                color  = rating_color(row["avg_rating"])
+                medal  = (
+                    "🥇" if i == 0
+                    else "🥈" if i == 1
+                    else "🥉" if i == 2
+                    else f"#{i+1}"
+                )
+
+                with st.expander(
+                    f"{medal} **{row['observatory']}** "
+                    f"— {'⭐' * int(round(float(row['avg_rating'])))} "
+                    f"({row['avg_rating']}/5) · "
+                    f"{row['total_reviews']} "
+                    f"{'review' if row['total_reviews'] == 1 else 'reviews'}"
+                ):
+                    t1, t2, t3, t4 = st.columns(4)
+                    t1.metric("Overall",
+                              f"{row['avg_rating']}/5")
+                    t2.metric("Seeing",
+                              f"{row['avg_seeing']}/5"
+                              if row["avg_seeing"]
+                              else "N/A")
+                    t3.metric("Darkness",
+                              f"{row['avg_darkness']}/5"
+                              if row["avg_darkness"]
+                              else "N/A")
+                    t4.metric("Access",
+                              f"{row['avg_access']}/5"
+                              if row["avg_access"]
+                              else "N/A")
+
+                    if row.get("latest_visit"):
+                        st.caption(
+                            f"Latest visit: "
+                            f"{row['latest_visit']}"
+                        )
+
+                    # Show latest review for this obs
+                    latest = get_reviews(
+                        observatory=row["observatory"],
+                        limit=1
+                    )
+                    if not latest.empty:
+                        rev = latest.iloc[0]
+                        st.markdown(
+                            f"*\"{rev['review_text']}\"*"
+                        )
+                        st.caption(
+                            f"— {rev['reviewer_name']}"
+                        )
+
+        st.markdown("---")
+
+        # Full table
+        if not top_rated.empty:
+            st.subheader("Full ratings table")
+            top_display = top_rated[[
+                "observatory", "total_reviews",
+                "avg_rating", "avg_seeing",
+                "avg_darkness", "avg_access"
+            ]].rename(columns={
+                "observatory":    "Observatory",
+                "total_reviews":  "Reviews",
+                "avg_rating":     "Overall",
+                "avg_seeing":     "Seeing",
+                "avg_darkness":   "Darkness",
+                "avg_access":     "Access"
+            })
+            st.dataframe(
+                top_display,
+                hide_index=True,
+                height=400
+            )
+
+            st.download_button(
+                label="Download ratings as CSV",
+                data=top_display.to_csv(index=False),
+                file_name=f"observatory_ratings_"
+                          f"{utcnow().strftime('%Y-%m-%d')}"
+                          f".csv",
+                mime="text/csv"
+            )
+
+# ═══════════════════════════════════════════════════════
+# TAB 17 — Observatory Detail
 # ═══════════════════════════════════════════════════════
 
-with tab16:
+with tab17:
     st.subheader("🔬 Observatory Detail — Live View")
     st.caption(
         "Select any observatory for a complete live "
