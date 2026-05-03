@@ -2,6 +2,7 @@ import ephem
 import math
 from datetime import datetime
 import pandas as pd
+from exoplanets import get_exoplanet_objects, get_host_star_visibility
 
 OBJECTS = {
     # ── Planets ──────────────────────────────────────────────────
@@ -246,8 +247,10 @@ OBJECTS = {
     "Sagittarius A*":               {"type": "special", "ra": "17:45:40", "dec": "-29:00:28"},
     "Great Attractor":              {"type": "special", "ra": "13:15:00", "dec": "-62:00:00"},
     "Virgo Supercluster Centre":    {"type": "special", "ra": "12:27:00", "dec": "12:43:00"},
+    
 }
-
+# Add exoplanets to the catalogue
+OBJECTS.update(get_exoplanet_objects())
 MIN_ALTITUDE = {
     "planet":       15,
     "dwarf_planet": 15,

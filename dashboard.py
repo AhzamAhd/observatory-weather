@@ -407,9 +407,10 @@ with tab3:
         obj_type = st.selectbox(
             "Filter by type",
             ["All", "Planets", "Dwarf Planets & Asteroids",
-             "Galaxies", "Nebulae", "Star Clusters",
-             "Famous Stars", "Special Objects",
-             "Full Messier Catalogue", "NGC Objects"]
+            "Galaxies", "Nebulae", "Star Clusters",
+            "Famous Stars", "Special Objects",
+            "Full Messier Catalogue", "NGC Objects",
+            "Exoplanets"]
         )
 
     type_map = {
@@ -422,7 +423,8 @@ with tab3:
         "Famous Stars":              "star",
         "Special Objects":           "special",
         "Full Messier Catalogue":    "messier",
-        "NGC Objects":               "ngc"
+        "NGC Objects":               "ngc",
+        "Exoplanets":                "exoplanet"
     }
 
     selected_type = type_map[obj_type]
@@ -430,15 +432,15 @@ with tab3:
         k: v for k, v in OBJECTS.items()
         if selected_type is None
         or (isinstance(selected_type, list)
-            and v["type"] in selected_type)
+           and v["type"] in selected_type)
         or (selected_type == "messier"
-            and k.startswith("M") and "—" in k)
+           and k.startswith("M") and "—" in k)
         or (selected_type == "ngc"
-            and k.startswith("NGC"))
+           and k.startswith("NGC"))
         or (isinstance(selected_type, str)
             and selected_type not in ["messier", "ngc"]
-            and v["type"] == selected_type)
-    }
+           and v["type"] == selected_type)
+   }
 
     with col_select:
         selected_object = st.selectbox(
@@ -486,7 +488,32 @@ with tab3:
                 f"{len(df)} monitored observatories. "
                 f"Minimum altitude required: "
                 f"{sample_vis['min_altitude']}° above horizon."
-            )
+             )
+
+# Show extra info for exoplanets
+            if filtered_objects.get(selected_object, {}).get(
+                    "type") == "exoplanet":
+                from exoplanets import get_exoplanet_info
+                exo_info = get_exoplanet_info(selected_object)
+                if exo_info:
+                    e1, e2, e3, e4 = st.columns(4)
+                    e1.metric("Distance",
+                             f"{exo_info['distance_ly']} ly")
+                    e2.metric("Planet Type",
+                             exo_info["type"])
+                    e3.metric("Discovery Year",
+                             exo_info["discovery_year"])
+                    e4.metric("Discovery Method",
+                             exo_info["method"])
+                    st.info(
+                       f"**{exo_info['name']}** orbits "
+                       f"**{exo_info['host']}** at "
+                       f"{exo_info['distance_ly']} light years. "
+                       f"Discovered in {exo_info['discovery_year']} "
+                       f"using {exo_info['method']}. "
+                       f"{exo_info['notes']}."
+                 )
+
 
             st.subheader(
                 f"Best sites to observe {selected_object} tonight")
@@ -580,7 +607,8 @@ with tab4:
             "Star Clusters":          "cluster",
             "Famous Stars":           "star",
             "Full Messier Catalogue": "messier",
-            "NGC Objects":            "ngc"
+            "NGC Objects":            "ngc",
+            "Exoplanets":             "exoplanet"
         }
         pk_selected_type = pk_type_map[pk_type]
         pk_filtered = {
@@ -591,7 +619,7 @@ with tab4:
             or (pk_selected_type == "ngc"
                 and k.startswith("NGC"))
             or (isinstance(pk_selected_type, str)
-                and pk_selected_type not in ["messier", "ngc"]
+                and pk_selected_type not in ["messier", "ngc", "exoplanet"]
                 and v["type"] == pk_selected_type)
         }
         with pk_col2:
