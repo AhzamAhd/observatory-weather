@@ -28,15 +28,16 @@ def precompute_all():
 
     # ── Observing windows ─────────────────────────────────
     print("  Computing observing windows...")
-    win = get_all_windows()
+    win_df = load_data() if 'df' not in dir() else df
+    win    = get_all_windows()
     if not win.empty:
-        save("observing_windows", win.to_dict("records"))
+        win = win.head(300)
 
     # ── Peak times ────────────────────────────────────────
     print("  Computing peak times...")
     peak = get_all_peak_times()
     if not peak.empty:
-        save("peak_times", peak.to_dict("records"))
+        peak = peak.head(300)
 
     # ── Atmospheric analysis ──────────────────────────────
     print("  Computing atmospheric analysis...")
@@ -54,9 +55,14 @@ def precompute_all():
                    - (CASE WHEN w.wind_speed_ms > 15
                       THEN (w.wind_speed_ms - 15) * 2.0
                       ELSE 0 END)
-               )::numeric, 1) AS weather_score
+                )::numeric, 1) AS weather_score
         FROM weather_readings w
         JOIN observatories o ON w.observatory_id = o.id
+        WHERE w.fetch_date = (
+            SELECT MAX(fetch_date) FROM weather_readings
+        )
+        ORDER BY weather_score DESC
+        LIMIT 300
     """)
 
     atm_results = []

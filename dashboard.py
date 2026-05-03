@@ -1,4 +1,14 @@
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+import os
+os.environ["PYTHONWARNINGS"] = "ignore::DeprecationWarning"
+
+from datetime import datetime, timezone
+
+def utcnow():
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 import streamlit as st
+import math
 import sqlite3
 import pandas as pd
 import folium
@@ -6,7 +16,6 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import io
 from streamlit_folium import st_folium
-from datetime import datetime
 from observing_window import get_all_windows
 from object_visibility import (get_best_observatories_for_object,
                                 calculate_visibility, OBJECTS,
@@ -28,6 +37,8 @@ from telescope_efficiency import get_all_efficiency_scores
 from snr_calculator import (calculate_snr, get_snr_for_all_observatories,
                               TELESCOPE_SPECS, OBJECT_MAGNITUDES,
                               get_sky_brightness)
+from sky_chart import compute_sky
+from forecast import fetch_forecast, get_daily_summary
 
 st.set_page_config(
     page_title="Observatory Weather Tracker",
@@ -205,7 +216,7 @@ st.caption(
     f"· {len(OBJECTS)} astronomical objects"
 )
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12, tab13 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12, tab13, tab14, tab15 = st.tabs([
     "🌍 Live Weather Map",
     "🌙 Observing Windows",
     "🔭 Object Visibility",
@@ -218,6 +229,8 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12, tab13
     "🔔 Alert Subscriptions",
     "🏆 Telescope Efficiency",
     "📡 SNR Calculator",
+    "🌌 Live Sky Chart",
+    "📅 7-Day Forecast",
     "🔬 Observatory Detail"
 ])
 
@@ -374,7 +387,7 @@ with tab2:
             label="Download tonight's window table as CSV",
             data=display_df.to_csv(index=False),
             file_name=f"observing_windows_"
-                      f"{datetime.utcnow().strftime('%Y-%m-%d')}.csv",
+                      f"{utcnow().strftime('%Y-%m-%d')}.csv",
             mime="text/csv"
         )
 
@@ -529,7 +542,7 @@ with tab3:
                 data=display.to_csv(index=False),
                 file_name=f"visibility_"
                           f"{selected_object.replace(' ', '_')}_"
-                          f"{datetime.utcnow().strftime('%Y-%m-%d')}"
+                          f"{utcnow().strftime('%Y-%m-%d')}"
                           f".csv",
                 mime="text/csv"
             )
@@ -696,7 +709,7 @@ with tab4:
             f"Hourly Observing Score — {selected_obs}"
             + (f" — {selected_peak_object}"
                if selected_peak_object else "")
-            + f" — {datetime.utcnow().strftime('%Y-%m-%d')} UTC",
+            + f" — {utcnow().strftime('%Y-%m-%d')} UTC",
             fontsize=11, fontweight="bold"
         )
         ax.spines["top"].set_visible(False)
@@ -731,7 +744,7 @@ with tab4:
                     facecolor="#0E1117",
                     bbox_inches="tight")
         buf.seek(0)
-        st.image(buf, use_container_width=True)
+        st.image(buf, width='stretch')
         plt.close()
 
         st.markdown("---")
@@ -787,7 +800,7 @@ with tab4:
                 "total_good_hours", "weather_score"
             ]].to_csv(index=False),
             file_name=f"peak_times_"
-                      f"{datetime.utcnow().strftime('%Y-%m-%d')}"
+                      f"{utcnow().strftime('%Y-%m-%d')}"
                       f".csv",
             mime="text/csv"
         )
@@ -999,7 +1012,7 @@ with tab5:
         label="Download atmospheric analysis as CSV",
         data=atm_display.to_csv(index=False),
         file_name=f"atmospheric_analysis_"
-                  f"{datetime.utcnow().strftime('%Y-%m-%d')}.csv",
+                  f"{utcnow().strftime('%Y-%m-%d')}.csv",
         mime="text/csv"
     )
 # ═══════════════════════════════════════════════════════
@@ -1169,7 +1182,7 @@ with tab6:
                         facecolor="#0E1117",
                         bbox_inches="tight")
                     buf.seek(0)
-                    st.image(buf, use_container_width=True)
+                    st.image(buf, width='stretch')
                     plt.close()
 
                 st.caption(
@@ -1209,7 +1222,7 @@ with tab6:
             label="Download reliability report as CSV",
             data=hist_display.to_csv(index=False),
             file_name=f"reliability_"
-                      f"{datetime.utcnow().strftime('%Y-%m-%d')}"
+                      f"{utcnow().strftime('%Y-%m-%d')}"
                       f".csv",
             mime="text/csv"
         )
@@ -1371,7 +1384,7 @@ with tab7:
                             facecolor="#0E1117",
                             bbox_inches="tight")
                 buf.seek(0)
-                st.image(buf, use_container_width=True)
+                st.image(buf, width='stretch')
                 plt.close()
             else:
                 st.info(
@@ -1468,7 +1481,7 @@ with tab7:
                         facecolor="#0E1117",
                         bbox_inches="tight")
             buf2.seek(0)
-            st.image(buf2, use_container_width=True)
+            st.image(buf2, width='stretch')
             plt.close()
 
             st.markdown("---")
@@ -1502,7 +1515,7 @@ with tab7:
                 label="Download comparison as CSV",
                 data=comp_display.to_csv(index=False),
                 file_name=f"site_comparison_"
-                          f"{datetime.utcnow().strftime('%Y-%m-%d')}"
+                          f"{utcnow().strftime('%Y-%m-%d')}"
                           f".csv",
                 mime="text/csv"
             )
@@ -1555,7 +1568,7 @@ with tab8:
             key="sem_obs"
         )
     with sp2:
-        current_year = datetime.utcnow().year
+        current_year = utcnow().year
         sem_year = st.selectbox(
             "Year",
             [current_year, current_year + 1],
@@ -1572,7 +1585,7 @@ with tab8:
     start_month = st.selectbox(
         "Starting month",
         list(range(1, 13)),
-        index=datetime.utcnow().month - 1,
+        index=utcnow().month - 1,
         format_func=lambda x: calendar.month_name[x],
         key="sem_start"
     )
@@ -1647,7 +1660,7 @@ with tab8:
     plt.savefig(buf, format="png", dpi=150,
                 facecolor="#0E1117", bbox_inches="tight")
     buf.seek(0)
-    st.image(buf, use_container_width=True)
+    st.image(buf, width='stretch')
     plt.close()
 
     st.markdown("---")
@@ -1721,7 +1734,7 @@ with tab8:
                     moon_pct = day_data["moon_pct"]
                     is_today = (
                         day_data["date"] ==
-                        datetime.utcnow().strftime(
+                        utcnow().strftime(
                             "%Y-%m-%d"))
                     border   = (
                         "3px solid white"
@@ -1786,7 +1799,7 @@ if any(d['is_actual'] for month in cal_data.values()
 else 'Estimated — based on astronomical calculations'}
 
 Generated by Global Observatory Weather Tracker
-{datetime.utcnow().strftime('%Y-%m-%d %H:%M')} UTC
+{utcnow().strftime('%Y-%m-%d %H:%M')} UTC
     """.strip()
 
     st.text_area(
@@ -2383,7 +2396,7 @@ with tab11:
                             facecolor="#0E1117",
                             bbox_inches="tight")
                 buf.seek(0)
-                st.image(buf, use_container_width=True)
+                st.image(buf, width='stretch')
                 plt.close()
 
                 st.caption(
@@ -2425,7 +2438,7 @@ with tab11:
                   f"report as CSV",
             data=eff_display.to_csv(index=False),
             file_name=f"efficiency_{tel_type_key}_"
-                      f"{datetime.utcnow().strftime('%Y-%m-%d')}"
+                      f"{utcnow().strftime('%Y-%m-%d')}"
                       f".csv",
             mime="text/csv"
         )
@@ -2639,7 +2652,7 @@ with tab11:
                     data=cross_display.to_csv(
                         index=False),
                     file_name=f"cross_type_comparison_"
-                              f"{datetime.utcnow().strftime('%Y-%m-%d')}"
+                              f"{utcnow().strftime('%Y-%m-%d')}"
                               f".csv",
                     mime="text/csv"
                 )
@@ -2982,7 +2995,7 @@ with tab12:
                 facecolor="#0E1117",
                 bbox_inches="tight")
     buf.seek(0)
-    st.image(buf, use_container_width=True)
+    st.image(buf, width='stretch')
     plt.close()
 
     st.markdown("---")
@@ -3078,7 +3091,7 @@ with tab12:
             label="Download SNR comparison as CSV",
             data=snr_display.to_csv(index=False),
             file_name=f"snr_{snr_object.replace(' ', '_')}_"
-                      f"{datetime.utcnow().strftime('%Y-%m-%d')}"
+                      f"{utcnow().strftime('%Y-%m-%d')}"
                       f".csv",
             mime="text/csv"
         )
@@ -3093,10 +3106,674 @@ with tab12:
     )
 
 # ═══════════════════════════════════════════════════════
-# TAB 13 — Observatory Detail
+# TAB 13 — Live Sky Chart
+# ═══════════════════════════════════════════════════════
+with tab13:
+    st.subheader("🌌 Live Sky Chart")
+    st.caption(
+        "Real-time sky view for any observatory. "
+        "Shows stars, planets, Moon and your target "
+        "object. Calculated fresh for the current moment."
+    )
+
+    # Controls
+    sky_col1, sky_col2 = st.columns([2, 1])
+    with sky_col1:
+        sky_obs = st.selectbox(
+            "Select observatory",
+            df["observatory"].tolist(),
+            key="sky_obs"
+        )
+    with sky_col2:
+        show_target = st.toggle(
+            "Show target object",
+            value=False,
+            key="sky_show_target"
+        )
+
+    sky_target = None
+    if show_target:
+        from object_visibility import OBJECTS
+        sky_target = st.selectbox(
+            "Target object",
+            list(OBJECTS.keys()),
+            key="sky_target"
+        )
+
+    sky_row = df[
+        df["observatory"] == sky_obs].iloc[0]
+
+    with st.spinner(
+        f"Computing live sky for {sky_obs}..."
+    ):
+        sky = compute_sky(
+            float(sky_row["latitude"]),
+            float(sky_row["longitude"]),
+            object_name=sky_target
+        )
+
+    # ── Sky state banner ──────────────────────────────────
+    state_colors = {
+        "day":      "#1a3a5c",
+        "civil":    "#0d1b2a",
+        "twilight": "#050d1a",
+        "night":    "#010408"
+    }
+    state_labels = {
+        "day":      "☀️ Daytime — stars not visible",
+        "civil":    "🌆 Civil twilight",
+        "twilight": "🌃 Astronomical twilight",
+        "night":    "🌑 Astronomical night — full dark"
+    }
+    sky_state = sky["sky_state"]
+    st.markdown(
+        f"<div style='background:{state_colors[sky_state]};"
+        f"border-radius:8px;padding:8px 16px;"
+        f"margin-bottom:8px;text-align:center;"
+        f"color:white;font-weight:bold'>"
+        f"{state_labels[sky_state]} · "
+        f"Sun altitude: {sky['sun']['altitude']}° · "
+        f"Computed: {sky['computed_at']}"
+        f"</div>",
+        unsafe_allow_html=True
+    )
+
+    # ── Draw sky chart ────────────────────────────────────
+    import matplotlib.pyplot as plt
+    import matplotlib.patches as patches
+    import numpy as np
+    import io
+
+    fig = plt.figure(
+        figsize=(10, 10),
+        facecolor=sky["sky_color"]
+    )
+    ax  = fig.add_subplot(
+        111, projection="polar",
+        facecolor=sky["sky_color"]
+    )
+
+    # Grid
+    ax.set_ylim(0, 1)
+    ax.set_yticks([0, 0.33, 0.67, 1.0])
+    ax.set_yticklabels(
+        ["Zenith", "60°", "30°", "Horizon"],
+        color="#444", fontsize=7
+    )
+    ax.grid(
+        color="#111", alpha=0.3,
+        linewidth=0.5, linestyle="--"
+    )
+
+    # Cardinal directions
+    ax.set_xticks([0, math.pi/2, math.pi, 3*math.pi/2])
+    ax.set_xticklabels(
+        ["N", "E", "S", "W"],
+        color="white", fontsize=14,
+        fontweight="bold"
+    )
+
+    # Horizon circle
+    theta_circle = np.linspace(0, 2*math.pi, 100)
+    ax.plot(
+        theta_circle,
+        [1.0] * 100,
+        color="#2a4a2a",
+        linewidth=2,
+        alpha=0.8
+    )
+
+    # ── Constellation lines ───────────────────────────────
+    for line in sky["constellation_lines"]:
+        ax.plot(
+            [line["t1"], line["t2"]],
+            [line["r1"], line["r2"]],
+            color="#1a3a5c",
+            linewidth=0.8,
+            alpha=0.6,
+            zorder=1
+        )
+
+    # ── Stars ─────────────────────────────────────────────
+    for star in sky["stars"]:
+        if not star["visible"]:
+            continue
+        color   = "white"
+        opacity = star["opacity"]
+        size    = star["size"] ** 2
+
+        ax.scatter(
+            star["theta"], star["r"],
+            s=size,
+            c=color,
+            alpha=opacity,
+            zorder=3,
+            edgecolors="none"
+        )
+
+        # Label only brightest
+        if star["magnitude"] < 1.5:
+            ax.annotate(
+                star["name"],
+                (star["theta"], star["r"]),
+                xytext=(5, 5),
+                textcoords="offset points",
+                color="lightgray",
+                fontsize=7,
+                zorder=4
+            )
+
+    # ── Planets ───────────────────────────────────────────
+    for planet in sky["planets"]:
+        if not planet["visible"]:
+            continue
+        ax.scatter(
+            planet["theta"], planet["r"],
+            s=planet["size"] ** 2,
+            c=planet["color"],
+            alpha=0.9,
+            zorder=5,
+            edgecolors="white",
+            linewidths=0.5
+        )
+        ax.annotate(
+            planet["name"],
+            (planet["theta"], planet["r"]),
+            xytext=(6, 6),
+            textcoords="offset points",
+            color=planet["color"],
+            fontsize=8,
+            fontweight="bold",
+            zorder=6
+        )
+
+    # ── Moon ──────────────────────────────────────────────
+    moon = sky["moon"]
+    if moon["visible"]:
+        ax.scatter(
+            moon["theta"], moon["r"],
+            s=300,
+            c="#FFFACD",
+            alpha=0.95,
+            zorder=7,
+            edgecolors="#FFD700",
+            linewidths=1
+        )
+        ax.annotate(
+            f"Moon\n{moon['phase']:.0f}%",
+            (moon["theta"], moon["r"]),
+            xytext=(8, 8),
+            textcoords="offset points",
+            color="#FFFACD",
+            fontsize=8,
+            fontweight="bold",
+            zorder=8
+        )
+
+    # ── Sun ───────────────────────────────────────────────
+    sun = sky["sun"]
+    if sun["visible"]:
+        ax.scatter(
+            sun["theta"], sun["r"],
+            s=500,
+            c="#FFD700",
+            alpha=0.95,
+            zorder=7,
+            edgecolors="#FF8C00",
+            linewidths=2
+        )
+        ax.annotate(
+            "Sun",
+            (sun["theta"], sun["r"]),
+            xytext=(8, 8),
+            textcoords="offset points",
+            color="#FFD700",
+            fontsize=9,
+            fontweight="bold",
+            zorder=8
+        )
+
+    # ── Target object ─────────────────────────────────────
+    if sky.get("target"):
+        target = sky["target"]
+        if target["visible"]:
+            ax.scatter(
+                target["theta"], target["r"],
+                s=400,
+                c="none",
+                alpha=1.0,
+                zorder=9,
+                edgecolors="#FF0040",
+                linewidths=2,
+                marker="o"
+            )
+            ax.scatter(
+                target["theta"], target["r"],
+                s=50,
+                c="#FF0040",
+                alpha=0.9,
+                zorder=10
+            )
+            ax.annotate(
+                f"► {target['name']}\n"
+                f"Alt: {target['altitude']}°",
+                (target["theta"], target["r"]),
+                xytext=(10, 10),
+                textcoords="offset points",
+                color="#FF0040",
+                fontsize=9,
+                fontweight="bold",
+                zorder=11,
+                bbox=dict(
+                    boxstyle="round,pad=0.3",
+                    facecolor="#000",
+                    alpha=0.7,
+                    edgecolor="#FF0040"
+                )
+            )
+        else:
+            st.warning(
+                f"{sky_target} is currently below "
+                f"the horizon at {sky_obs}."
+            )
+
+    # Title
+    ax.set_title(
+        f"{sky_obs}\n"
+        f"Lat {sky['lat']:.1f}° · "
+        f"Lon {sky['lon']:.1f}° · "
+        f"{sky['computed_at']}",
+        color="white",
+        fontsize=10,
+        fontweight="bold",
+        pad=20
+    )
+
+    # Legend
+    legend_items = [
+        plt.scatter([], [], s=80,
+                    c="white", label="Stars"),
+        plt.scatter([], [], s=150,
+                    c="#FAD5A5",
+                    edgecolors="white",
+                    label="Planets"),
+        plt.scatter([], [], s=200,
+                    c="#FFFACD",
+                    edgecolors="#FFD700",
+                    label="Moon"),
+    ]
+    if sky.get("target") and sky["target"]["visible"]:
+        legend_items.append(
+            plt.scatter([], [], s=150,
+                        c="none",
+                        edgecolors="#FF0040",
+                        linewidths=2,
+                        label="Target object")
+        )
+    ax.legend(
+        handles=legend_items,
+        loc="lower left",
+        fontsize=8,
+        facecolor="#0A0A1A",
+        labelcolor="white",
+        framealpha=0.8
+    )
+
+    plt.tight_layout()
+    buf = io.BytesIO()
+    plt.savefig(
+        buf, format="png", dpi=150,
+        facecolor=sky["sky_color"],
+        bbox_inches="tight"
+    )
+    buf.seek(0)
+    st.image(buf, width='stretch')
+    plt.close()
+
+    # ── Object positions table ────────────────────────────
+    st.markdown("---")
+    st.subheader("Object positions right now")
+
+    visible_objects = []
+
+    for planet in sky["planets"]:
+        visible_objects.append({
+            "Object":    planet["name"],
+            "Type":      "Planet",
+            "Altitude":  f"{planet['altitude']}°",
+            "Azimuth":   f"{planet['azimuth']}°",
+            "Magnitude": planet["magnitude"],
+            "Visible":   "✅" if planet["visible"]
+                         else "❌ Below horizon"
+        })
+
+    for star in sky["stars"]:
+        if star["magnitude"] < 2.0:
+            visible_objects.append({
+                "Object":    star["name"],
+                "Type":      "Star",
+                "Altitude":  f"{star['altitude']}°",
+                "Azimuth":   f"{star['azimuth']}°",
+                "Magnitude": star["magnitude"],
+                "Visible":   "✅" if star["visible"]
+                             else "❌ Below horizon"
+            })
+
+    moon = sky["moon"]
+    visible_objects.append({
+        "Object":    "Moon",
+        "Type":      f"Moon ({moon['phase']:.0f}%)",
+        "Altitude":  f"{moon['altitude']}°",
+        "Azimuth":   f"{moon['azimuth']}°",
+        "Magnitude": -12.7,
+        "Visible":   "✅" if moon["visible"]
+                     else "❌ Below horizon"
+    })
+
+    import pandas as pd
+    obj_df = pd.DataFrame(visible_objects)
+    st.dataframe(obj_df, hide_index=True, height=400)
+
+    st.caption(
+        "Chart updates each time you select a new "
+        "observatory. All positions calculated live "
+        "using PyEphem for the current UTC time."
+    )
+
+# ═══════════════════════════════════════════════════════
+# TAB 14 — 7-Day Forecast
+# ═══════════════════════════════════════════════════════
+with tab14:
+    st.subheader("📅 7-Day Observation Forecast")
+    st.caption(
+        "7-day weather forecast for any observatory. "
+        "Shows predicted observation quality scores, "
+        "best observing hour each night, cloud cover, "
+        "humidity and wind. Updated every hour."
+    )
+
+    fc_obs = st.selectbox(
+        "Select observatory",
+        df["observatory"].tolist(),
+        key="fc_obs"
+    )
+
+    fc_row = df[df["observatory"] == fc_obs].iloc[0]
+
+    with st.spinner(
+        f"Fetching 7-day forecast for {fc_obs}..."
+    ):
+        fc_df    = fetch_forecast(
+            float(fc_row["latitude"]),
+            float(fc_row["longitude"]),
+            days=7
+        )
+        daily_df = get_daily_summary(fc_df)
+
+    if daily_df.empty:
+        st.error("Could not fetch forecast data.")
+    else:
+        # ── Summary cards ─────────────────────────────────
+        st.subheader("Week at a glance")
+        cols = st.columns(len(daily_df))
+        for i, (_, row) in enumerate(
+            daily_df.iterrows()
+        ):
+            with cols[i]:
+                score = row["night_score"]
+                if score >= 80:
+                    color = "#1D9E75"
+                    emoji = "🟢"
+                elif score >= 60:
+                    color = "#378ADD"
+                    emoji = "🔵"
+                elif score >= 40:
+                    color = "#EF9F27"
+                    emoji = "🟡"
+                else:
+                    color = "#E24B4A"
+                    emoji = "🔴"
+
+                st.markdown(
+                    f"<div style='background:{color}22;"
+                    f"border:1px solid {color};"
+                    f"border-radius:8px;"
+                    f"padding:8px;text-align:center'>"
+                    f"<div style='font-size:11px;"
+                    f"color:#888'>{row['day_name']}</div>"
+                    f"<div style='font-size:13px;"
+                    f"color:white;font-weight:bold'>"
+                    f"{row['date_display']}</div>"
+                    f"<div style='font-size:24px;"
+                    f"font-weight:bold;color:{color}'>"
+                    f"{score}</div>"
+                    f"<div style='font-size:10px;"
+                    f"color:{color}'>"
+                    f"{row['condition']}</div>"
+                    f"<div style='font-size:10px;"
+                    f"color:#888'>☁️{row['avg_cloud']}%"
+                    f" 💧{row['avg_humidity']}%</div>"
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
+
+        st.markdown("---")
+
+        # ── 7-day score chart ──────────────────────────────
+        st.subheader("Observation score forecast")
+        import matplotlib.pyplot as plt
+        import matplotlib.patches as mpatches
+        import io
+
+        fig, ax = plt.subplots(figsize=(12, 4))
+        dates   = daily_df["date_display"].tolist()
+        scores  = daily_df["night_score"].tolist()
+        colors  = []
+        for s in scores:
+            if s >= 80:   colors.append("#1D9E75")
+            elif s >= 60: colors.append("#378ADD")
+            elif s >= 40: colors.append("#EF9F27")
+            else:         colors.append("#E24B4A")
+
+        bars = ax.bar(dates, scores,
+                      color=colors, width=0.6)
+
+        for bar, score in zip(bars, scores):
+            ax.text(
+                bar.get_x() + bar.get_width() / 2,
+                bar.get_height() + 1,
+                f"{score}",
+                ha="center", va="bottom",
+                color="white", fontsize=10,
+                fontweight="bold"
+            )
+
+        ax.axhline(y=80, color="#1D9E75",
+                   linestyle="--", alpha=0.4,
+                   linewidth=1, label="Excellent")
+        ax.axhline(y=60, color="#378ADD",
+                   linestyle="--", alpha=0.4,
+                   linewidth=1, label="Good")
+        ax.set_ylim(0, 115)
+        ax.set_ylabel("Night Score", color="white")
+        ax.set_title(
+            f"7-Day Forecast — {fc_obs}",
+            color="white", fontsize=12,
+            fontweight="bold"
+        )
+        ax.set_facecolor("#0E1117")
+        fig.patch.set_facecolor("#0E1117")
+        ax.tick_params(colors="white")
+        ax.yaxis.label.set_color("white")
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.spines["left"].set_color("#444441")
+        ax.spines["bottom"].set_color("#444441")
+
+        legend_items = [
+            mpatches.Patch(
+                color="#1D9E75", label="Excellent (80+)"),
+            mpatches.Patch(
+                color="#378ADD", label="Good (60-79)"),
+            mpatches.Patch(
+                color="#EF9F27", label="Marginal (40-59)"),
+            mpatches.Patch(
+                color="#E24B4A", label="Poor (<40)")
+        ]
+        ax.legend(
+            handles=legend_items, loc="upper right",
+            fontsize=8, facecolor="#0E1117",
+            labelcolor="white"
+        )
+
+        buf = io.BytesIO()
+        plt.tight_layout()
+        plt.savefig(buf, format="png", dpi=150,
+                    facecolor="#0E1117",
+                    bbox_inches="tight")
+        buf.seek(0)
+        st.image(buf, width='stretch')
+        plt.close()
+
+        st.markdown("---")
+
+        # ── Daily detail expanders ─────────────────────────
+        st.subheader("Day by day detail")
+        for _, row in daily_df.iterrows():
+            score = row["night_score"]
+            if score >= 80:   emoji = "🟢"
+            elif score >= 60: emoji = "🔵"
+            elif score >= 40: emoji = "🟡"
+            else:             emoji = "🔴"
+
+            with st.expander(
+                f"{emoji} **{row['day_name']} "
+                f"{row['date_display']}** — "
+                f"Night score: {score}/100 "
+                f"[{row['condition']}] · "
+                f"Best hour: {row['best_hour']}"
+            ):
+                d1, d2, d3, d4, d5 = st.columns(5)
+                d1.metric("Night Score",
+                          f"{row['night_score']}/100")
+                d2.metric("Best Hour",
+                          row["best_hour"])
+                d3.metric("Avg Cloud",
+                          f"{row['avg_cloud']}%")
+                d4.metric("Avg Humidity",
+                          f"{row['avg_humidity']}%")
+                d5.metric("Avg Wind",
+                          f"{row['avg_wind']} m/s")
+
+                t1, t2, t3 = st.columns(3)
+                t1.metric("Min Temp",
+                          f"{row['min_temp']}°C")
+                t2.metric("Max Temp",
+                          f"{row['max_temp']}°C")
+                t3.metric("Rain Probability",
+                          f"{row['precip_prob']}%")
+
+                # Hourly chart for this day
+                hourly = row["hourly_scores"]
+                if hourly:
+                    hours  = [h["hour"]
+                               for h in hourly]
+                    scores_h = [h["score"]
+                                 for h in hourly]
+                    h_colors = []
+                    for s in scores_h:
+                        if s >= 80:
+                            h_colors.append("#1D9E75")
+                        elif s >= 60:
+                            h_colors.append("#378ADD")
+                        elif s >= 40:
+                            h_colors.append("#EF9F27")
+                        elif s > 0:
+                            h_colors.append("#E24B4A")
+                        else:
+                            h_colors.append("#444441")
+
+                    fig2, ax2 = plt.subplots(
+                        figsize=(10, 2))
+                    ax2.bar(hours, scores_h,
+                            color=h_colors, width=0.8)
+                    ax2.set_xticks(range(0, 24, 3))
+                    ax2.set_xticklabels(
+                        [f"{h:02d}:00"
+                         for h in range(0, 24, 3)],
+                        fontsize=7, color="white"
+                    )
+                    ax2.set_ylim(0, 105)
+                    ax2.set_ylabel("Score",
+                                   fontsize=8,
+                                   color="white")
+                    ax2.set_facecolor("#0E1117")
+                    fig2.patch.set_facecolor("#0E1117")
+                    ax2.tick_params(colors="white")
+                    ax2.spines["top"].set_visible(False)
+                    ax2.spines["right"].set_visible(False)
+                    ax2.spines["left"].set_color(
+                        "#444441")
+                    ax2.spines["bottom"].set_color(
+                        "#444441")
+
+                    buf2 = io.BytesIO()
+                    plt.tight_layout()
+                    plt.savefig(
+                        buf2, format="png", dpi=100,
+                        facecolor="#0E1117",
+                        bbox_inches="tight"
+                    )
+                    buf2.seek(0)
+                    st.image(buf2, width='stretch')
+                    plt.close()
+
+        st.markdown("---")
+
+        # ── Full forecast table ────────────────────────────
+        st.subheader("Full forecast table")
+        fc_display = daily_df[[
+            "date", "day_name", "night_score",
+            "condition", "best_hour", "best_score",
+            "avg_cloud", "avg_humidity", "avg_wind",
+            "min_temp", "max_temp", "precip_prob"
+        ]].rename(columns={
+            "date":         "Date",
+            "day_name":     "Day",
+            "night_score":  "Night Score",
+            "condition":    "Condition",
+            "best_hour":    "Best Hour",
+            "best_score":   "Best Score",
+            "avg_cloud":    "Cloud %",
+            "avg_humidity": "Humidity %",
+            "avg_wind":     "Wind m/s",
+            "min_temp":     "Min °C",
+            "max_temp":     "Max °C",
+            "precip_prob":  "Rain Prob %"
+        })
+        st.dataframe(fc_display,
+                     hide_index=True, height=300)
+
+        st.download_button(
+            label="Download forecast as CSV",
+            data=fc_display.to_csv(index=False),
+            file_name=f"forecast_{fc_obs.replace(' ', '_')}_"
+                      f"{utcnow().strftime('%Y-%m-%d')}.csv",
+            mime="text/csv"
+        )
+
+        st.caption(
+            "Forecast data from Open-Meteo · "
+            "Free, open-source weather API · "
+            "Night scores based on 18:00-06:00 UTC hours · "
+            "Updated hourly"
+        )
+
+# ═══════════════════════════════════════════════════════
+# TAB 15 — Observatory Detail
 # ═══════════════════════════════════════════════════════
 
-with tab13:
+with tab15:
     st.subheader("🔬 Observatory Detail — Live View")
     st.caption(
         "Select any observatory for a complete live "
@@ -3267,10 +3944,77 @@ with tab13:
                     facecolor="#0E1117",
                     bbox_inches="tight")
         buf.seek(0)
-        st.image(buf, use_container_width=True)
+        st.image(buf, width='stretch')
         plt.close()
 
     st.markdown("---")
+    # ── Live camera feed ──────────────────────────────────
+   # ── Website and live camera ───────────────────────────
+    st.markdown("---")
+
+    from sky_chart import get_observatory_url, get_live_camera
+
+    # Website link for every observatory
+    obs_url = get_observatory_url(selected)
+    st.markdown(
+        f"🌐 **[Visit observatory website or search →]({obs_url})**"
+    )
+
+    # Live camera if available
+    cam = get_live_camera(selected)
+    if cam:
+        st.subheader("📷 Live Camera Feed")
+        st.success(
+            f"**{cam['name']}** — {cam['description']} · "
+            f"Credit: {cam['credit']}"
+        )
+        st.markdown(
+            f"[🔴 Open full live feed →]({cam['page_url']})"
+        )
+        try:
+            st.image(
+                cam["image_url"],
+                caption=f"Live feed — {cam['name']} — "
+                        f"{cam['description']}",
+                width='stretch'
+            )
+        except Exception:
+            st.info(
+                "Camera image unavailable right now. "
+                f"[View directly →]({cam['page_url']})"
+            )
+    else:
+        st.subheader("📷 Live Camera Feed")
+        st.info(
+            "No public live camera feed available "
+            "for this observatory. Most smaller "
+            "observatories do not publish live feeds. "
+            "Major facilities like Maunakea have public cameras."
+        )
+
+    # ── Links to observatory website ──────────────────────
+    obs_websites = {
+        "Paranal Observatory":
+            "https://www.eso.org/public/teles-instr/paranal-observatory/",
+        "Atacama Large Millimeter Array":
+            "https://www.almaobservatory.org",
+        "Mauna Kea Observatory":
+            "https://www.ifa.hawaii.edu/mko/",
+        "La Silla Observatory":
+            "https://www.eso.org/public/teles-instr/lasilla/",
+        "Very Large Array":
+            "https://public.nrao.edu/telescopes/vla/",
+        "Subaru Telescope":
+            "https://subarutelescope.org",
+        "Keck Observatory":
+            "https://www.keckobservatory.org",
+    }
+
+    if selected in obs_websites:
+        st.markdown(
+            f"[🌐 Visit official website →]"
+            f"({obs_websites[selected]})"
+        )
     st.info(
         f"**{selected}** is located at "
         f"{live['latitude']}°, {live['longitude']}° "
