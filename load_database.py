@@ -1,139 +1,279 @@
-import json
 import os
-from datetime import datetime
-from db import get_connection, execute_many
+import json
+import glob
+from datetime import datetime, timezone
+from db import execute, fetch_one, query_df
+from dotenv import load_dotenv
 
-def insert_observatories_and_readings(records):
-    """
-    Insert observatories and weather readings
-    in bulk into Supabase.
-    """
-    conn = get_connection()
-    cur  = conn.cursor()
+load_dotenv()
 
-    # ── Step 1: Upsert observatories ──────────────────────
-    print("  Upserting observatories...")
-    obs_rows = [
-        (
-            r["observatory_name"],
-            r.get("country", "Unknown"),
-            r["latitude"],
-            r["longitude"],
-            r.get("altitude_m", 0),
-            r.get("mpc_code", "")
+def utcnow():
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+def calculate_score(cloud, humidity, wind):
+    return round(max(0, min(100,
+        100
+        - ((cloud  or 0) * 0.50)
+        - (max(0, (humidity or 0) - 85) * 2.0)
+        - (max(0, (wind    or 0) - 15) * 2.0)
+    )), 1)
+
+def load_bronze_data():
+    bronze_dir = "data/bronze"
+    if not os.path.exists(bronze_dir):
+        print(f"  [ERROR] Bronze dir not found")
+        return []
+
+    files = glob.glob(f"{bronze_dir}/*.json")
+    if not files:
+        print("  [ERROR] No bronze JSON files found")
+        return []
+
+    all_data = []
+    for f in files:
+        try:
+            with open(f, "r") as fp:
+                data = json.load(fp)
+                if isinstance(data, list):
+                    all_data.extend(data)
+                else:
+                    all_data.append(data)
+        except Exception as e:
+            print(f"  [WARN] Could not read {f}: {e}")
+
+    print(f"  Loaded {len(all_data)} records from bronze")
+    return all_data
+
+# ── Build coordinate lookup cache ─────────────────────────────────
+_coord_cache = {}
+
+def get_obs_by_coords(lat, lon):
+    """
+    Find observatory ID by matching coordinates.
+    Cached for performance.
+    """
+    key = (round(float(lat), 3), round(float(lon), 3))
+    if key in _coord_cache:
+        return _coord_cache[key]
+
+    obs = fetch_one("""
+        SELECT id, name FROM observatories
+        WHERE ROUND(latitude::numeric, 3)  = %s
+        AND   ROUND(longitude::numeric, 3) = %s
+        LIMIT 1
+    """, [key[0], key[1]])
+
+    _coord_cache[key] = obs
+    return obs
+
+def build_coord_cache():
+    """
+    Pre-load all observatory coordinates into cache.
+    Much faster than individual lookups.
+    """
+    print("  Building coordinate cache...")
+    all_obs = query_df(
+        "SELECT id, name, latitude, longitude "
+        "FROM observatories"
+    )
+    for _, row in all_obs.iterrows():
+        key = (
+            round(float(row["latitude"]),  3),
+            round(float(row["longitude"]), 3)
         )
-        for r in records
-    ]
+        _coord_cache[key] = {
+            "id":   row["id"],
+            "name": row["name"]
+        }
+    print(f"  Cache built: {len(_coord_cache)} entries")
 
-    import psycopg2.extras
-    psycopg2.extras.execute_values(cur, """
-        INSERT INTO observatories
-            (name, country, latitude, longitude,
-             altitude_m, mpc_code)
-        VALUES %s
-        ON CONFLICT (name) DO UPDATE SET
-            country    = EXCLUDED.country,
-            latitude   = EXCLUDED.latitude,
-            longitude  = EXCLUDED.longitude,
-            altitude_m = EXCLUDED.altitude_m,
-            mpc_code   = EXCLUDED.mpc_code
-    """, obs_rows)
-    conn.commit()
-    print(f"  ✅ {len(obs_rows)} observatories")
-
-    # ── Step 2: Get name → id mapping ─────────────────────
-    cur.execute(
-        "SELECT id, name FROM observatories")
-    name_to_id = {n: i for i, n in cur.fetchall()}
-
-    # ── Step 3: Insert weather readings ───────────────────
-    print("  Inserting weather readings...")
-    now            = datetime.utcnow()
+def upsert_weather_readings(data, now):
+    """
+    Upsert into weather_readings.
+    Keeps latest reading per observatory per day.
+    """
     fetch_date     = now.strftime("%Y-%m-%d")
     fetch_time     = now.strftime("%H:%M UTC")
-    fetch_datetime = now.strftime("%Y-%m-%d %H:%M UTC")     
+    fetch_datetime = now.strftime("%Y-%m-%d %H:%M UTC")
+    upserted       = 0
+    not_found      = 0
 
-    weather_rows = []
-    for r in records:
-        obs_id = name_to_id.get(r["observatory_name"])
-        if not obs_id:
+    for record in data:
+        try:
+            lat = record.get("latitude")
+            lon = record.get("longitude")
+            if lat is None or lon is None:
+                continue
+
+            obs = get_obs_by_coords(lat, lon)
+            if not obs:
+                not_found += 1
+                continue
+
+            obs_id = obs["id"]
+            cloud  = record.get("cloud_cover_pct") or 0
+            humid  = record.get("humidity_pct")    or 0
+            wind   = record.get("wind_speed_ms")   or 0
+            score  = calculate_score(cloud, humid, wind)
+
+            execute("""
+                INSERT INTO weather_readings (
+                    observatory_id,   fetch_date,
+                    fetch_time,       fetch_datetime,
+                    cloud_cover_pct,  humidity_pct,
+                    wind_speed_ms,    temperature_c,
+                    precipitation_mm, surface_pressure,
+                    jet_stream_ms,    dewpoint_c,
+                    observation_score
+                ) VALUES (
+                    %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s
+                )
+                ON CONFLICT (observatory_id, fetch_date)
+                DO UPDATE SET
+                    fetch_time        = EXCLUDED.fetch_time,
+                    fetch_datetime    = EXCLUDED.fetch_datetime,
+                    cloud_cover_pct   = EXCLUDED.cloud_cover_pct,
+                    humidity_pct      = EXCLUDED.humidity_pct,
+                    wind_speed_ms     = EXCLUDED.wind_speed_ms,
+                    temperature_c     = EXCLUDED.temperature_c,
+                    precipitation_mm  = EXCLUDED.precipitation_mm,
+                    surface_pressure  = EXCLUDED.surface_pressure,
+                    jet_stream_ms     = EXCLUDED.jet_stream_ms,
+                    dewpoint_c        = EXCLUDED.dewpoint_c,
+                    observation_score = EXCLUDED.observation_score
+            """, [
+                obs_id,        fetch_date,
+                fetch_time,    fetch_datetime,
+                cloud,         humid,
+                wind,          record.get("temperature_c"),
+                record.get("precipitation_mm"),
+                record.get("surface_pressure"),
+                record.get("jet_stream_ms"),
+                record.get("dewpoint_c"),
+                score
+            ])
+            upserted += 1
+
+        except Exception as e:
+            print(f"  [WARN] weather_readings: {e}")
             continue
-        weather_rows.append((
-            obs_id, fetch_date, fetch_time,
-            fetch_datetime,
-            r.get("cloud_cover_pct"),
-            r.get("humidity_pct"),
-            r.get("wind_speed_ms"),
-            r.get("temperature_c"),
-            r.get("precipitation_mm"),
-            r.get("surface_pressure"),
-            r.get("dewpoint_c"),
-            r.get("wind_speed_80m"),
-            r.get("wind_speed_120m"),
-            r.get("jet_stream_ms"),
-            r.get("temp_500hpa"),
-            r.get("temp_850hpa"),
-            r.get("rh_1000hpa"),
-            r.get("rh_700hpa"),
-            r.get("rh_500hpa"),
-            r.get("rh_300hpa"),
-        ))
 
-    psycopg2.extras.execute_values(cur, """
-        INSERT INTO weather_readings (
-            observatory_id, fetch_date, fetch_time,
-            fetch_datetime, cloud_cover_pct, humidity_pct,
-            wind_speed_ms, temperature_c, precipitation_mm,
-            surface_pressure, dewpoint_c, wind_speed_80m,
-            wind_speed_120m, jet_stream_ms,
-            temp_500hpa, temp_850hpa,
-            rh_1000hpa, rh_700hpa, rh_500hpa, rh_300hpa
-        ) VALUES %s
-        ON CONFLICT (observatory_id, fetch_date)
-        DO UPDATE SET
-            fetch_time       = EXCLUDED.fetch_time,
-            fetch_datetime   = EXCLUDED.fetch_datetime,
-            cloud_cover_pct  = EXCLUDED.cloud_cover_pct,
-            humidity_pct     = EXCLUDED.humidity_pct,
-            wind_speed_ms    = EXCLUDED.wind_speed_ms,
-            temperature_c    = EXCLUDED.temperature_c,
-            precipitation_mm = EXCLUDED.precipitation_mm,
-            surface_pressure = EXCLUDED.surface_pressure,
-            dewpoint_c       = EXCLUDED.dewpoint_c,
-            wind_speed_80m   = EXCLUDED.wind_speed_80m,
-            wind_speed_120m  = EXCLUDED.wind_speed_120m,
-            jet_stream_ms    = EXCLUDED.jet_stream_ms,
-            temp_500hpa      = EXCLUDED.temp_500hpa,
-            temp_850hpa      = EXCLUDED.temp_850hpa,
-            rh_1000hpa       = EXCLUDED.rh_1000hpa,
-            rh_700hpa        = EXCLUDED.rh_700hpa,
-            rh_500hpa        = EXCLUDED.rh_500hpa,
-            rh_300hpa        = EXCLUDED.rh_300hpa
-    """, weather_rows)
-    conn.commit()
-    print(f"  ✅ {len(weather_rows)} weather readings")
+    print(f"  weather_readings — "
+          f"{upserted} upserted, "
+          f"{not_found} not found in DB")
 
-    cur.close()
-    conn.close()
+def insert_weather_history(data, now):
+    """
+    Insert daily snapshot into weather_history.
+    One row per observatory per day — never overwrites.
+    """
+    fetch_date = now.strftime("%Y-%m-%d")
+    inserted   = 0
+    skipped    = 0
+    not_found  = 0
+
+    for record in data:
+        try:
+            lat = record.get("latitude")
+            lon = record.get("longitude")
+            if lat is None or lon is None:
+                continue
+
+            obs = get_obs_by_coords(lat, lon)
+            if not obs:
+                not_found += 1
+                continue
+
+            obs_id = obs["id"]
+            cloud  = record.get("cloud_cover_pct") or 0
+            humid  = record.get("humidity_pct")    or 0
+            wind   = record.get("wind_speed_ms")   or 0
+            score  = calculate_score(cloud, humid, wind)
+
+            execute("""
+                INSERT INTO weather_history (
+                    observatory_id,   fetch_date,
+                    cloud_cover_pct,  humidity_pct,
+                    wind_speed_ms,    temperature_c,
+                    precipitation_mm, surface_pressure,
+                    jet_stream_ms,    dewpoint_c,
+                    observation_score
+                ) VALUES (
+                    %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s
+                )
+                ON CONFLICT (observatory_id, fetch_date)
+                DO NOTHING
+            """, [
+                obs_id,       fetch_date,
+                cloud,        humid,
+                wind,         record.get("temperature_c"),
+                record.get("precipitation_mm"),
+                record.get("surface_pressure"),
+                record.get("jet_stream_ms"),
+                record.get("dewpoint_c"),
+                score
+            ])
+            inserted += 1
+
+        except Exception as e:
+            print(f"  [WARN] weather_history: {e}")
+            continue
+
+    print(f"  weather_history  — "
+          f"{inserted} inserted, "
+          f"{skipped} skipped, "
+          f"{not_found} not found")
+
+def print_summary():
+    readings = fetch_one(
+        "SELECT COUNT(*) AS c FROM weather_readings")
+    history  = fetch_one(
+        "SELECT COUNT(*) AS c FROM weather_history")
+    obs      = fetch_one(
+        "SELECT COUNT(*) AS c FROM observatories")
+    dates    = fetch_one("""
+        SELECT
+            MIN(fetch_date) AS first_date,
+            MAX(fetch_date) AS last_date,
+            COUNT(DISTINCT fetch_date) AS days
+        FROM weather_history
+    """)
+
+    print(f"\n  ── Database Summary ──────────────────")
+    print(f"  Observatories:    {obs['c']}")
+    print(f"  weather_readings: {readings['c']} rows")
+    print(f"  weather_history:  {history['c']} rows")
+    if dates and dates["days"]:
+        print(f"  History range:    "
+              f"{dates['first_date']} → "
+              f"{dates['last_date']} "
+              f"({dates['days']} days)")
+    print(f"  ─────────────────────────────────────\n")
 
 def main():
-    print(
-        f"\n Loading into Supabase — "
-        f"{datetime.utcnow().strftime('%Y-%m-%d %H:%M')} UTC\n"
-    )
-    date_str    = datetime.utcnow().strftime("%Y-%m-%d")
-    bronze_file = f"data/bronze/raw_weather_{date_str}.json"
+    now = utcnow()
+    print(f"\n  Loading database — "
+          f"{now.strftime('%Y-%m-%d %H:%M UTC')}\n")
 
-    if not os.path.exists(bronze_file):
-        print(f"  [ERROR] File not found: {bronze_file}")
+    data = load_bronze_data()
+    if not data:
+        print("  [ERROR] No data to load")
         return
 
-    with open(bronze_file, "r") as f:
-        records = json.load(f)
+    # Build coordinate cache once
+    build_coord_cache()
 
-    print(f"  Found {len(records)} records")
-    insert_observatories_and_readings(records)
-    print(f"\n ✅ Done. {len(records)} records loaded.\n")
+    # Upsert all into weather_readings
+    print("\n  Upserting weather_readings...")
+    upsert_weather_readings(data, now)
+
+    # Insert daily snapshot into weather_history
+    print("\n  Inserting weather_history...")
+    insert_weather_history(data, now)
+
+    print_summary()
 
 if __name__ == "__main__":
     main()
