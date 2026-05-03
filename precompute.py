@@ -1,4 +1,5 @@
 import json
+from matplotlib.pylab import save
 import pandas as pd
 from datetime import datetime
 from db import get_connection, query_df, fetch_one
@@ -28,7 +29,6 @@ def precompute_all():
 
     # ── Observing windows ─────────────────────────────────
     print("  Computing observing windows...")
-    win_df = load_data() if 'df' not in dir() else df
     win    = get_all_windows()
     if not win.empty:
         win = win.head(300)
@@ -67,23 +67,34 @@ def precompute_all():
 
     atm_results = []
     for _, row in df.iterrows():
-        atm = get_full_atmospheric_analysis({
-            "temperature_c":    row["temperature_c"],
-            "wind_speed_ms":    row["wind_speed_ms"],
-            "humidity_pct":     row["humidity_pct"],
-            "altitude_m":       row["altitude_m"],
-            "surface_pressure": row.get("surface_pressure"),
-            "jet_stream_ms":    row.get("jet_stream_ms"),
-            "latitude":         row["latitude"]
+       atm = get_full_atmospheric_analysis({
+           "temperature_c":    row["temperature_c"],
+           "wind_speed_ms":    row["wind_speed_ms"],
+           "humidity_pct":     row["humidity_pct"],
+           "altitude_m":       row["altitude_m"],
+           "surface_pressure": row.get("surface_pressure"),
+           "jet_stream_ms":    row.get("jet_stream_ms"),
+           "latitude":         row["latitude"]
         })
-        atm_results.append({
-            "observatory":   row["observatory"],
-            "country":       row["country"],
-            "altitude_m":    row["altitude_m"],
-            "weather_score": float(row["weather_score"]),
-            **atm
+       atm_results.append({
+            "observatory":    row["observatory"],
+            "country":        row["country"],
+            "altitude_m":     row["altitude_m"],
+            "latitude":       float(row["latitude"]),
+            "longitude":      float(row["longitude"]),
+            "weather_score":  float(row["weather_score"]),
+            # Only keep what dashboard actually displays
+            "seeing_arcsec":  atm["seeing_arcsec"],
+            "seeing_quality": atm["seeing_quality"],
+            "seeing_color":   atm["seeing_color"],
+            "pwv_mm":         atm["pwv_mm"],
+            "pwv_quality":    atm["pwv_quality"],
+            "jet_stream_ms":  atm["jet_stream_ms"],
+            "jet_impact":     atm["jet_impact"],
         })
     save("atmospheric", atm_results)
+
+    
 
     # ── Efficiency scores ─────────────────────────────────
     for tel_type in ["optical", "infrared", "radio"]:
