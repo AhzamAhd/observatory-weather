@@ -2,7 +2,10 @@ import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 import os
 os.environ["PYTHONWARNINGS"] = "ignore::DeprecationWarning"
-
+from comet_tracker import (get_current_comets,
+                            get_comet_visibility,
+                            magnitude_to_visibility,
+                            comet_type_info)
 from datetime import datetime, timezone
 
 def utcnow():
@@ -216,7 +219,7 @@ st.caption(
     f"· {len(OBJECTS)} astronomical objects"
 )
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12, tab13, tab14, tab15 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12, tab13, tab14, tab15, tab16, tab17 = st.tabs([
     "🌍 Live Weather Map",
     "🌙 Observing Windows",
     "🔭 Object Visibility",
@@ -231,6 +234,8 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12, tab13
     "📡 SNR Calculator",
     "🌌 Live Sky Chart",
     "📅 7-Day Forecast",
+    "📷 All-Sky Cameras",
+    "☄️ Comet Tracker",
     "🔬 Observatory Detail"
 ])
 
@@ -3798,10 +3803,225 @@ with tab14:
         )
 
 # ═══════════════════════════════════════════════════════
-# TAB 15 — Observatory Detail
+# TAB 15 — Comet Tracker
+# ═══════════════════════════════════════════════════════
+with tab15:
+    st.subheader("☄️ Comet Tracker")
+    st.caption(
+        "Track currently observable comets worldwide. "
+        "Shows real-time visibility from your selected "
+        "observatory, brightness, and which telescope "
+        "is needed to see each comet tonight."
+    )
+
+    comets = get_current_comets()
+
+    # Summary metrics
+    trackable = [c for c in comets
+                 if c.get("ra_deg") is not None]
+    naked_eye = [c for c in comets
+                 if c.get("magnitude", 99) < 6
+                 and c.get("ra_deg") is not None]
+    bino      = [c for c in comets
+                 if 6 <= c.get("magnitude", 99) < 10
+                 and c.get("ra_deg") is not None]
+
+    cm1, cm2, cm3, cm4 = st.columns(4)
+    cm1.metric("Total Comets",      len(comets))
+    cm2.metric("Trackable Tonight", len(trackable))
+    cm3.metric("Naked Eye",         len(naked_eye))
+    cm4.metric("Binoculars",        len(bino))
+
+    st.markdown("---")
+
+    # Observatory selector
+    comet_obs = st.selectbox(
+        "Select observatory for visibility",
+        df["observatory"].tolist(),
+        key="comet_obs"
+    )
+    comet_row = df[
+        df["observatory"] == comet_obs].iloc[0]
+    clat = float(comet_row["latitude"])
+    clon = float(comet_row["longitude"])
+
+    st.markdown("---")
+
+    # Display each comet
+    st.subheader(
+        f"Comet visibility from {comet_obs}")
+
+    for comet in comets:
+        mag     = comet.get("magnitude", 99)
+        status  = comet.get("status", "Unknown")
+
+        if "🟢" in status:   status_emoji = "🟢"
+        elif "🟡" in status: status_emoji = "🟡"
+        elif "🔴" in status: status_emoji = "🔴"
+        else:                status_emoji = "⚪"
+
+        # Get visibility
+        vis = get_comet_visibility(
+            comet, clat, clon)
+
+        vis_str = ""
+        if vis:
+            if vis["visible"]:
+                vis_str = (f"🔭 Visible — "
+                           f"Alt {vis['altitude']}°")
+            else:
+                vis_str = (f"❌ Below horizon — "
+                           f"Alt {vis['altitude']}°")
+        else:
+            vis_str = "📍 No position data"
+
+        with st.expander(
+            f"{status_emoji} **{comet['name']}** — "
+            f"Magnitude {mag} · "
+            f"{magnitude_to_visibility(mag)} · "
+            f"{vis_str}"
+        ):
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Magnitude",   mag)
+            c2.metric("Type",        comet["type"])
+            c3.metric("Perihelion",
+                      comet.get("perihelion", "N/A"))
+            c4.metric("Discovered",
+                      str(comet.get(
+                          "discovery_year", "N/A")))
+
+            if vis:
+                v1, v2, v3, v4 = st.columns(4)
+                v1.metric("Altitude",
+                          f"{vis['altitude']}°")
+                v2.metric("Azimuth",
+                          f"{vis['azimuth']}°")
+                v3.metric("Rises",
+                          vis.get("rise_time", "N/A"))
+                v4.metric("Sets",
+                          vis.get("set_time", "N/A"))
+
+            st.info(
+                f"**{comet['name']}** — "
+                f"{comet.get('notes', '')} · "
+                f"Discovered by "
+                f"{comet.get('discoverer', 'Unknown')} · "
+                f"Type: {comet_type_info(comet['type'])}"
+            )
+
+            if comet.get("period_yr"):
+                st.caption(
+                    f"Orbital period: "
+                    f"{comet['period_yr']} years"
+                )
+
+    st.markdown("---")
+
+    # World map showing which observatories
+    # can see comets tonight
+    st.subheader(
+        "World map — comet visibility tonight")
+    st.caption(
+        "Green markers can see at least one comet "
+        "above 10° altitude right now."
+    )
+
+    import folium
+    m_comet = folium.Map(
+        location=[20, 0], zoom_start=2,
+        tiles="CartoDB positron"
+    )
+
+    # Sample every 5th observatory for speed
+    sample_df = df.iloc[::5]
+
+    for _, obs_row in sample_df.iterrows():
+        lat = float(obs_row["latitude"])
+        lon = float(obs_row["longitude"])
+
+        visible_comets = []
+        for comet in trackable:
+            vis = get_comet_visibility(
+                comet, lat, lon)
+            if vis and vis["visible"]:
+                visible_comets.append(
+                    comet["name"])
+
+        color   = "#1D9E75" if visible_comets else "#444441"
+        tooltip = (
+            f"{obs_row['observatory']} — "
+            f"{len(visible_comets)} comets visible"
+            if visible_comets
+            else f"{obs_row['observatory']} — no comets"
+        )
+        popup = (
+            f"<b>{obs_row['observatory']}</b><br>"
+            f"Visible comets:<br>" +
+            "<br>".join(visible_comets)
+            if visible_comets
+            else f"<b>{obs_row['observatory']}</b><br>"
+                 f"No comets above horizon"
+        )
+
+        folium.CircleMarker(
+            location=[lat, lon],
+            radius=5,
+            color=color,
+            fill=True,
+            fill_color=color,
+            fill_opacity=0.7,
+            tooltip=tooltip,
+            popup=folium.Popup(popup, max_width=200)
+        ).add_to(m_comet)
+
+    st_folium(m_comet, width=None, height=400)
+
+    st.markdown("---")
+
+    # Educational section
+    st.subheader("🎓 About comets")
+    st.markdown("""
+**What is a comet?**
+A comet is an icy body from the outer solar system.
+When it approaches the Sun, heat vaporises the ice
+creating a glowing coma and tail that can stretch
+millions of kilometres.
+
+**Types of comets:**
+- **Short-period** — orbit the Sun in under 200 years.
+  Predictable and well-studied. Example: Halley's Comet.
+- **Long-period** — take thousands of years per orbit.
+  Often first-time visitors from the Oort Cloud.
+- **Interstellar** — from outside our solar system entirely.
+  Only 3 confirmed: 1I/Oumuamua, 2I/Borisov, 3I/ATLAS.
+- **Sungrazers** — pass extremely close to the Sun.
+  Often spectacular but frequently break apart.
+
+**Why are comets unpredictable?**
+Comets are nicknamed "dirty snowballs". As they heat up
+they outgas jets of material that can change their
+brightness dramatically. A comet predicted at magnitude 8
+can brighten to magnitude 1 — or completely disintegrate.
+
+**How to observe:**
+- Start with binoculars — sweep slowly across the
+  predicted position
+- Look for a fuzzy patch that does not look like a star
+- The tail always points away from the Sun
+- Best viewing is away from city lights
+    """)
+
+    st.caption(
+        "Comet positions are approximate. "
+        "For precise ephemeris data visit "
+        "minorplanetcenter.net or heavens-above.com"
+    )
+
+# ═══════════════════════════════════════════════════════
+# TAB 16 — Observatory Detail
 # ═══════════════════════════════════════════════════════
 
-with tab15:
+with tab16:
     st.subheader("🔬 Observatory Detail — Live View")
     st.caption(
         "Select any observatory for a complete live "
