@@ -4730,10 +4730,25 @@ with tab17:
         ax.set_title(
             f"Hourly observing score — {selected}",
             fontsize=10, fontweight="bold", color="white")
-        dark_axes(ax, fig)
+        ax.set_facecolor("#0E1117")
+        fig.patch.set_facecolor("#0E1117")
+        ax.tick_params(colors="white")
         ax.yaxis.label.set_color("white")
         ax.title.set_color("white")
-        st.image(make_chart(fig, dpi=120), width='stretch')
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.spines["left"].set_color("#444441")
+        ax.spines["bottom"].set_color("#444441")
+        buf = io.BytesIO()
+        plt.tight_layout()
+        plt.savefig(buf, format="png", dpi=120,
+                    facecolor="#0E1117",
+                    bbox_inches="tight")
+        buf.seek(0)
+        img_data = buf.getvalue()
+        buf.close()
+        plt.close(fig)
+        st.image(img_data, width='stretch')
 
     st.markdown("---")
 
