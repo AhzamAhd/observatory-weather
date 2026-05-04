@@ -56,6 +56,19 @@ st.set_page_config(
     layout="wide"
 )
 
+@st.cache_resource
+def get_all_precomputed():
+    from precompute import load_precomputed
+    return {
+        "windows":    load_precomputed(
+            "observing_windows_slim"),
+        "atmospheric": load_precomputed("atmospheric"),
+        "peak_times":  load_precomputed("peak_times"),
+        "efficiency":  load_precomputed(
+            "efficiency_optical")
+    }
+
+_precomputed = get_all_precomputed()
 @st.cache_data(ttl=3600)  # cache for 1 hour
 def load_atmospheric():
     from atmospheric import get_full_atmospheric_analysis
@@ -143,65 +156,49 @@ def load_data():
     conn.close()
     return df
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600, show_spinner=False)
 def load_windows():
-    from precompute import load_precomputed
-    data = load_precomputed("observing_windows")
+    data = _precomputed.get(
+        "windows", pd.DataFrame())
     if not data.empty:
         return data
-    from observing_window import get_all_windows
-    return get_all_windows()
+    from precompute import load_precomputed
+    data = load_precomputed("observing_windows_slim")
+    if not data.empty:
+        return data
+    return load_precomputed("observing_windows")
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600, show_spinner=False)
 def load_peak_times_cached(object_name=None):
     if object_name:
         from peak_time import get_all_peak_times
         return get_all_peak_times(object_name)
-    from precompute import load_precomputed
-    data = load_precomputed("peak_times")
+    data = _precomputed.get(
+        "peak_times", pd.DataFrame())
     if not data.empty:
         return data
-    from peak_time import get_all_peak_times
-    return get_all_peak_times()
+    from precompute import load_precomputed
+    return load_precomputed("peak_times")
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600, show_spinner=False)
 def load_atmospheric_cached():
-    from precompute import load_precomputed
-    data = load_precomputed("atmospheric")
+    data = _precomputed.get(
+        "atmospheric", pd.DataFrame())
     if not data.empty:
         return data
-    # Fallback — calculate live
-    df      = load_data()
-    results = []
-    for _, row in df.iterrows():
-        from atmospheric import get_full_atmospheric_analysis
-        atm = get_full_atmospheric_analysis({
-            "temperature_c":    row["temperature_c"],
-            "wind_speed_ms":    row["wind_speed_ms"],
-            "humidity_pct":     row["humidity_pct"],
-            "altitude_m":       row["altitude_m"],
-            "surface_pressure": row.get("surface_pressure"),
-            "jet_stream_ms":    row.get("jet_stream_ms"),
-            "latitude":         row["latitude"]
-        })
-        results.append({
-            "observatory":   row["observatory"],
-            "country":       row["country"],
-            "altitude_m":    row["altitude_m"],
-            "weather_score": row["observation_score"],
-            **atm
-        })
-    return pd.DataFrame(results).sort_values(
-        "seeing_arcsec", ascending=True)
+    from precompute import load_precomputed
+    return load_precomputed("atmospheric")
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600, show_spinner=False)
 def load_efficiency_cached(telescope_type="optical"):
+    if telescope_type == "optical":
+        data = _precomputed.get(
+            "efficiency", pd.DataFrame())
+        if not data.empty:
+            return data
     from precompute import load_precomputed
-    data = load_precomputed(f"efficiency_{telescope_type}")
-    if not data.empty:
-        return data
-    from telescope_efficiency import get_all_efficiency_scores
-    return get_all_efficiency_scores(telescope_type)
+    return load_precomputed(
+        f"efficiency_{telescope_type}")
 
 def score_color(score):
     if score >= 80:   return "#1D9E75"
@@ -328,6 +325,52 @@ with tab1:
             hide_index=True,
             height=700
         )
+
+    st.markdown("---")
+    st.subheader("📥 Export for Google Maps / Google Earth")
+    st.caption(
+        "Download your observatory data to view in "
+        "Google Maps or Google Earth with live scores."
+    )
+
+    from export_kml import generate_kml, generate_csv_for_maps
+
+    ex1, ex2 = st.columns(2)
+
+    with ex1:
+        kml_data = generate_kml(df)
+        st.download_button(
+            label="🌍 Download KML for Google Earth",
+            data=kml_data,
+            file_name=f"observatories_{utcnow().strftime('%Y-%m-%d')}.kml",
+            mime="application/vnd.google-earth.kml+xml",
+            help="Open this file in Google Earth to see all observatories with live scores"
+        )
+        st.caption(
+            "Opens in Google Earth desktop or web. "
+            "Shows all observatories colour-coded by "
+            "observation quality."
+        )
+
+    with ex2:
+        csv_data = generate_csv_for_maps(df)
+        st.download_button(
+            label="🗺️ Download CSV for Google My Maps",
+            data=csv_data,
+            file_name=f"observatories_maps_{utcnow().strftime('%Y-%m-%d')}.csv",
+            mime="text/csv",
+            help="Import to maps.google.com/maps/d to create your own custom map"
+        )
+        st.caption(
+            "Go to maps.google.com/maps/d → Create → Import. "
+            "Creates a custom Google Map with all 1275 observatories."
+        )
+
+    st.info(
+        "💡 **Google My Maps tip:** After importing the CSV, "
+        "click 'Style by data column' → select 'Condition' "
+        "to colour-code markers by Excellent/Good/Marginal/Poor."
+    )
 
 # ═══════════════════════════════════════════════════════
 # TAB 2 — Observing Windows
@@ -779,12 +822,14 @@ with tab4:
 
         buf = io.BytesIO()
         plt.tight_layout()
-        plt.savefig(buf, format="png", dpi=150,
+        plt.savefig(buf, format="png", dpi=120,
                     facecolor="#0E1117",
                     bbox_inches="tight")
         buf.seek(0)
-        st.image(buf, width='stretch')
+        img_data = buf.getvalue()
+        buf.close()
         plt.close()
+        st.image(img_data, width='stretch')
 
         st.markdown("---")
         st.subheader("Hourly breakdown table")
@@ -856,8 +901,6 @@ with tab5:
     )
 
     # Calculate atmospheric data for all observatories
-    atm_df = load_atmospheric_cached()
-
     atm_df = load_atmospheric_cached()
 
     # Summary metrics
@@ -1216,13 +1259,14 @@ with tab6:
                         loc="upper right")
                     buf = io.BytesIO()
                     plt.tight_layout()
-                    plt.savefig(
-                        buf, format="png", dpi=120,
-                        facecolor="#0E1117",
-                        bbox_inches="tight")
+                    plt.savefig(buf, format="png", dpi=120,
+                                facecolor="#0E1117",
+                                bbox_inches="tight")
                     buf.seek(0)
-                    st.image(buf, width='stretch')
+                    img_data = buf.getvalue()
+                    buf.close()
                     plt.close()
+                    st.image(img_data, width='stretch')
 
                 st.caption(
                     f"{row['country']} · "
@@ -1419,12 +1463,14 @@ with tab7:
 
                 buf = io.BytesIO()
                 plt.tight_layout()
-                plt.savefig(buf, format="png", dpi=150,
-                            facecolor="#0E1117",
-                            bbox_inches="tight")
+                plt.savefig(buf, format="png", dpi=120,
+                    facecolor="#0E1117",
+                    bbox_inches="tight")
                 buf.seek(0)
-                st.image(buf, width='stretch')
+                img_data = buf.getvalue()
+                buf.close()
                 plt.close()
+                st.image(img_data, width='stretch')
             else:
                 st.info(
                     "Not enough historical data yet. "
@@ -1520,7 +1566,7 @@ with tab7:
                         facecolor="#0E1117",
                         bbox_inches="tight")
             buf2.seek(0)
-            st.image(buf2, width='stretch')
+            st.image(buf2.getvalue(), width='stretch')
             plt.close()
 
             st.markdown("---")
@@ -1699,7 +1745,9 @@ with tab8:
     plt.savefig(buf, format="png", dpi=150,
                 facecolor="#0E1117", bbox_inches="tight")
     buf.seek(0)
-    st.image(buf, width='stretch')
+    img_data = buf.getvalue()
+    buf.close()
+    st.image(img_data, width='stretch')
     plt.close()
 
     st.markdown("---")
@@ -2385,13 +2433,13 @@ with tab11:
                 comp_cols  = st.columns(
                     len(components))
                 labels = {
-                    "weather":       "☁️ Weather",
-                    "dark":          "🌑 Dark hours",
-                    "moon":          "🌙 Moon",
-                    "seeing":        "👁️ Seeing",
-                    "pwv":           "💧 PWV",
-                    "jet":           "🌪️ Jet stream",
-                    "altitude_bonus": "⛰️ Altitude"
+                    "weather":        "Weather",
+                    "dark":           "Dark hours",
+                    "moon":           "Moon",
+                    "seeing":         "Seeing",
+                    "pwv":            "PWV",
+                    "jet":            "Jet stream",
+                    "altitude_bonus": "Altitude"
                 }
                 for i, (key, val) in enumerate(
                     components.items()
@@ -2435,7 +2483,9 @@ with tab11:
                             facecolor="#0E1117",
                             bbox_inches="tight")
                 buf.seek(0)
-                st.image(buf, width='stretch')
+                img_data = buf.getvalue()
+                buf.close()   
+                st.image(img_data, width='stretch')
                 plt.close()
 
                 st.caption(
@@ -3034,7 +3084,9 @@ with tab12:
                 facecolor="#0E1117",
                 bbox_inches="tight")
     buf.seek(0)
-    st.image(buf, width='stretch')
+    img_data = buf.getvalue()
+    buf.close()
+    st.image(img_data, width='stretch')
     plt.close()
 
     st.markdown("---")
@@ -3205,6 +3257,16 @@ with tab13:
         "night":    "🌑 Astronomical night — full dark"
     }
     sky_state = sky["sky_state"]
+    # Quick Google Earth link
+    gearth_sky = (
+        f"https://earth.google.com/web/@"
+        f"{sky_row['latitude']},{sky_row['longitude']},"
+        f"{sky_row['altitude_m']}a,5000d,35y,0h,0t,0r"
+)
+    st.caption(
+        f"📍 {sky_obs} · "
+        f"[Open in Google Earth →]({gearth_sky})"
+)
     st.markdown(
         f"<div style='background:{state_colors[sky_state]};"
         f"border-radius:8px;padding:8px 16px;"
@@ -3466,7 +3528,9 @@ with tab13:
         bbox_inches="tight"
     )
     buf.seek(0)
-    st.image(buf, width='stretch')
+    img_data = buf.getvalue()
+    buf.close()
+    st.image(img_data, width='stretch')
     plt.close()
 
     # ── Object positions table ────────────────────────────
@@ -3536,7 +3600,17 @@ with tab14:
         df["observatory"].tolist(),
         key="fc_obs"
     )
+    fc_row = df[df["observatory"] == fc_obs].iloc[0]
 
+    gearth_fc = (
+        f"https://earth.google.com/web/@"
+        f"{fc_row['latitude']},{fc_row['longitude']},"
+        f"{fc_row['altitude_m']}a,5000d,35y,0h,0t,0r"
+)
+    st.caption(
+        f"📍 {fc_obs} · "
+        f"[Open location in Google Earth →]({gearth_fc})"
+)
     fc_row = df[df["observatory"] == fc_obs].iloc[0]
 
     with st.spinner(
@@ -3671,7 +3745,9 @@ with tab14:
                     facecolor="#0E1117",
                     bbox_inches="tight")
         buf.seek(0)
-        st.image(buf, width='stretch')
+        img_data = buf.getvalue()
+        buf.close()
+        st.image(img_data, width='stretch')
         plt.close()
 
         st.markdown("---")
@@ -3764,7 +3840,7 @@ with tab14:
                         bbox_inches="tight"
                     )
                     buf2.seek(0)
-                    st.image(buf2, width='stretch')
+                    st.image(buf2.getvalue(), width='stretch')
                     plt.close()
 
         st.markdown("---")
@@ -4304,7 +4380,9 @@ with tab16:
                     bbox_inches="tight"
                 )
                 buf.seek(0)
-                st.image(buf, width="stretch")
+                img_data = buf.getvalue()
+                buf.close()
+                st.image(img_data, width="stretch")
                 plt.close()
 
         st.markdown("---")
@@ -4494,7 +4572,6 @@ with tab16:
 # ═══════════════════════════════════════════════════════
 # TAB 17 — Observatory Detail
 # ═══════════════════════════════════════════════════════
-
 with tab17:
     st.subheader("🔬 Observatory Detail — Live View")
     st.caption(
@@ -4513,11 +4590,33 @@ with tab17:
     row = df[df["observatory"] == selected].iloc[0]
 
     with st.spinner(
-        f"Calculating live conditions for "
-        f"{selected}..."
+        f"Calculating live conditions for {selected}..."
     ):
         from live_calculator import calculate_live_conditions
         live = calculate_live_conditions(row)
+
+    # ── Google Maps / Earth links ──────────────────────────
+    gmap_url   = (
+        f"https://www.google.com/maps/search/?api=1"
+        f"&query={live['latitude']},{live['longitude']}"
+    )
+    gearth_url = (
+        f"https://earth.google.com/web/@"
+        f"{live['latitude']},{live['longitude']},"
+        f"{live['altitude_m']}a,5000d,35y,0h,0t,0r"
+    )
+    street_url = (
+        f"https://www.google.com/maps/@"
+        f"{live['latitude']},{live['longitude']},14z"
+    )
+
+    link1, link2, link3 = st.columns(3)
+    with link1:
+        st.markdown(f"[🌍 Open in Google Earth]({gearth_url})")
+    with link2:
+        st.markdown(f"[🗺️ Open in Google Maps]({gmap_url})")
+    with link3:
+        st.markdown(f"[📍 Street View]({street_url})")
 
     # ── Header ────────────────────────────────────────────
     score = live["observation_score"]
@@ -4549,16 +4648,11 @@ with tab17:
     # ── Weather metrics ───────────────────────────────────
     st.subheader("Current weather")
     w1, w2, w3, w4, w5 = st.columns(5)
-    w1.metric("Score",
-              f"{live['observation_score']}/100")
-    w2.metric("Cloud Cover",
-              f"{live['cloud_cover_pct']}%")
-    w3.metric("Humidity",
-              f"{live['humidity_pct']}%")
-    w4.metric("Wind Speed",
-              f"{live['wind_speed_ms']} m/s")
-    w5.metric("Temperature",
-              f"{live['temperature_c']}°C")
+    w1.metric("Score",       f"{live['observation_score']}/100")
+    w2.metric("Cloud Cover", f"{live['cloud_cover_pct']}%")
+    w3.metric("Humidity",    f"{live['humidity_pct']}%")
+    w4.metric("Wind Speed",  f"{live['wind_speed_ms']} m/s")
+    w5.metric("Temperature", f"{live['temperature_c']}°C")
 
     st.markdown("---")
 
@@ -4567,10 +4661,8 @@ with tab17:
     s1, s2, s3, s4, s5 = st.columns(5)
     s1.metric("Sky State",    live["sky_state"])
     s2.metric("Sun Altitude", f"{live['sun_altitude']}°")
-    s3.metric("Moon Altitude",
-              f"{live['moon_altitude']}°")
-    s4.metric("Moon Phase",
-              f"{live['moon_phase_pct']}%")
+    s3.metric("Moon Altitude",f"{live['moon_altitude']}°")
+    s4.metric("Moon Phase",   f"{live['moon_phase_pct']}%")
     s5.metric("Is Dark Now",
               "Yes 🌑" if live["is_dark"] else "No ☀️")
 
@@ -4605,23 +4697,13 @@ with tab17:
     # ── Peak observing time ───────────────────────────────
     st.subheader("Peak observing time tonight")
     p1, p2, p3 = st.columns(3)
-    p1.metric("Peak Hour",
-              live["peak_hour"])
-    p2.metric("Peak Score",
-              f"{live['peak_score']}/100")
-    p3.metric("Good Hours",
-              f"{live['total_good_hours']}h")
+    p1.metric("Peak Hour",   live["peak_hour"])
+    p2.metric("Peak Score",  f"{live['peak_score']}/100")
+    p3.metric("Good Hours",  f"{live['total_good_hours']}h")
 
-    # Hourly chart
     if live["hourly_data"]:
-        import matplotlib.pyplot as plt
-        import matplotlib.patches as mpatches
-        import io
-
-        hours  = [h["hour"]
-                  for h in live["hourly_data"]]
-        scores = [h["combined_score"]
-                  for h in live["hourly_data"]]
+        hours  = [h["hour"] for h in live["hourly_data"]]
+        scores = [h["combined_score"] for h in live["hourly_data"]]
         colors = []
         for s in scores:
             if s >= 80:   colors.append("#1D9E75")
@@ -4631,8 +4713,7 @@ with tab17:
             else:         colors.append("#444441")
 
         fig, ax = plt.subplots(figsize=(12, 3))
-        ax.bar(range(24), scores,
-               color=colors, width=0.8)
+        ax.bar(range(24), scores, color=colors, width=0.8)
 
         if scores:
             peak_idx = scores.index(max(scores))
@@ -4648,41 +4729,22 @@ with tab17:
         ax.set_ylabel("Score", fontsize=9)
         ax.set_title(
             f"Hourly observing score — {selected}",
-            fontsize=10, fontweight="bold",
-            color="white")
-        ax.set_facecolor("#0E1117")
-        fig.patch.set_facecolor("#0E1117")
-        ax.tick_params(colors="white")
+            fontsize=10, fontweight="bold", color="white")
+        dark_axes(ax, fig)
         ax.yaxis.label.set_color("white")
         ax.title.set_color("white")
-        ax.spines["top"].set_visible(False)
-        ax.spines["right"].set_visible(False)
-        ax.spines["left"].set_color("#444441")
-        ax.spines["bottom"].set_color("#444441")
-
-        buf = io.BytesIO()
-        plt.tight_layout()
-        plt.savefig(buf, format="png", dpi=120,
-                    facecolor="#0E1117",
-                    bbox_inches="tight")
-        buf.seek(0)
-        st.image(buf, width='stretch')
-        plt.close()
+        st.image(make_chart(fig, dpi=120), width='stretch')
 
     st.markdown("---")
-    # ── Live camera feed ──────────────────────────────────
-   # ── Website and live camera ───────────────────────────
-    st.markdown("---")
 
+    # ── Website and live camera ───────────────────────────
     from sky_chart import get_observatory_url, get_live_camera
 
-    # Website link for every observatory
     obs_url = get_observatory_url(selected)
     st.markdown(
         f"🌐 **[Visit observatory website or search →]({obs_url})**"
     )
 
-    # Live camera if available
     cam = get_live_camera(selected)
     if cam:
         st.subheader("📷 Live Camera Feed")
@@ -4690,14 +4752,11 @@ with tab17:
             f"**{cam['name']}** — {cam['description']} · "
             f"Credit: {cam['credit']}"
         )
-        st.markdown(
-            f"[🔴 Open full live feed →]({cam['page_url']})"
-        )
+        st.markdown(f"[🔴 Open full live feed →]({cam['page_url']})")
         try:
             st.image(
                 cam["image_url"],
-                caption=f"Live feed — {cam['name']} — "
-                        f"{cam['description']}",
+                caption=f"Live feed — {cam['name']} — {cam['description']}",
                 width='stretch'
             )
         except Exception:
@@ -4710,38 +4769,14 @@ with tab17:
         st.info(
             "No public live camera feed available "
             "for this observatory. Most smaller "
-            "observatories do not publish live feeds. "
-            "Major facilities like Maunakea have public cameras."
+            "observatories do not publish live feeds."
         )
 
-    # ── Links to observatory website ──────────────────────
-    obs_websites = {
-        "Paranal Observatory":
-            "https://www.eso.org/public/teles-instr/paranal-observatory/",
-        "Atacama Large Millimeter Array":
-            "https://www.almaobservatory.org",
-        "Mauna Kea Observatory":
-            "https://www.ifa.hawaii.edu/mko/",
-        "La Silla Observatory":
-            "https://www.eso.org/public/teles-instr/lasilla/",
-        "Very Large Array":
-            "https://public.nrao.edu/telescopes/vla/",
-        "Subaru Telescope":
-            "https://subarutelescope.org",
-        "Keck Observatory":
-            "https://www.keckobservatory.org",
-    }
-
-    if selected in obs_websites:
-        st.markdown(
-            f"[🌐 Visit official website →]"
-            f"({obs_websites[selected]})"
-        )
+    st.markdown("---")
     st.info(
         f"**{selected}** is located at "
         f"{live['latitude']}°, {live['longitude']}° "
-        f"in {live['country']} at "
-        f"{live['altitude_m']}m altitude. "
+        f"in {live['country']} at {live['altitude_m']}m altitude. "
         f"All astronomical calculations are performed "
         f"live when you select this observatory."
     )
