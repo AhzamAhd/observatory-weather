@@ -137,31 +137,30 @@ def calculate_passes(
     hours_ahead=24,
     min_altitude=10
 ):
-    """
-    Calculate satellite passes over a location.
-    Returns list of pass dicts with timing and geometry.
-    """
     try:
         observer           = ephem.Observer()
         observer.lat       = str(lat)
         observer.long      = str(lon)
         observer.elevation = float(alt_m)
         observer.pressure  = 0
-        observer.horizon   = str(min_altitude)
+        observer.horizon   = "0"  # Find ALL passes first
 
-        satellite = ephem.readtle(name, line1, line2)
+        satellite   = ephem.readtle(name, line1, line2)
+        now         = datetime.utcnow()
+        end         = now + timedelta(hours=hours_ahead)
+        passes      = []
+        max_passes  = 10
+        search_date = ephem.Date(
+            now.strftime("%Y/%m/%d %H:%M:%S"))
 
-        now  = datetime.now(timezone.utc)
-        end  = now + timedelta(hours=hours_ahead)
+        for _ in range(50):  # Max iterations
+            if len(passes) >= max_passes:
+                break
 
-        observer.date = now.strftime("%Y/%m/%d %H:%M:%S")
-
-        passes     = []
-        max_passes = 8
-
-        while (observer.date.datetime() < end and
-               len(passes) < max_passes):
             try:
+                observer.date = search_date
+                satellite.compute(observer)
+
                 (rise_time, rise_az,
                  max_time,  max_alt,
                  set_time,  set_az) = observer.next_pass(satellite)
@@ -169,70 +168,73 @@ def calculate_passes(
                 if rise_time is None:
                     break
 
-                rise_dt = ephem.Date(rise_time).datetime()
-                max_dt  = ephem.Date(max_time).datetime()
-                set_dt  = ephem.Date(set_time).datetime()
+                rise_dt     = ephem.Date(rise_time).datetime()
+                set_dt      = ephem.Date(set_time).datetime()
+                max_dt      = ephem.Date(max_time).datetime()
+                max_alt_deg = math.degrees(float(max_alt))
 
+                # Stop if past our window
                 if rise_dt > end:
                     break
 
-                duration_s = (set_dt - rise_dt).total_seconds()
-                max_alt_deg = math.degrees(float(max_alt))
-                mag         = estimate_magnitude(name, max_alt_deg)
-                rise_dir    = azimuth_to_direction(
-                    math.degrees(float(rise_az)))
-                set_dir     = azimuth_to_direction(
-                    math.degrees(float(set_az)))
+                # Only keep passes above minimum altitude
+                if max_alt_deg >= min_altitude:
+                    duration_s = max(
+                        0, (set_dt - rise_dt).total_seconds())
+                    mag      = estimate_magnitude(
+                        name, max_alt_deg)
+                    rise_dir = azimuth_to_direction(
+                        math.degrees(float(rise_az)))
+                    set_dir  = azimuth_to_direction(
+                        math.degrees(float(set_az)))
 
-                # Check if dark enough to see satellite
-                sun = ephem.Sun()
-                observer.date = ephem.Date(max_time)
-                sun.compute(observer)
-                sun_alt    = math.degrees(float(sun.alt))
-                is_night   = sun_alt < -6
-                is_visible = is_night and max_alt_deg >= min_altitude
+                    # Check darkness
+                    sun = ephem.Sun()
+                    observer.date = ephem.Date(max_time)
+                    sun.compute(observer)
+                    sun_alt    = math.degrees(float(sun.alt))
+                    is_night   = sun_alt < -6
+                    is_visible = (is_night and
+                                  max_alt_deg >= min_altitude)
 
-                # Reset observer date
-                observer.date = ephem.Date(rise_time)
+                    passes.append({
+                        "name":         name,
+                        "rise_time":    rise_dt.strftime(
+                            "%H:%M UTC"),
+                        "rise_time_dt": rise_dt,
+                        "max_time":     max_dt.strftime(
+                            "%H:%M UTC"),
+                        "set_time":     set_dt.strftime(
+                            "%H:%M UTC"),
+                        "date_str":     rise_dt.strftime(
+                            "%Y-%m-%d"),
+                        "day_name":     rise_dt.strftime(
+                            "%A"),
+                        "rise_az":      round(math.degrees(
+                            float(rise_az)), 1),
+                        "max_alt":      round(max_alt_deg, 1),
+                        "set_az":       round(math.degrees(
+                            float(set_az)), 1),
+                        "rise_dir":     rise_dir,
+                        "set_dir":      set_dir,
+                        "duration_s":   int(duration_s),
+                        "duration_str": (
+                            f"{int(duration_s//60)}m "
+                            f"{int(duration_s%60)}s"),
+                        "magnitude":    mag,
+                        "mag_desc":     magnitude_visibility(mag),
+                        "mag_emoji":    magnitude_emoji(mag),
+                        "is_visible":   is_visible,
+                        "is_night":     is_night,
+                        "sun_alt":      round(sun_alt, 1),
+                    })
 
-                passes.append({
-                    "name":         name,
-                    "rise_time":    rise_dt.strftime(
-                        "%H:%M:%S UTC"),
-                    "rise_time_dt": rise_dt,
-                    "max_time":     max_dt.strftime(
-                        "%H:%M:%S UTC"),
-                    "set_time":     set_dt.strftime(
-                        "%H:%M:%S UTC"),
-                    "date_str":     rise_dt.strftime(
-                        "%Y-%m-%d"),
-                    "day_name":     rise_dt.strftime("%A"),
-                    "rise_az":      round(
-                        math.degrees(float(rise_az)), 1),
-                    "max_alt":      round(max_alt_deg, 1),
-                    "set_az":       round(
-                        math.degrees(float(set_az)), 1),
-                    "rise_dir":     rise_dir,
-                    "set_dir":      set_dir,
-                    "duration_s":   int(duration_s),
-                    "duration_str": (
-                        f"{int(duration_s//60)}m "
-                        f"{int(duration_s%60)}s"),
-                    "magnitude":    mag,
-                    "mag_desc":     magnitude_visibility(mag),
-                    "mag_emoji":    magnitude_emoji(mag),
-                    "is_visible":   is_visible,
-                    "is_night":     is_night,
-                    "sun_alt":      round(sun_alt, 1),
-                })
-
-                # Move past this pass
-                observer.date = (
-                    ephem.Date(set_time) + ephem.minute)
+                # Always advance past this pass
+                search_date = ephem.Date(set_time) + ephem.minute
 
             except Exception as e:
-                observer.date = (
-                    ephem.Date(observer.date) + ephem.hour)
+                search_date = (ephem.Date(search_date)
+                               + ephem.hour)
                 continue
 
         return passes

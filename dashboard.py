@@ -48,6 +48,12 @@ from snr_calculator import (calculate_snr, get_snr_for_all_observatories,
                               TELESCOPE_SPECS, OBJECT_MAGNITUDES,
                               get_sky_brightness)
 from sky_chart import compute_sky
+from satellite_tracker import (get_all_passes,
+                                get_iss_tle,
+                                calculate_passes,
+                                get_current_position,
+                                magnitude_visibility,
+                                magnitude_emoji)
 from forecast import fetch_forecast, get_daily_summary
 
 st.set_page_config(
@@ -222,7 +228,9 @@ st.caption(
     f"· {len(OBJECTS)} astronomical objects"
 )
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12, tab13, tab14, tab15, tab16, tab17 = st.tabs([
+(tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8,
+ tab9, tab10, tab11, tab12, tab13, tab14, tab15,
+ tab16, tab17, tab18) = st.tabs([
     "🌍 Live Weather Map",
     "🌙 Observing Windows",
     "🔭 Object Visibility",
@@ -237,9 +245,10 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12, tab13
     "📡 SNR Calculator",
     "🌌 Live Sky Chart",
     "📅 7-Day Forecast",
+    "📷 All-Sky Cameras",
     "☄️ Comet Tracker",
+    "🛸 Satellite Passes",
     "⭐ Observatory Reviews",
-    "🔬 Observatory Detail"
 ])
 
 # ═══════════════════════════════════════════════════════
@@ -4568,6 +4577,262 @@ with tab16:
                           f".csv",
                 mime="text/csv"
             )
+
+# ═══════════════════════════════════════════════════════
+# TAB 17 — Satellite Pass Predictor
+# ═══════════════════════════════════════════════════════
+with tab17:
+    st.subheader("🛸 Satellite Pass Predictor")
+    st.caption(
+        "Predict when the ISS and other spacecraft pass "
+        "over your selected observatory. Shows visible "
+        "passes, brightness, direction and duration. "
+        "All times in UTC."
+    )
+
+    # Observatory selector
+    sat_obs = st.selectbox(
+        "Select observatory",
+        df["observatory"].tolist(),
+        key="sat_obs"
+    )
+    sat_row = df[df["observatory"] == sat_obs].iloc[0]
+    sat_lat = float(sat_row["latitude"])
+    sat_lon = float(sat_row["longitude"])
+    sat_alt = float(sat_row["altitude_m"] or 0)
+
+    hours_ahead = st.slider(
+        "Hours to look ahead",
+        min_value=6,
+        max_value=48,
+        value=24,
+        step=6,
+        key="sat_hours"
+    )
+
+    with st.spinner(
+        f"Calculating satellite passes for {sat_obs}..."
+    ):
+        sat_results = get_all_passes(
+            sat_lat, sat_lon, sat_alt,
+            hours_ahead=hours_ahead
+        )
+
+    # ── Summary metrics ───────────────────────────────────
+    total_passes   = sum(
+        len(s["passes"]) for s in sat_results.values())
+    visible_passes = sum(
+        1 for s in sat_results.values()
+        for p in s["passes"] if p["is_visible"])
+    bright_passes  = sum(
+        1 for s in sat_results.values()
+        for p in s["passes"]
+        if p["is_visible"] and p["magnitude"] < 0)
+
+    sm1, sm2, sm3, sm4 = st.columns(4)
+    sm1.metric("Total Passes",    total_passes)
+    sm2.metric("Visible Tonight", visible_passes)
+    sm3.metric("Bright Passes",   bright_passes)
+    sm4.metric("Satellites",      len(sat_results))
+
+    st.markdown("---")
+
+    # ── ISS current position ──────────────────────────────
+    st.subheader("🛸 ISS — Current Position")
+
+    iss_data = sat_results.get("ISS", {})
+    iss_pos  = iss_data.get("position")
+
+    if iss_pos:
+        ip1, ip2, ip3, ip4 = st.columns(4)
+        ip1.metric("Altitude",
+                   f"{iss_pos['altitude']}°",
+                   "Above horizon" if iss_pos["visible"]
+                   else "Below horizon")
+        ip2.metric("Azimuth",
+                   f"{iss_pos['azimuth']}° "
+                   f"({iss_pos['direction']})")
+        ip3.metric("Range",
+                   f"{iss_pos['range_km']:,} km")
+        ip4.metric("Currently",
+                   "🌟 Overhead!" if iss_pos["visible"]
+                   else "🌍 Below horizon")
+
+        if iss_pos.get("sublat") is not None:
+            st.caption(
+                f"ISS ground track: "
+                f"{iss_pos['sublat']}°N, "
+                f"{iss_pos['sublong']}°E — "
+                f"[Track on map →]"
+                f"(https://www.n2yo.com/?s=25544)"
+            )
+
+    st.markdown("---")
+
+    # ── Pass predictions ──────────────────────────────────
+    for sat_key, sat_data in sat_results.items():
+        passes  = sat_data["passes"]
+        sat_name = sat_data["name"]
+        icon    = sat_data.get("icon", "🛰️")
+        color   = sat_data.get("color", "#4ECDC4")
+
+        if not passes:
+            continue
+
+        visible = [p for p in passes if p["is_visible"]]
+        st.subheader(
+            f"{icon} {sat_name} — "
+            f"{len(passes)} passes · "
+            f"{len(visible)} visible"
+        )
+
+        for p in passes:
+            if p["is_visible"]:
+                status_emoji = "✅"
+                status_text  = "VISIBLE"
+                exp_color    = "#1D9E75"
+            elif p["is_night"]:
+                status_emoji = "🌙"
+                status_text  = "Night — satellite in shadow"
+                exp_color    = "#378ADD"
+            else:
+                status_emoji = "☀️"
+                status_text  = "Daytime — too bright to see"
+                exp_color    = "#888"
+
+            with st.expander(
+                f"{status_emoji} "
+                f"{p['day_name']} "
+                f"{p['rise_time']} → {p['set_time']} · "
+                f"Max altitude: {p['max_alt']}° · "
+                f"Mag: {p['magnitude']} "
+                f"{p['mag_emoji']} · "
+                f"{p['rise_dir']} → {p['set_dir']} · "
+                f"{status_text}"
+            ):
+                c1, c2, c3, c4, c5 = st.columns(5)
+                c1.metric("Rise Time",   p["rise_time"])
+                c2.metric("Max Alt",
+                          f"{p['max_alt']}°")
+                c3.metric("Set Time",    p["set_time"])
+                c4.metric("Duration",    p["duration_str"])
+                c5.metric("Brightness",
+                          f"Mag {p['magnitude']}")
+
+                d1, d2, d3 = st.columns(3)
+                d1.metric("Rises in",    p["rise_dir"])
+                d2.metric("Sets in",     p["set_dir"])
+                d3.metric("Sun altitude",
+                          f"{p['sun_alt']}°")
+
+                st.info(
+                    f"**{p['mag_emoji']} "
+                    f"{p['mag_desc']}** — "
+                    f"Look {p['rise_dir']} at "
+                    f"{p['rise_time']} and track "
+                    f"to {p['set_dir']}. "
+                    f"Maximum altitude of "
+                    f"{p['max_alt']}° reached at "
+                    f"{p['max_time']}. "
+                    f"Pass lasts {p['duration_str']}."
+                )
+
+                if p["is_visible"]:
+                    st.success(
+                        f"✅ This is a **visible pass** — "
+                        f"the satellite will be bright enough "
+                        f"to see with the naked eye from "
+                        f"{sat_obs}. "
+                        f"Set an alarm for {p['rise_time']}!"
+                    )
+
+        st.markdown("---")
+
+    # ── Visibility calendar ───────────────────────────────
+    st.subheader("📅 Visible passes summary")
+
+    all_visible = []
+    for sat_key, sat_data in sat_results.items():
+        for p in sat_data["passes"]:
+            if p["is_visible"]:
+                all_visible.append({
+                    "Satellite":  sat_data["name"],
+                    "Date":       p["date_str"],
+                    "Day":        p["day_name"],
+                    "Rise":       p["rise_time"],
+                    "Max Alt":    f"{p['max_alt']}°",
+                    "Set":        p["set_time"],
+                    "Duration":   p["duration_str"],
+                    "Brightness": f"Mag {p['magnitude']}",
+                    "Direction":  f"{p['rise_dir']} → {p['set_dir']}"
+                })
+
+    if all_visible:
+        st.dataframe(
+            pd.DataFrame(all_visible),
+            hide_index=True,
+            height=300
+        )
+        st.download_button(
+            label="Download visible passes as CSV",
+            data=pd.DataFrame(all_visible).to_csv(
+                index=False),
+            file_name=(
+                f"satellite_passes_"
+                f"{sat_obs.replace(' ', '_')}_"
+                f"{utcnow().strftime('%Y-%m-%d')}.csv"),
+            mime="text/csv"
+        )
+    else:
+        st.info(
+            "No visible passes in this window. "
+            "Try extending the hours or check "
+            "back later — the ISS completes an "
+            "orbit every 90 minutes."
+        )
+
+    # ── Educational section ───────────────────────────────
+    st.markdown("---")
+    st.subheader("🎓 About satellite passes")
+    st.markdown("""
+**Why can I see the ISS?**
+The ISS is large — roughly the size of a football
+pitch — and covered in solar panels that reflect
+sunlight. When it passes overhead during twilight
+or night while sunlit, it appears as a fast-moving
+bright dot crossing the sky in about 6 minutes.
+
+**When is the best time to look?**
+The ISS is only visible when it is in sunlight but
+you are in darkness — typically 30 to 90 minutes
+after sunset or before sunrise. Passes marked
+✅ VISIBLE meet this condition.
+
+**How bright does it get?**
+At its brightest the ISS reaches magnitude -5 —
+brighter than Venus and visible even in twilight.
+Average passes are magnitude -1 to -3.
+
+**How fast does it move?**
+The ISS travels at 7.66 km/s — completing one orbit
+every 92 minutes. A typical pass lasts 4 to 7 minutes
+from horizon to horizon.
+
+**Magnitude scale:**
+- Mag -5: Extremely bright — unmissable
+- Mag -3: Brighter than Jupiter  
+- Mag -1: Similar to Sirius (brightest star)
+- Mag 0 to 3: Easily visible naked eye
+- Mag 4+: Binoculars needed
+    """)
+
+    st.caption(
+        "Pass predictions use PyEphem with TLE data "
+        "from Celestrak. Times are in UTC. "
+        "TLE data updated daily for accuracy. "
+        "For precise predictions visit "
+        "heavens-above.com or n2yo.com"
+    )
 
 # ═══════════════════════════════════════════════════════
 # TAB 17 — Observatory Detail
