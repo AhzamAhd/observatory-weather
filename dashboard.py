@@ -47,6 +47,23 @@ from telescope_efficiency import get_all_efficiency_scores
 from snr_calculator import (calculate_snr, get_snr_for_all_observatories,
                               TELESCOPE_SPECS, OBJECT_MAGNITUDES,
                               get_sky_brightness)
+from airmass_calculator import (
+    get_object_airmass_curve,
+    compare_objects_airmass,
+    get_best_observation_window,
+    altitude_to_airmass,
+    airmass_quality,
+    airmass_color,
+    extinction_magnitudes
+)
+from meteor_showers import (get_all_showers_sorted,
+                             get_active_showers,
+                             get_upcoming_showers,
+                             get_year_calendar,
+                             moon_phase_on_peak,
+                             observing_score,
+                             get_zhr_quality,
+                             get_speed_rating)
 from sky_chart import compute_sky
 from satellite_tracker import (get_all_passes,
                                 get_iss_tle,
@@ -230,7 +247,7 @@ st.caption(
 
 (tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8,
  tab9, tab10, tab11, tab12, tab13, tab14, tab15,
- tab16, tab17, tab18) = st.tabs([
+ tab16, tab17, tab18, tab19, tab20) = st.tabs([
     "🌍 Live Weather Map",
     "🌙 Observing Windows",
     "🔭 Object Visibility",
@@ -248,6 +265,8 @@ st.caption(
     "📷 All-Sky Cameras",
     "☄️ Comet Tracker",
     "🛸 Satellite Passes",
+    "📐 Airmass Calculator",
+    "🌠 Meteor Showers",
     "⭐ Observatory Reviews",
 ])
 
@@ -4581,6 +4600,9 @@ with tab16:
 # ═══════════════════════════════════════════════════════
 # TAB 17 — Satellite Pass Predictor
 # ═══════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════
+# TAB 17 — Satellite Pass Predictor
+# ═══════════════════════════════════════════════════════
 with tab17:
     st.subheader("🛸 Satellite Pass Predictor")
     st.caption(
@@ -4590,7 +4612,7 @@ with tab17:
         "All times in UTC."
     )
 
-    # Observatory selector
+    # ── Controls ──────────────────────────────────────────
     sat_obs = st.selectbox(
         "Select observatory",
         df["observatory"].tolist(),
@@ -4603,198 +4625,267 @@ with tab17:
 
     hours_ahead = st.slider(
         "Hours to look ahead",
-        min_value=6,
-        max_value=48,
-        value=24,
-        step=6,
-        key="sat_hours"
+        min_value=6, max_value=48,
+        value=24, step=6, key="sat_hours"
     )
 
-    with st.spinner(
-        f"Calculating satellite passes for {sat_obs}..."
+    # ── Button to trigger calculation ─────────────────────
+    if st.button(
+        "🛸 Calculate Satellite Passes",
+        type="primary",
+        key="calc_passes_btn"
     ):
-        sat_results = get_all_passes(
-            sat_lat, sat_lon, sat_alt,
-            hours_ahead=hours_ahead
+        with st.spinner(
+            f"Fetching TLE data and calculating "
+            f"passes for {sat_obs}..."
+        ):
+            sat_results = get_all_passes(
+                sat_lat, sat_lon, sat_alt,
+                hours_ahead=hours_ahead
+            )
+        st.session_state["sat_results"]     = sat_results
+        st.session_state["sat_results_obs"] = sat_obs
+        st.rerun()
+
+    # ── Load from session state ───────────────────────────
+    sat_results = st.session_state.get("sat_results", {})
+
+    if not sat_results:
+        st.info(
+            "Select an observatory and click "
+            "**Calculate Satellite Passes** to see "
+            "when the ISS and other spacecraft pass "
+            "overhead. Calculation takes about "
+            "10-15 seconds."
+        )
+        st.markdown("---")
+        st.subheader("🎓 About satellite passes")
+        st.markdown("""
+**Why can I see the ISS?**
+The ISS is large — roughly the size of a football
+pitch — and covered in solar panels that reflect
+sunlight. When it passes overhead during twilight
+or night while sunlit, it appears as a fast-moving
+bright dot crossing the sky in about 6 minutes.
+
+**When is the best time to look?**
+The ISS is only visible when it is in sunlight but
+you are in darkness — typically 30 to 90 minutes
+after sunset or before sunrise. Passes marked
+✅ VISIBLE meet this condition.
+
+**How bright does it get?**
+At its brightest the ISS reaches magnitude -5 —
+brighter than Venus and visible even in twilight.
+Average passes are magnitude -1 to -3.
+
+**How fast does it move?**
+The ISS travels at 7.66 km/s — completing one orbit
+every 92 minutes. A typical pass lasts 4 to 7 minutes
+from horizon to horizon.
+        """)
+        st.caption(
+            "Pass predictions use PyEphem with TLE data "
+            "from Celestrak. Times are in UTC. "
+            "For precise predictions visit "
+            "heavens-above.com or n2yo.com"
         )
 
-    # ── Summary metrics ───────────────────────────────────
-    total_passes   = sum(
-        len(s["passes"]) for s in sat_results.values())
-    visible_passes = sum(
-        1 for s in sat_results.values()
-        for p in s["passes"] if p["is_visible"])
-    bright_passes  = sum(
-        1 for s in sat_results.values()
-        for p in s["passes"]
-        if p["is_visible"] and p["magnitude"] < 0)
-
-    sm1, sm2, sm3, sm4 = st.columns(4)
-    sm1.metric("Total Passes",    total_passes)
-    sm2.metric("Visible Tonight", visible_passes)
-    sm3.metric("Bright Passes",   bright_passes)
-    sm4.metric("Satellites",      len(sat_results))
-
-    st.markdown("---")
-
-    # ── ISS current position ──────────────────────────────
-    st.subheader("🛸 ISS — Current Position")
-
-    iss_data = sat_results.get("ISS", {})
-    iss_pos  = iss_data.get("position")
-
-    if iss_pos:
-        ip1, ip2, ip3, ip4 = st.columns(4)
-        ip1.metric("Altitude",
-                   f"{iss_pos['altitude']}°",
-                   "Above horizon" if iss_pos["visible"]
-                   else "Below horizon")
-        ip2.metric("Azimuth",
-                   f"{iss_pos['azimuth']}° "
-                   f"({iss_pos['direction']})")
-        ip3.metric("Range",
-                   f"{iss_pos['range_km']:,} km")
-        ip4.metric("Currently",
-                   "🌟 Overhead!" if iss_pos["visible"]
-                   else "🌍 Below horizon")
-
-        if iss_pos.get("sublat") is not None:
-            st.caption(
-                f"ISS ground track: "
-                f"{iss_pos['sublat']}°N, "
-                f"{iss_pos['sublong']}°E — "
-                f"[Track on map →]"
-                f"(https://www.n2yo.com/?s=25544)"
+    else:
+        # Show which observatory results are for
+        cached_obs = st.session_state.get(
+            "sat_results_obs", sat_obs)
+        if cached_obs != sat_obs:
+            st.warning(
+                f"Showing results for **{cached_obs}**. "
+                f"Click Calculate to update for "
+                f"**{sat_obs}**."
             )
 
-    st.markdown("---")
+        # ── Summary metrics ───────────────────────────────
+        total_passes   = sum(
+            len(s["passes"])
+            for s in sat_results.values())
+        visible_passes = sum(
+            1 for s in sat_results.values()
+            for p in s["passes"]
+            if p["is_visible"])
+        bright_passes  = sum(
+            1 for s in sat_results.values()
+            for p in s["passes"]
+            if p["is_visible"] and p["magnitude"] < 0)
 
-    # ── Pass predictions ──────────────────────────────────
-    for sat_key, sat_data in sat_results.items():
-        passes  = sat_data["passes"]
-        sat_name = sat_data["name"]
-        icon    = sat_data.get("icon", "🛰️")
-        color   = sat_data.get("color", "#4ECDC4")
-
-        if not passes:
-            continue
-
-        visible = [p for p in passes if p["is_visible"]]
-        st.subheader(
-            f"{icon} {sat_name} — "
-            f"{len(passes)} passes · "
-            f"{len(visible)} visible"
-        )
-
-        for p in passes:
-            if p["is_visible"]:
-                status_emoji = "✅"
-                status_text  = "VISIBLE"
-                exp_color    = "#1D9E75"
-            elif p["is_night"]:
-                status_emoji = "🌙"
-                status_text  = "Night — satellite in shadow"
-                exp_color    = "#378ADD"
-            else:
-                status_emoji = "☀️"
-                status_text  = "Daytime — too bright to see"
-                exp_color    = "#888"
-
-            with st.expander(
-                f"{status_emoji} "
-                f"{p['day_name']} "
-                f"{p['rise_time']} → {p['set_time']} · "
-                f"Max altitude: {p['max_alt']}° · "
-                f"Mag: {p['magnitude']} "
-                f"{p['mag_emoji']} · "
-                f"{p['rise_dir']} → {p['set_dir']} · "
-                f"{status_text}"
-            ):
-                c1, c2, c3, c4, c5 = st.columns(5)
-                c1.metric("Rise Time",   p["rise_time"])
-                c2.metric("Max Alt",
-                          f"{p['max_alt']}°")
-                c3.metric("Set Time",    p["set_time"])
-                c4.metric("Duration",    p["duration_str"])
-                c5.metric("Brightness",
-                          f"Mag {p['magnitude']}")
-
-                d1, d2, d3 = st.columns(3)
-                d1.metric("Rises in",    p["rise_dir"])
-                d2.metric("Sets in",     p["set_dir"])
-                d3.metric("Sun altitude",
-                          f"{p['sun_alt']}°")
-
-                st.info(
-                    f"**{p['mag_emoji']} "
-                    f"{p['mag_desc']}** — "
-                    f"Look {p['rise_dir']} at "
-                    f"{p['rise_time']} and track "
-                    f"to {p['set_dir']}. "
-                    f"Maximum altitude of "
-                    f"{p['max_alt']}° reached at "
-                    f"{p['max_time']}. "
-                    f"Pass lasts {p['duration_str']}."
-                )
-
-                if p["is_visible"]:
-                    st.success(
-                        f"✅ This is a **visible pass** — "
-                        f"the satellite will be bright enough "
-                        f"to see with the naked eye from "
-                        f"{sat_obs}. "
-                        f"Set an alarm for {p['rise_time']}!"
-                    )
+        sm1, sm2, sm3, sm4 = st.columns(4)
+        sm1.metric("Total Passes",    total_passes)
+        sm2.metric("Visible Tonight", visible_passes)
+        sm3.metric("Bright Passes",   bright_passes)
+        sm4.metric("Satellites",      len(sat_results))
 
         st.markdown("---")
 
-    # ── Visibility calendar ───────────────────────────────
-    st.subheader("📅 Visible passes summary")
+        # ── ISS current position ──────────────────────────
+        st.subheader("🛸 ISS — Current Position")
+        iss_data = sat_results.get("ISS", {})
+        iss_pos  = iss_data.get("position")
 
-    all_visible = []
-    for sat_key, sat_data in sat_results.items():
-        for p in sat_data["passes"]:
-            if p["is_visible"]:
-                all_visible.append({
-                    "Satellite":  sat_data["name"],
-                    "Date":       p["date_str"],
-                    "Day":        p["day_name"],
-                    "Rise":       p["rise_time"],
-                    "Max Alt":    f"{p['max_alt']}°",
-                    "Set":        p["set_time"],
-                    "Duration":   p["duration_str"],
-                    "Brightness": f"Mag {p['magnitude']}",
-                    "Direction":  f"{p['rise_dir']} → {p['set_dir']}"
-                })
+        if iss_pos:
+            ip1, ip2, ip3, ip4 = st.columns(4)
+            ip1.metric(
+                "Altitude",
+                f"{iss_pos['altitude']}°",
+                "Above horizon" if iss_pos["visible"]
+                else "Below horizon"
+            )
+            ip2.metric(
+                "Azimuth",
+                f"{iss_pos['azimuth']}° "
+                f"({iss_pos['direction']})"
+            )
+            ip3.metric(
+                "Range",
+                f"{iss_pos['range_km']:,} km"
+            )
+            ip4.metric(
+                "Currently",
+                "🌟 Overhead!" if iss_pos["visible"]
+                else "🌍 Below horizon"
+            )
+            if iss_pos.get("sublat") is not None:
+                st.caption(
+                    f"ISS ground track: "
+                    f"{iss_pos['sublat']}°N, "
+                    f"{iss_pos['sublong']}°E · "
+                    f"[Track live →]"
+                    f"(https://www.n2yo.com/?s=25544)"
+                )
 
-    if all_visible:
-        st.dataframe(
-            pd.DataFrame(all_visible),
-            hide_index=True,
-            height=300
-        )
-        st.download_button(
-            label="Download visible passes as CSV",
-            data=pd.DataFrame(all_visible).to_csv(
-                index=False),
-            file_name=(
-                f"satellite_passes_"
-                f"{sat_obs.replace(' ', '_')}_"
-                f"{utcnow().strftime('%Y-%m-%d')}.csv"),
-            mime="text/csv"
-        )
-    else:
-        st.info(
-            "No visible passes in this window. "
-            "Try extending the hours or check "
-            "back later — the ISS completes an "
-            "orbit every 90 minutes."
-        )
+        st.markdown("---")
 
-    # ── Educational section ───────────────────────────────
-    st.markdown("---")
-    st.subheader("🎓 About satellite passes")
-    st.markdown("""
+        # ── Pass predictions ──────────────────────────────
+        for sat_key, sat_data in sat_results.items():
+            passes   = sat_data["passes"]
+            sat_name = sat_data["name"]
+            icon     = sat_data.get("icon", "🛰️")
+
+            if not passes:
+                continue
+
+            visible = [p for p in passes
+                       if p["is_visible"]]
+            st.subheader(
+                f"{icon} {sat_name} — "
+                f"{len(passes)} passes · "
+                f"{len(visible)} visible"
+            )
+
+            for p in passes:
+                if p["is_visible"]:
+                    status_emoji = "✅"
+                    status_text  = "VISIBLE"
+                elif p["is_night"]:
+                    status_emoji = "🌙"
+                    status_text  = "Night — in shadow"
+                else:
+                    status_emoji = "☀️"
+                    status_text  = "Daytime"
+
+                with st.expander(
+                    f"{status_emoji} "
+                    f"{p['day_name']} "
+                    f"{p['rise_time']} → "
+                    f"{p['set_time']} · "
+                    f"Max {p['max_alt']}° · "
+                    f"Mag {p['magnitude']} "
+                    f"{p['mag_emoji']} · "
+                    f"{p['rise_dir']} → {p['set_dir']}"
+                    f" · {status_text}"
+                ):
+                    c1, c2, c3, c4, c5 = st.columns(5)
+                    c1.metric("Rise Time",
+                              p["rise_time"])
+                    c2.metric("Max Altitude",
+                              f"{p['max_alt']}°")
+                    c3.metric("Set Time",
+                              p["set_time"])
+                    c4.metric("Duration",
+                              p["duration_str"])
+                    c5.metric("Brightness",
+                              f"Mag {p['magnitude']}")
+
+                    d1, d2, d3 = st.columns(3)
+                    d1.metric("Rises in",
+                              p["rise_dir"])
+                    d2.metric("Sets in",
+                              p["set_dir"])
+                    d3.metric("Sun altitude",
+                              f"{p['sun_alt']}°")
+
+                    st.info(
+                        f"**{p['mag_emoji']} "
+                        f"{p['mag_desc']}** — "
+                        f"Look {p['rise_dir']} at "
+                        f"{p['rise_time']} and track "
+                        f"to {p['set_dir']}. "
+                        f"Peak altitude {p['max_alt']}° "
+                        f"at {p['max_time']}. "
+                        f"Duration: {p['duration_str']}."
+                    )
+
+                    if p["is_visible"]:
+                        st.success(
+                            f"✅ **Visible pass** — "
+                            f"Set an alarm for "
+                            f"{p['rise_time']}!"
+                        )
+
+            st.markdown("---")
+
+        # ── Visible passes summary table ──────────────────
+        st.subheader("📅 Visible passes summary")
+
+        all_visible = []
+        for sat_key, sat_data in sat_results.items():
+            for p in sat_data["passes"]:
+                if p["is_visible"]:
+                    all_visible.append({
+                        "Satellite":  sat_data["name"],
+                        "Date":       p["date_str"],
+                        "Day":        p["day_name"],
+                        "Rise":       p["rise_time"],
+                        "Max Alt":    f"{p['max_alt']}°",
+                        "Set":        p["set_time"],
+                        "Duration":   p["duration_str"],
+                        "Brightness": f"Mag {p['magnitude']}",
+                        "Direction":  (f"{p['rise_dir']} → "
+                                       f"{p['set_dir']}")
+                    })
+
+        if all_visible:
+            st.dataframe(
+                pd.DataFrame(all_visible),
+                hide_index=True, height=300
+            )
+            st.download_button(
+                label="Download visible passes as CSV",
+                data=pd.DataFrame(
+                    all_visible).to_csv(index=False),
+                file_name=(
+                    f"satellite_passes_"
+                    f"{sat_obs.replace(' ', '_')}_"
+                    f"{utcnow().strftime('%Y-%m-%d')}.csv"),
+                mime="text/csv"
+            )
+        else:
+            st.info(
+                "No visible passes in this window. "
+                "Try extending the hours or check "
+                "back later — the ISS completes an "
+                "orbit every 92 minutes."
+            )
+
+        st.markdown("---")
+        st.subheader("🎓 About satellite passes")
+        st.markdown("""
 **Why can I see the ISS?**
 The ISS is large — roughly the size of a football
 pitch — and covered in solar panels that reflect
@@ -4820,24 +4911,676 @@ from horizon to horizon.
 
 **Magnitude scale:**
 - Mag -5: Extremely bright — unmissable
-- Mag -3: Brighter than Jupiter  
+- Mag -3: Brighter than Jupiter
 - Mag -1: Similar to Sirius (brightest star)
 - Mag 0 to 3: Easily visible naked eye
 - Mag 4+: Binoculars needed
-    """)
+        """)
+        st.caption(
+            "Pass predictions use PyEphem with TLE data "
+            "from Celestrak. Times are in UTC. "
+            "For precise predictions visit "
+            "heavens-above.com or n2yo.com"
+        )
 
+# ═══════════════════════════════════════════════════════
+# TAB 18 — Airmass Calculator
+# ═══════════════════════════════════════════════════════
+with tab18:
+    st.subheader("📐 Airmass Calculator")
     st.caption(
-        "Pass predictions use PyEphem with TLE data "
-        "from Celestrak. Times are in UTC. "
-        "TLE data updated daily for accuracy. "
-        "For precise predictions visit "
-        "heavens-above.com or n2yo.com"
+        "Calculate how much atmosphere your telescope "
+        "looks through for any target object. "
+        "Professional observatories limit observations "
+        "to airmass < 2.0. Lower is better."
     )
 
+    # ── Controls ──────────────────────────────────────────
+    am_col1, am_col2 = st.columns([1, 1])
+
+    with am_col1:
+        am_obs = st.selectbox(
+            "Select observatory",
+            df["observatory"].tolist(),
+            key="am_obs"
+        )
+        am_row = df[
+            df["observatory"] == am_obs].iloc[0]
+        am_lat = float(am_row["latitude"])
+        am_lon = float(am_row["longitude"])
+        am_alt = float(am_row["altitude_m"] or 0)
+
+    with am_col2:
+        am_obj_type = st.selectbox(
+            "Object type",
+            ["All", "Planets", "Galaxies", "Nebulae",
+             "Star Clusters", "Famous Stars",
+             "Full Messier Catalogue"],
+            key="am_obj_type"
+        )
+
+        am_type_map = {
+            "All":                    None,
+            "Planets":                "planet",
+            "Galaxies":               "galaxy",
+            "Nebulae":                "nebula",
+            "Star Clusters":          "cluster",
+            "Famous Stars":           "star",
+            "Full Messier Catalogue": "messier",
+        }
+        am_selected_type = am_type_map[am_obj_type]
+        am_filtered = {
+            k: v for k, v in OBJECTS.items()
+            if am_selected_type is None
+            or (am_selected_type == "messier"
+                and k.startswith("M") and "—" in k)
+            or (am_selected_type is not None
+                and am_selected_type != "messier"
+                and v["type"] == am_selected_type)
+        }
+
+        am_object = st.selectbox(
+            "Target object",
+            list(am_filtered.keys()),
+            key="am_object"
+        )
+
+    am_hours = st.slider(
+        "Hours to calculate ahead",
+        min_value=6, max_value=24,
+        value=12, step=2, key="am_hours"
+    )
+
+    st.markdown("---")
+
+    # ── Current airmass ───────────────────────────────────
+    st.subheader("Current airmass")
+
+    with st.spinner("Calculating airmass..."):
+        curve = get_object_airmass_curve(
+            am_object, am_lat, am_lon,
+            am_alt, hours=am_hours
+        )
+
+    if not curve:
+        st.error(
+            "Could not calculate airmass for "
+            "this object.")
+    else:
+        current = curve[0]
+
+        # Current airmass display
+        am_val   = current["airmass"]
+        am_color = current["color"]
+        am_qual  = current["quality"]
+
+        if am_val:
+            st.markdown(
+                f"<div style='background:{am_color}22;"
+                f"border:2px solid {am_color};"
+                f"border-radius:8px;padding:16px;"
+                f"text-align:center;margin-bottom:16px'>"
+                f"<div style='font-size:48px;"
+                f"font-weight:bold;color:{am_color}'>"
+                f"{am_val}</div>"
+                f"<div style='font-size:18px;"
+                f"color:{am_color}'>{am_qual}</div>"
+                f"<div style='font-size:13px;"
+                f"color:#888;margin-top:4px'>"
+                f"Airmass for {am_object} "
+                f"from {am_obs}</div>"
+                f"</div>",
+                unsafe_allow_html=True
+            )
+        else:
+            st.warning(
+                f"{am_object} is currently below "
+                f"the horizon at {am_obs}."
+            )
+
+        # Metrics
+        c1, c2, c3, c4, c5 = st.columns(5)
+        c1.metric("Airmass",
+                  f"{am_val}" if am_val else "—")
+        c2.metric("Altitude",
+                  f"{current['altitude']}°")
+        c3.metric("Azimuth",
+                  f"{current['azimuth']}°")
+        c4.metric("Extinction",
+                  f"{current['extinction']} mag"
+                  if current["extinction"] else "—")
+        c5.metric("Quality", am_qual)
+
+        st.markdown("---")
+
+        # ── Best window ───────────────────────────────────
+        window = get_best_observation_window(curve)
+        if window:
+            st.subheader("Best observation window tonight")
+            w1, w2, w3, w4 = st.columns(4)
+            w1.metric("Best Time",
+                      window["best_time"])
+            w2.metric("Best Airmass",
+                      window["best_airmass"])
+            w3.metric("Best Altitude",
+                      f"{window['best_alt']}°")
+            w4.metric("Good Hours",
+                      f"{window['good_hours']}h")
+
+            if window["window_start"]:
+                st.info(
+                    f"Observable with airmass < 2.0 "
+                    f"from **{window['window_start']}** "
+                    f"to **{window['window_end']}** UTC "
+                    f"({window['good_hours']} hours). "
+                    f"Best time: **{window['best_time']}** UTC "
+                    f"with airmass "
+                    f"**{window['best_airmass']}**."
+                )
+
+            st.markdown("---")
+
+        # ── Airmass curve chart ───────────────────────────
+        st.subheader(
+            f"Airmass curve — next {am_hours} hours")
+
+        fig, (ax1, ax2) = plt.subplots(
+            2, 1, figsize=(12, 6),
+            gridspec_kw={"height_ratios": [3, 1]}
+        )
+
+        times      = [p["time"] for p in curve]
+        altitudes  = [p["altitude"] for p in curve]
+        airmasses  = [p["airmass"] if p["airmass"]
+                      else 0 for p in curve]
+        is_dark    = [p["is_dark"] for p in curve]
+        is_night   = [p["is_night"] for p in curve]
+        colors_am  = [p["color"] for p in curve]
+
+        # Shade night/dark periods
+        for i in range(len(times) - 1):
+            if is_dark[i]:
+                ax1.axvspan(i, i+1,
+                            alpha=0.15, color="#000033")
+            elif is_night[i]:
+                ax1.axvspan(i, i+1,
+                            alpha=0.08, color="#000066")
+
+        # Plot airmass line
+        valid_x  = [i for i, a in enumerate(airmasses)
+                    if a > 0]
+        valid_am = [a for a in airmasses if a > 0]
+
+        if valid_x:
+            ax1.plot(valid_x, valid_am,
+                     color="#378ADD", linewidth=2.5,
+                     zorder=3)
+            ax1.fill_between(
+                valid_x, valid_am, 10,
+                alpha=0.1, color="#378ADD")
+
+            # Color dots by quality
+            for i, (x, a) in enumerate(
+                zip(valid_x, valid_am)
+            ):
+                ax1.scatter(x, a, s=30,
+                            color=colors_am[valid_x[i]],
+                            zorder=4)
+
+        # Reference lines
+        ax1.axhline(y=1.0, color="#1D9E75",
+                    linestyle="--", alpha=0.6,
+                    linewidth=1,
+                    label="Zenith (AM=1.0)")
+        ax1.axhline(y=1.5, color="#378ADD",
+                    linestyle="--", alpha=0.6,
+                    linewidth=1,
+                    label="Good limit (AM=1.5)")
+        ax1.axhline(y=2.0, color="#EF9F27",
+                    linestyle="--", alpha=0.6,
+                    linewidth=1,
+                    label="Acceptable limit (AM=2.0)")
+        ax1.axhline(y=3.0, color="#E24B4A",
+                    linestyle="--", alpha=0.5,
+                    linewidth=1,
+                    label="Poor limit (AM=3.0)")
+
+        ax1.set_ylim(0.8, 6.0)
+        ax1.invert_yaxis()  # Lower airmass = better
+        ax1.set_ylabel("Airmass (lower = better)",
+                        color="white", fontsize=10)
+        ax1.set_title(
+            f"Airmass curve — {am_object} "
+            f"from {am_obs}",
+            color="white", fontsize=11,
+            fontweight="bold"
+        )
+        ax1.set_xticks(range(0, len(times), 2))
+        ax1.set_xticklabels(
+            [times[i] for i in
+             range(0, len(times), 2)],
+            rotation=45, fontsize=7,
+            color="white"
+        )
+        ax1.set_facecolor("#0E1117")
+        fig.patch.set_facecolor("#0E1117")
+        ax1.tick_params(colors="white")
+        ax1.yaxis.label.set_color("white")
+        ax1.spines["top"].set_visible(False)
+        ax1.spines["right"].set_visible(False)
+        ax1.spines["left"].set_color("#444441")
+        ax1.spines["bottom"].set_color("#444441")
+        ax1.legend(fontsize=8,
+                   facecolor="#0E1117",
+                   labelcolor="white",
+                   loc="upper right")
+
+        # Altitude subplot
+        ax2.plot(range(len(altitudes)), altitudes,
+                 color="#AFA9EC", linewidth=1.5)
+        ax2.axhline(y=0, color="#888",
+                    linestyle="-", linewidth=0.5)
+        ax2.axhline(y=30, color="#378ADD",
+                    linestyle="--", alpha=0.4,
+                    linewidth=1)
+        ax2.set_ylabel("Altitude (°)",
+                        color="white", fontsize=9)
+        ax2.set_xticks(range(0, len(times), 2))
+        ax2.set_xticklabels(
+            [times[i] for i in
+             range(0, len(times), 2)],
+            rotation=45, fontsize=7,
+            color="white"
+        )
+        ax2.set_facecolor("#0E1117")
+        ax2.tick_params(colors="white")
+        ax2.yaxis.label.set_color("white")
+        ax2.spines["top"].set_visible(False)
+        ax2.spines["right"].set_visible(False)
+        ax2.spines["left"].set_color("#444441")
+        ax2.spines["bottom"].set_color("#444441")
+
+        buf = io.BytesIO()
+        plt.tight_layout()
+        plt.savefig(buf, format="png", dpi=150,
+                    facecolor="#0E1117",
+                    bbox_inches="tight")
+        buf.seek(0)
+        img_data = buf.getvalue()
+        buf.close()
+        plt.close(fig)
+        st.image(img_data, width='stretch')
+
+        st.markdown("---")
+
+        # ── Airmass table ─────────────────────────────────
+        st.subheader("Airmass table")
+        table_data = []
+        for p in curve:
+            table_data.append({
+                "Time (UTC)":   p["time"],
+                "Altitude (°)": p["altitude"],
+                "Airmass":      p["airmass"]
+                                if p["airmass"] else None,
+                "Quality":      p["quality"],
+                "Extinction":   p["extinction"]
+                                if p["extinction"] else None,
+                "Dark Sky":     "🌑" if p["is_dark"]
+                                else "🌆" if p["is_night"]
+                                else "☀️"
+            })
+        st.dataframe(
+            pd.DataFrame(table_data),
+            hide_index=True, height=400
+        )
+
+        st.markdown("---")
+
+        # ── Multi-object comparison ───────────────────────
+        st.subheader("Compare multiple objects now")
+        st.caption(
+            "See airmass for all objects of the "
+            "selected type from this observatory "
+            "right now."
+        )
+
+        with st.spinner("Calculating..."):
+            comparison = compare_objects_airmass(
+                list(am_filtered.keys())[:30],
+                am_lat, am_lon, am_alt
+            )
+
+        visible_objs = [
+            o for o in comparison
+            if o["visible"]]
+        below_horizon = [
+            o for o in comparison
+            if not o["visible"]]
+
+        st.markdown(
+            f"**{len(visible_objs)} objects above "
+            f"10° altitude** · "
+            f"{len(below_horizon)} below horizon"
+        )
+
+        if visible_objs:
+            for obj in visible_objs[:15]:
+                color = obj["color"]
+                am    = (f"{obj['airmass']:.2f}"
+                         if obj["airmass"] else "—")
+                st.markdown(
+                    f"<div style='background:{color}11;"
+                    f"border-left:3px solid {color};"
+                    f"padding:6px 12px;"
+                    f"margin:2px 0;"
+                    f"border-radius:4px'>"
+                    f"<b>{obj['object']}</b> — "
+                    f"Airmass {am} · "
+                    f"Alt {obj['altitude']}° · "
+                    f"{obj['quality']} · "
+                    f"Extinction {obj['extinction']} mag"
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
+        else:
+            st.info(
+                "No objects above 10° altitude "
+                "right now from this observatory."
+            )
+
+        st.markdown("---")
+
+        # ── Educational section ───────────────────────────
+        st.subheader("📖 Understanding airmass")
+        st.markdown("""
+**What is airmass?**
+Airmass (AM) measures how much atmosphere your
+telescope looks through compared to looking straight
+up. At the zenith (directly overhead) AM = 1.0 —
+the minimum possible. Near the horizon AM = 5-10.
+
+**The airmass scale:**
+- **AM 1.0** — Zenith. Sharpest possible images.
+- **AM 1.5** — 42° altitude. Very good conditions.
+- **AM 2.0** — 30° altitude. Acceptable for science.
+- **AM 3.0** — 19° altitude. Poor — avoid if possible.
+- **AM 5.0+** — Near horizon. Unusable for most work.
+
+**Why does it matter?**
+More atmosphere means more turbulence (worse seeing),
+more water vapour (worse for infrared), more dust
+absorption (dimmer stars), and more atmospheric
+dispersion (colour smearing). Professional telescopes
+rarely observe above airmass 2.0.
+
+**Atmospheric extinction**
+Each airmass unit dims starlight by ~0.18 magnitudes
+in visual light. At AM 2.0 your target is 0.36 mag
+fainter than at the zenith — significant for photometry.
+
+**The formula**
+The simple formula is AM = 1/sin(altitude). The
+Pickering (2002) formula used here is more accurate
+near the horizon where the simple formula breaks down.
+        """)
+
+        st.download_button(
+            label="Download airmass table as CSV",
+            data=pd.DataFrame(table_data).to_csv(
+                index=False),
+            file_name=(
+                f"airmass_{am_object.replace(' ', '_')}_"
+                f"{am_obs.replace(' ', '_')}_"
+                f"{utcnow().strftime('%Y-%m-%d')}.csv"),
+            mime="text/csv"
+        )
+
+
 # ═══════════════════════════════════════════════════════
-# TAB 17 — Observatory Detail
+# TAB 19 — Meteor Shower Calendar
 # ═══════════════════════════════════════════════════════
-with tab17:
+with tab19:
+    st.subheader("🌠 Meteor Shower Calendar")
+    st.caption(
+        "Complete calendar of annual meteor showers. "
+        "Shows ZHR, moon phase at peak, best viewing "
+        "time and observing score for each shower."
+    )
+
+    showers  = get_all_showers_sorted()
+    active   = get_active_showers()
+    upcoming = get_upcoming_showers(30)
+    year     = utcnow().year
+
+    # ── Summary metrics ───────────────────────────────────
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Total Showers",    len(showers))
+    m2.metric("Active Now",       len(active))
+    m3.metric("Next 30 Days",     len(upcoming))
+    m4.metric("Best Upcoming",
+              upcoming[0]["name"]
+              if upcoming else "None")
+
+    st.markdown("---")
+
+    # ── Active showers banner ─────────────────────────────
+    if active:
+        st.subheader("🔥 Active right now")
+        for s in active:
+            color = s["status_color"]
+            st.markdown(
+                f"<div style='background:{color}22;"
+                f"border:2px solid {color};"
+                f"border-radius:8px;padding:12px;"
+                f"margin-bottom:8px'>"
+                f"<b style='color:{color};font-size:18px'>"
+                f"{s['emoji']} {s['name']}</b> "
+                f"<span style='color:{color}'>"
+                f"{s['status']}</span><br>"
+                f"<span style='color:#ccc'>"
+                f"Peak: {s['peak_date']} · "
+                f"ZHR: {s['zhr']} · "
+                f"Speed: {s['speed_km_s']} km/s · "
+                f"Parent: {s['parent']}"
+                f"</span></div>",
+                unsafe_allow_html=True
+            )
+        st.markdown("---")
+
+    # ── Year calendar view ────────────────────────────────
+    st.subheader(f"📅 {year} Meteor Shower Calendar")
+
+    # Monthly bar chart of ZHR
+    month_names = ["Jan", "Feb", "Mar", "Apr", "May",
+                   "Jun", "Jul", "Aug", "Sep", "Oct",
+                   "Nov", "Dec"]
+    monthly_max_zhr = [0] * 12
+
+    for shower in showers:
+        m = shower["peak_month"] - 1
+        if shower["zhr"] > monthly_max_zhr[m]:
+            monthly_max_zhr[m] = shower["zhr"]
+
+    colors_bar = []
+    for zhr in monthly_max_zhr:
+        if zhr >= 100:  colors_bar.append("#E74C3C")
+        elif zhr >= 50: colors_bar.append("#EF9F27")
+        elif zhr >= 25: colors_bar.append("#1D9E75")
+        elif zhr >= 10: colors_bar.append("#378ADD")
+        else:           colors_bar.append("#888888")
+
+    fig, ax = plt.subplots(figsize=(12, 3))
+    bars = ax.bar(month_names, monthly_max_zhr,
+                  color=colors_bar, width=0.7)
+
+    for bar, zhr in zip(bars, monthly_max_zhr):
+        if zhr > 0:
+            ax.text(
+                bar.get_x() + bar.get_width() / 2,
+                bar.get_height() + 2,
+                f"{zhr}", ha="center", va="bottom",
+                color="white", fontsize=9,
+                fontweight="bold"
+            )
+
+    ax.set_ylabel("Peak ZHR", color="white", fontsize=9)
+    ax.set_title(
+        f"Best ZHR by Month — {year}",
+        color="white", fontsize=11, fontweight="bold")
+    ax.set_facecolor("#0E1117")
+    fig.patch.set_facecolor("#0E1117")
+    ax.tick_params(colors="white")
+    ax.yaxis.label.set_color("white")
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.spines["left"].set_color("#444441")
+    ax.spines["bottom"].set_color("#444441")
+
+    buf = io.BytesIO()
+    plt.tight_layout()
+    plt.savefig(buf, format="png", dpi=150,
+                facecolor="#0E1117",
+                bbox_inches="tight")
+    buf.seek(0)
+    img_data = buf.getvalue()
+    buf.close()
+    plt.close(fig)
+    st.image(img_data, width='stretch')
+
+    st.markdown("---")
+
+    # ── All showers list ──────────────────────────────────
+    st.subheader("All meteor showers — sorted by next peak")
+
+    for s in showers:
+        color     = s["status_color"]
+        moon      = moon_phase_on_peak(s, year)
+        obs_score = observing_score(s, year)
+        zhr_q, zhr_c = get_zhr_quality(s["zhr"])
+
+        if obs_score >= 70:   score_color = "#1D9E75"
+        elif obs_score >= 50: score_color = "#378ADD"
+        elif obs_score >= 30: score_color = "#EF9F27"
+        else:                 score_color = "#888888"
+
+        with st.expander(
+            f"{s['emoji']} **{s['name']}** — "
+            f"Peak: {s['peak_date']} · "
+            f"ZHR: {s['zhr']} ({zhr_q}) · "
+            f"{s['status']} · "
+            f"Score: {obs_score}/100"
+        ):
+            c1, c2, c3, c4, c5 = st.columns(5)
+            c1.metric("Peak ZHR",    s["zhr"])
+            c2.metric("Speed",
+                      f"{s['speed_km_s']} km/s")
+            c3.metric("Moon at Peak",
+                      f"{moon}%" if moon else "N/A")
+            c4.metric("Observing Score",
+                      f"{obs_score}/100")
+            c5.metric("Days Until Peak",
+                      s["days_until_peak"])
+
+            d1, d2, d3 = st.columns(3)
+            d1.metric("Active",
+                      f"{s['active_start']} → "
+                      f"{s['active_end']}")
+            d2.metric("Best Time",   s["best_time"])
+            d3.metric("Hemisphere",  s["hemisphere"])
+
+            st.markdown(
+                f"**Parent body:** {s['parent']} · "
+                f"**Speed rating:** "
+                f"{get_speed_rating(s['speed_km_s'])}"
+            )
+            st.info(s["description"])
+
+            # Moon phase warning
+            if moon and moon > 70:
+                st.warning(
+                    f"⚠️ Moon is {moon}% illuminated "
+                    f"at peak — will wash out faint "
+                    f"meteors. Best to observe in "
+                    f"early morning before moonrise."
+                )
+            elif moon and moon < 25:
+                st.success(
+                    f"✅ Excellent dark sky conditions "
+                    f"— moon is only {moon}% illuminated "
+                    f"at peak. Perfect for faint meteors."
+                )
+
+    st.markdown("---")
+
+    # ── Observing tips ────────────────────────────────────
+    st.subheader("🎓 How to observe meteor showers")
+    st.markdown("""
+**Basic setup:**
+- No telescope needed — use your naked eyes
+- Let your eyes dark-adapt for 20 minutes
+- Lie flat on a reclining chair or sleeping bag
+- Look toward the darkest part of the sky
+- Face away from the Moon if it is up
+
+**What to look for:**
+- Meteors appear as fast streaks of light
+- Trace the streak backwards — it points to the radiant
+- Fireballs are exceptionally bright meteors (mag < -3)
+- Some leave glowing trains lasting several seconds
+
+**Understanding ZHR:**
+ZHR (Zenithal Hourly Rate) assumes perfect conditions —
+limiting magnitude 6.5, radiant at zenith, no Moon.
+Real observed rates are typically 25-50% of ZHR
+depending on your sky conditions and location.
+
+**Best conditions:**
+- New Moon or Moon below horizon
+- Dark sky site away from city lights
+- Clear night with low humidity
+- Radiant high in the sky (varies by hemisphere)
+
+**Recording observations:**
+Count meteors in 15-minute intervals. Note the time,
+direction, brightness and colour. Submit to the
+International Meteor Organization (imo.net) to
+contribute to science.
+    """)
+
+    # ── Download calendar ─────────────────────────────────
+    st.markdown("---")
+    calendar_data = []
+    for s in showers:
+        moon      = moon_phase_on_peak(s, year)
+        obs_score = observing_score(s, year)
+        calendar_data.append({
+            "Shower":         s["name"],
+            "Peak Date":      s["peak_date"],
+            "Active Period":  (f"{s['active_start']} — "
+                               f"{s['active_end']}"),
+            "ZHR":            s["zhr"],
+            "Speed (km/s)":   s["speed_km_s"],
+            "Parent Body":    s["parent"],
+            "Moon at Peak %": moon,
+            "Observing Score":obs_score,
+            "Best Hemisphere":s["hemisphere"],
+            "Best Time":      s["best_time"],
+            "Days Until Peak":s["days_until_peak"],
+            "Status":         s["status"],
+        })
+
+    st.download_button(
+        label="Download meteor shower calendar as CSV",
+        data=pd.DataFrame(calendar_data).to_csv(
+            index=False),
+        file_name=(
+            f"meteor_showers_{year}.csv"),
+        mime="text/csv"
+    )
+# ═══════════════════════════════════════════════════════
+# TAB 20 — Meteor Showers   
+# ═══════════════════════════════════════════════════════
+with tab20:
     st.subheader("🔬 Observatory Detail — Live View")
     st.caption(
         "Select any observatory for a complete live "
