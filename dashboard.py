@@ -71,6 +71,23 @@ from satellite_tracker import (get_all_passes,
                                 get_current_position,
                                 magnitude_visibility,
                                 magnitude_emoji)
+from asteroid_tracker import (fetch_asteroids,
+                               fetch_asteroids_range,
+                               get_asteroid_stats,
+                               format_distance,
+                               classify_size,
+                               size_comparison,
+                               estimate_impact_energy,
+                               assess_threat)
+
+from eclipses import (get_upcoming_events,
+                      get_eclipse_visibility,
+                      get_best_observatories_for_eclipse,
+                      eclipse_rarity,
+                      get_all_past_recent,
+                      SOLAR_ECLIPSES,
+                      LUNAR_ECLIPSES,
+                      TRANSITS)
 from forecast import fetch_forecast, get_daily_summary
 
 st.set_page_config(
@@ -247,7 +264,7 @@ st.caption(
 
 (tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8,
  tab9, tab10, tab11, tab12, tab13, tab14, tab15,
- tab16, tab17, tab18, tab19, tab20) = st.tabs([
+ tab16, tab17, tab18, tab19, tab20, tab21, tab22) = st.tabs([
     "🌍 Live Weather Map",
     "🌙 Observing Windows",
     "🔭 Object Visibility",
@@ -262,12 +279,14 @@ st.caption(
     "📡 SNR Calculator",
     "🌌 Live Sky Chart",
     "📅 7-Day Forecast",
-    "📷 All-Sky Cameras",
     "☄️ Comet Tracker",
+    "⭐ Observatory Reviews",
     "🛸 Satellite Passes",
     "📐 Airmass Calculator",
     "🌠 Meteor Showers",
-    "⭐ Observatory Reviews",
+    "🪨 Asteroid Tracker",
+    "🌑 Eclipses & Transits",
+    "🔬 Observatory Detail",
 ])
 
 # ═══════════════════════════════════════════════════════
@@ -4597,9 +4616,7 @@ with tab16:
                 mime="text/csv"
             )
 
-# ═══════════════════════════════════════════════════════
-# TAB 17 — Satellite Pass Predictor
-# ═══════════════════════════════════════════════════════
+
 # ═══════════════════════════════════════════════════════
 # TAB 17 — Satellite Pass Predictor
 # ═══════════════════════════════════════════════════════
@@ -4645,8 +4662,6 @@ with tab17:
             )
         st.session_state["sat_results"]     = sat_results
         st.session_state["sat_results_obs"] = sat_obs
-        st.rerun()
-
     # ── Load from session state ───────────────────────────
     sat_results = st.session_state.get("sat_results", {})
 
@@ -5577,10 +5592,848 @@ contribute to science.
             f"meteor_showers_{year}.csv"),
         mime="text/csv"
     )
+
+
 # ═══════════════════════════════════════════════════════
-# TAB 20 — Meteor Showers   
+# TAB 20 — Asteroid Tracker
 # ═══════════════════════════════════════════════════════
 with tab20:
+    st.subheader("🪨 Asteroid Tracker")
+    st.caption(
+        "Real-time near-Earth asteroid data from "
+        "NASA's NeoWs API. Shows asteroids passing "
+        "Earth with miss distance, size, velocity "
+        "and threat assessment."
+    )
+
+    # ── Controls ──────────────────────────────────────────
+    days_option = st.select_slider(
+        "Time period to look ahead",
+        options=[7, 14, 30, 60, 90],
+        value=7,
+        format_func=lambda x: (
+            f"{x} days" if x <= 7
+            else f"{x} days "
+                 f"({math.ceil(x/7)} API requests)"
+        ),
+        key="ast_days"
+    )
+
+    if days_option > 7:
+        st.info(
+            f"Fetching {days_option} days requires "
+            f"{math.ceil(days_option/7)} API calls. "
+            f"Takes 10-30 seconds."
+        )
+
+    # ── Fetch button ──────────────────────────────────────
+    @st.cache_data(ttl=3600, show_spinner=False)
+    def cached_fetch_asteroids(days, cache_key):
+        if days <= 7:
+            return fetch_asteroids(days_ahead=days)
+        else:
+            return fetch_asteroids_range(days_ahead=days)
+
+    clicked = st.button(
+        "🪨 Fetch Asteroid Data",
+        type="primary",
+        key="fetch_asteroids_btn"
+    )
+
+    if "ast_fetch_count" not in st.session_state:
+        st.session_state["ast_fetch_count"] = 0
+    if "ast_days_cached" not in st.session_state:
+        st.session_state["ast_days_cached"] = 0
+
+    if clicked:
+        st.session_state["ast_fetch_count"] += 1
+        st.session_state["ast_days_cached"] = days_option
+
+    fetch_count = st.session_state["ast_fetch_count"]
+    days_cached = st.session_state["ast_days_cached"]
+
+    if fetch_count == 0:
+        asteroids = []
+    else:
+        with st.spinner("Loading asteroid data..."):
+            asteroids = cached_fetch_asteroids(
+                days_cached, fetch_count)
+
+
+    if not asteroids:
+        st.info(
+            "Click **Fetch Asteroid Data** to load "
+            "near-Earth asteroids from NASA's database."
+        )
+        st.markdown("---")
+        st.subheader("🎓 About near-Earth asteroids")
+        st.markdown("""
+**What is a near-Earth asteroid?**
+Near-Earth asteroids (NEAs) are asteroids whose
+orbits bring them close to Earth. NASA tracks over
+32,000 NEAs and monitors them for potential impact
+risk.
+
+**What is a Potentially Hazardous Asteroid (PHA)?**
+PHAs are asteroids larger than 140m that come within
+0.05 AU (7.5 million km) of Earth's orbit. There are
+over 2,300 known PHAs. None are currently on course
+to hit Earth in the next 100 years.
+
+**What is a lunar distance (LD)?**
+One lunar distance = 384,400 km — the average
+distance from Earth to the Moon. Astronomers use
+this unit for close asteroid approaches.
+
+**Torino Scale**
+The Torino Scale rates asteroid impact risk from
+0 (no concern) to 10 (certain collision causing
+global catastrophe). All currently known asteroids
+are rated 0.
+        """)
+
+    else:
+        # ALL display code goes here
+        stats = get_asteroid_stats(asteroids)
+
+        s1, s2, s3, s4, s5 = st.columns(5)
+        s1.metric("Total Asteroids",  stats["total"])
+        s2.metric("Hazardous (PHAs)", stats["hazardous"])
+        s3.metric("Within 1 LD",      stats["within_1ld"])
+        s4.metric("Within 5 LD",      stats["within_5ld"])
+        s5.metric("Avg Distance",
+                  f"{stats['avg_distance_ld']} LD")
+        # ... rest of display code
+
+        st.markdown("---")
+
+        # ── Highlight cards ───────────────────────────────
+        st.subheader("Key highlights")
+        h1, h2, h3 = st.columns(3)
+
+        with h1:
+            closest = stats["closest"]
+            st.markdown(
+                f"<div style='background:#E74C3C22;"
+                f"border:1px solid #E74C3C;"
+                f"border-radius:8px;padding:12px'>"
+                f"<b style='color:#E74C3C'>"
+                f"📍 Closest</b><br>"
+                f"<b>{closest['name']}</b><br>"
+                f"{format_distance(closest['miss_distance_km'])}<br>"
+                f"<small>{closest['approach_date']}</small>"
+                f"</div>",
+                unsafe_allow_html=True
+            )
+
+        with h2:
+            fastest = stats["fastest"]
+            st.markdown(
+                f"<div style='background:#EF9F2722;"
+                f"border:1px solid #EF9F27;"
+                f"border-radius:8px;padding:12px'>"
+                f"<b style='color:#EF9F27'>"
+                f"⚡ Fastest</b><br>"
+                f"<b>{fastest['name']}</b><br>"
+                f"{fastest['velocity_km_s']} km/s<br>"
+                f"<small>"
+                f"{fastest['velocity_km_h']:,.0f} km/h"
+                f"</small>"
+                f"</div>",
+                unsafe_allow_html=True
+            )
+
+        with h3:
+            largest = stats["largest"]
+            st.markdown(
+                f"<div style='background:#378ADD22;"
+                f"border:1px solid #378ADD;"
+                f"border-radius:8px;padding:12px'>"
+                f"<b style='color:#378ADD'>"
+                f"📏 Largest</b><br>"
+                f"<b>{largest['name']}</b><br>"
+                f"{largest['diameter_m']}m diameter<br>"
+                f"<small>{largest['size_comparison']}</small>"
+                f"</div>",
+                unsafe_allow_html=True
+            )
+
+        st.markdown("---")
+
+        # ── Hazardous alerts ──────────────────────────────
+        hazardous_list = [a for a in asteroids
+                          if a["hazardous"]]
+        if hazardous_list:
+            st.subheader(
+                f"⚠️ {len(hazardous_list)} Potentially "
+                f"Hazardous Asteroids"
+            )
+            for a in hazardous_list:
+                st.warning(
+                    f"**{a['name']}** — "
+                    f"{format_distance(a['miss_distance_km'])} "
+                    f"on {a['approach_date']} · "
+                    f"{a['diameter_m']}m "
+                    f"({a['size_comparison']}) · "
+                    f"{a['velocity_km_s']} km/s · "
+                    f"[NASA JPL →]({a['nasa_url']})"
+                )
+            st.markdown("---")
+
+        # ── Distance bar chart ────────────────────────────
+        st.subheader("Miss distances — top 15 closest")
+        top15  = asteroids[:15]
+        names  = [
+            a["name"].replace(
+                "(","").replace(")","")[:20]
+            for a in top15]
+        dists  = [a["miss_distance_lunar"]
+                  for a in top15]
+        colors = [a["threat_color"] for a in top15]
+
+        fig, ax = plt.subplots(figsize=(12, 5))
+        bars    = ax.barh(
+            names, dists, color=colors, height=0.6)
+
+        for bar, dist in zip(bars, dists):
+            ax.text(
+                bar.get_width() + 0.1,
+                bar.get_y() + bar.get_height() / 2,
+                f"{dist:.1f} LD",
+                va="center", color="white", fontsize=8
+            )
+
+        ax.axvline(x=1, color="#FFD700",
+                   linestyle="--", alpha=0.7,
+                   linewidth=1, label="1 LD (Moon)")
+        ax.axvline(x=5, color="#EF9F27",
+                   linestyle="--", alpha=0.5,
+                   linewidth=1, label="5 LD")
+        ax.set_xlabel(
+            "Miss Distance (Lunar Distances)",
+            color="white", fontsize=9)
+        ax.set_title(
+            "Closest Approaching Asteroids",
+            color="white", fontsize=11,
+            fontweight="bold")
+        ax.set_facecolor("#0E1117")
+        fig.patch.set_facecolor("#0E1117")
+        ax.tick_params(colors="white", labelsize=8)
+        ax.xaxis.label.set_color("white")
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.spines["left"].set_color("#444441")
+        ax.spines["bottom"].set_color("#444441")
+        ax.legend(fontsize=8, facecolor="#0E1117",
+                  labelcolor="white")
+        buf = io.BytesIO()
+        plt.tight_layout()
+        plt.savefig(buf, format="png", dpi=150,
+                    facecolor="#0E1117",
+                    bbox_inches="tight")
+        buf.seek(0)
+        st.image(buf.getvalue(), width='stretch')
+        buf.close()
+        plt.close(fig)
+
+        st.markdown("---")
+
+        # ── Scatter plot ──────────────────────────────────
+        st.subheader("Size vs miss distance")
+        fig2, ax2 = plt.subplots(figsize=(10, 5))
+        for a in asteroids:
+            marker = "D" if a["hazardous"] else "o"
+            ax2.scatter(
+                a["miss_distance_lunar"],
+                a["diameter_m"],
+                c=a["threat_color"],
+                s=80, marker=marker,
+                alpha=0.8, zorder=3
+            )
+        ax2.axvline(x=1, color="#FFD700",
+                    linestyle="--", alpha=0.5,
+                    linewidth=1,
+                    label="Moon distance (1 LD)")
+        ax2.axhline(y=140, color="#EF9F27",
+                    linestyle="--", alpha=0.5,
+                    linewidth=1,
+                    label="PHA size limit (140m)")
+        ax2.set_xlabel(
+            "Miss Distance (Lunar Distances)",
+            color="white", fontsize=9)
+        ax2.set_ylabel(
+            "Estimated Diameter (meters)",
+            color="white", fontsize=9)
+        ax2.set_title(
+            "Asteroid Size vs Miss Distance "
+            "(◆ = Hazardous)",
+            color="white", fontsize=11,
+            fontweight="bold")
+        ax2.set_facecolor("#0E1117")
+        fig2.patch.set_facecolor("#0E1117")
+        ax2.tick_params(colors="white")
+        ax2.xaxis.label.set_color("white")
+        ax2.yaxis.label.set_color("white")
+        ax2.spines["top"].set_visible(False)
+        ax2.spines["right"].set_visible(False)
+        ax2.spines["left"].set_color("#444441")
+        ax2.spines["bottom"].set_color("#444441")
+        ax2.legend(fontsize=8, facecolor="#0E1117",
+                   labelcolor="white")
+        buf2 = io.BytesIO()
+        plt.tight_layout()
+        plt.savefig(buf2, format="png", dpi=150,
+                    facecolor="#0E1117",
+                    bbox_inches="tight")
+        buf2.seek(0)
+        st.image(buf2.getvalue(), width='stretch')
+        buf2.close()
+        plt.close(fig2)
+
+        st.markdown("---")
+
+        # ── Filters ───────────────────────────────────────
+        st.subheader(f"All {len(asteroids)} asteroids")
+
+        fc1, fc2, fc3 = st.columns(3)
+        with fc1:
+            filter_haz = st.toggle(
+                "Hazardous only",
+                value=False, key="filter_haz")
+        with fc2:
+            filter_size = st.selectbox(
+                "Filter by size",
+                ["All sizes",
+                 "🔴 Large (>1km)",
+                 "🟠 Medium (140m-1km)",
+                 "🟡 Small (25-140m)",
+                 "🟢 Tiny (<25m)"],
+                key="filter_size"
+            )
+        with fc3:
+            sort_by = st.selectbox(
+                "Sort by",
+                ["Date", "Closest first",
+                 "Largest first", "Fastest first"],
+                key="ast_sort"
+            )
+
+        display_list = asteroids.copy()
+
+        if filter_haz:
+            display_list = [
+                a for a in display_list
+                if a["hazardous"]]
+
+        if filter_size != "All sizes":
+            display_list = [
+                a for a in display_list
+                if a["size_class"] == filter_size]
+
+        if sort_by == "Closest first":
+            display_list.sort(
+                key=lambda x: x["miss_distance_km"])
+        elif sort_by == "Largest first":
+            display_list.sort(
+                key=lambda x: x["diameter_km"],
+                reverse=True)
+        elif sort_by == "Fastest first":
+            display_list.sort(
+                key=lambda x: x["velocity_km_s"],
+                reverse=True)
+        else:
+            display_list.sort(
+                key=lambda x: x["approach_date"])
+
+        st.caption(
+            f"Showing {len(display_list)} of "
+            f"{len(asteroids)} asteroids"
+        )
+
+        st.markdown("---")
+
+        # ── Timeline by date ──────────────────────────────
+        st.subheader("📅 Timeline by approach date")
+
+        from collections import defaultdict
+        by_date = defaultdict(list)
+        for a in display_list:
+            by_date[a["approach_date"]].append(a)
+
+        for date_key in sorted(by_date.keys()):
+            day_list  = by_date[date_key]
+            haz_count = sum(
+                1 for a in day_list if a["hazardous"])
+            haz_label = (
+                f" — ⚠️ {haz_count} hazardous"
+                if haz_count else "")
+
+            st.markdown(
+                f"### 📅 {date_key} — "
+                f"{len(day_list)} asteroids{haz_label}"
+            )
+
+            for a in day_list:
+                with st.expander(
+                    f"{a['threat_level']} "
+                    f"**{a['name']}** — "
+                    f"{a['miss_distance_lunar']:.2f} LD "
+                    f"({a['miss_distance_km']:,.0f} km)"
+                    f" · {a['diameter_m']}m"
+                    f" · {a['velocity_km_s']} km/s"
+                ):
+                    c1, c2, c3, c4, c5 = st.columns(5)
+                    c1.metric(
+                        "Miss Distance",
+                        f"{a['miss_distance_lunar']:.2f} LD")
+                    c2.metric(
+                        "In km",
+                        f"{a['miss_distance_km']:,.0f}")
+                    c3.metric(
+                        "Diameter",
+                        f"{a['diameter_m']}m")
+                    c4.metric(
+                        "Speed",
+                        f"{a['velocity_km_s']} km/s")
+                    c5.metric(
+                        "Magnitude",
+                        f"{a['magnitude']}")
+
+                    st.markdown(
+                        f"**Size:** "
+                        f"{a['size_comparison']} · "
+                        f"**Orbit:** "
+                        f"{a['orbit_class']} · "
+                        f"**Threat:** "
+                        f"{a['threat_desc']}"
+                    )
+
+                    if a["impact_energy"]:
+                        st.caption(
+                            f"⚡ Hypothetical impact: "
+                            f"{a['impact_energy']}")
+
+                    if a["hazardous"]:
+                        st.warning(
+                            f"⚠️ Potentially Hazardous "
+                            f"Asteroid — "
+                            f"{a['threat_desc']}")
+
+                    st.markdown(
+                        f"[🔗 View on NASA JPL →]"
+                        f"({a['nasa_url']})")
+
+        st.markdown("---")
+
+        # ── Data table ────────────────────────────────────
+        st.subheader("📊 Complete data table")
+
+        table_data = [{
+            "Name":           a["name"],
+            "Date":           a["approach_date"],
+            "Distance (LD)":  a["miss_distance_lunar"],
+            "Distance (km)":  a["miss_distance_km"],
+            "Diameter (m)":   a["diameter_m"],
+            "Speed (km/s)":   a["velocity_km_s"],
+            "Hazardous":      a["hazardous"],
+            "Threat":         a["threat_level"],
+            "Size Class":     a["size_class"],
+            "Orbit Class":    a["orbit_class"],
+        } for a in display_list]
+
+        st.dataframe(
+            pd.DataFrame(table_data),
+            hide_index=True,
+            height=500
+        )
+
+        st.download_button(
+            label="Download asteroid data as CSV",
+            data=pd.DataFrame(table_data).to_csv(
+                index=False),
+            file_name=(
+                f"asteroids_"
+                f"{utcnow().strftime('%Y-%m-%d')}.csv"),
+            mime="text/csv"
+        )
+
+        st.markdown("---")
+
+        # ── Educational section ───────────────────────────
+        st.subheader("🎓 About near-Earth asteroids")
+        st.markdown("""
+**What is a near-Earth asteroid?**
+Near-Earth asteroids (NEAs) are asteroids whose
+orbits bring them close to Earth. NASA tracks over
+32,000 NEAs and monitors them for potential impact
+risk.
+
+**What is a Potentially Hazardous Asteroid (PHA)?**
+PHAs are asteroids larger than 140m that come within
+0.05 AU (7.5 million km) of Earth's orbit. There are
+over 2,300 known PHAs. None are currently on course
+to hit Earth in the next 100 years.
+
+**What is a lunar distance (LD)?**
+One lunar distance = 384,400 km — the average
+distance from Earth to the Moon. Astronomers use
+this unit for close asteroid approaches.
+
+**Torino Scale**
+The Torino Scale rates asteroid impact risk from
+0 (no concern) to 10 (certain collision causing
+global catastrophe). All currently known asteroids
+are rated 0.
+
+**Size comparison:**
+- Chelyabinsk 2013: ~20m — injured 1,500 people
+- Tunguska 1908: ~50m — flattened 2,000 km² forest
+- Dinosaur extinction: ~10km — global catastrophe
+        """)
+
+        st.caption(
+            "Data from NASA NeoWs API · "
+            "1 LD = 384,400 km · "
+            "PHA = Potentially Hazardous Asteroid · "
+            "Impact energy is hypothetical only · "
+            "No known asteroids are on course "
+            "to hit Earth in the foreseeable future"
+        )
+
+
+# ═══════════════════════════════════════════════════════
+# TAB 21 — Eclipses & Transits
+# ═══════════════════════════════════════════════════════
+with tab21:
+    st.subheader("🌑 Eclipses & Transits")
+    st.caption(
+        "Upcoming solar eclipses, lunar eclipses and "
+        "planetary transits. Shows which of your 1275 "
+        "observatories have the best view and weather "
+        "for each event."
+    )
+
+    events   = get_upcoming_events()
+    upcoming = events[:5]
+
+    # ── Summary metrics ───────────────────────────────────
+    solar_count  = sum(1 for e in events
+                       if e["category"] == "Solar Eclipse")
+    lunar_count  = sum(1 for e in events
+                       if e["category"] == "Lunar Eclipse")
+    transit_count= sum(1 for e in events
+                       if e["category"] == "Transit")
+    next_event   = events[0] if events else None
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Solar Eclipses",  solar_count)
+    m2.metric("Lunar Eclipses",  lunar_count)
+    m3.metric("Transits",        transit_count)
+    m4.metric("Next Event",
+              f"{next_event['days_until']} days"
+              if next_event else "None")
+
+    st.markdown("---")
+
+    # ── Next event banner ─────────────────────────────────
+    if next_event:
+        color = next_event["color"]
+        st.markdown(
+            f"<div style='background:{color}22;"
+            f"border:2px solid {color};"
+            f"border-radius:8px;padding:16px;"
+            f"margin-bottom:16px'>"
+            f"<h3 style='color:{color};margin:0'>"
+            f"{next_event['emoji']} Next: "
+            f"{next_event['type']}</h3>"
+            f"<p style='color:#ccc;margin:4px 0 0'>"
+            f"{next_event['date_display']} · "
+            f"In {next_event['days_until']} days · "
+            f"{next_event.get('regions', next_event.get('visible_regions', ''))}"
+            f"</p></div>",
+            unsafe_allow_html=True
+        )
+
+    st.markdown("---")
+
+    # ── Upcoming events list ──────────────────────────────
+    st.subheader("All upcoming eclipses and transits")
+
+    # Observatory selector for visibility check
+    ecl_obs = st.selectbox(
+        "Check visibility from observatory",
+        df["observatory"].tolist(),
+        key="ecl_obs"
+    )
+    ecl_row = df[df["observatory"] == ecl_obs].iloc[0]
+    ecl_lat = float(ecl_row["latitude"])
+    ecl_lon = float(ecl_row["longitude"])
+    ecl_alt = float(ecl_row.get("altitude_m", 0) or 0)
+
+    st.markdown("---")
+
+    for event in events:
+        color    = event["color"]
+        emoji    = event["emoji"]
+        days     = event["days_until"]
+        category = event["category"]
+
+        # Check visibility from selected observatory
+        vis = get_eclipse_visibility(
+            event, ecl_lat, ecl_lon, ecl_alt)
+
+        vis_emoji = "✅" if vis["visible"] else "❌"
+        in_path   = vis.get("in_totality_path", False)
+        if in_path:
+            vis_emoji = "🌟"
+
+        with st.expander(
+            f"{emoji} **{event['type']}** — "
+            f"{event['date_display']} · "
+            f"In {days} days · "
+            f"{vis_emoji} "
+            f"{'IN TOTALITY PATH!' if in_path else 'Visible' if vis['visible'] else 'Not visible'} "
+            f"from {ecl_obs.replace(' Observatory', '')[:20]}"
+        ):
+            # Key metrics
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Date",     event["date_display"])
+            c2.metric("Days Away",days)
+            c3.metric("Category", category)
+            c4.metric("Type",     event["type"])
+
+            # Eclipse-specific metrics
+            if category == "Solar Eclipse":
+                s1, s2, s3 = st.columns(3)
+                s1.metric("Magnitude",
+                          event.get("magnitude", "N/A"))
+                s2.metric("Max Duration",
+                          f"{event.get('duration_mins', 0)} min"
+                          if event.get("duration_mins")
+                          else "N/A")
+                s3.metric("Regions",
+                          event.get("regions", "N/A"))
+
+            elif category == "Lunar Eclipse":
+                l1, l2, l3, l4 = st.columns(4)
+                l1.metric("Magnitude",
+                          event.get("magnitude", "N/A"))
+                l2.metric("Totality",
+                          f"{event.get('duration_totality', 0)} min"
+                          if event.get("duration_totality")
+                          else "Partial")
+                l3.metric("Max Eclipse",
+                          event.get("max_eclipse", "N/A"))
+                l4.metric("Visible From",
+                          event.get("visible_regions", "N/A"))
+
+                if event.get("totality_start"):
+                    t1, t2, t3 = st.columns(3)
+                    t1.metric("Partial Starts",
+                              event.get("partial_start", "N/A"))
+                    t2.metric("Totality Starts",
+                              event.get("totality_start", "N/A"))
+                    t3.metric("Totality Ends",
+                              event.get("totality_end", "N/A"))
+
+            elif category == "Transit":
+                tr1, tr2, tr3 = st.columns(3)
+                tr1.metric("Start",    event.get("start", "N/A"))
+                tr2.metric("Mid",      event.get("mid", "N/A"))
+                tr3.metric("End",      event.get("end", "N/A"))
+                st.info(f"**Rarity:** {event.get('rarity', 'N/A')}")
+
+            # Description
+            st.info(event["description"])
+
+            # Visibility from selected observatory
+            st.markdown(
+                f"**Visibility from {ecl_obs}:**"
+            )
+            if in_path:
+                st.success(
+                    f"🌟 **This observatory is inside "
+                    f"the path of totality!** "
+                    f"{vis['reason']}"
+                )
+            elif vis["visible"]:
+                st.success(
+                    f"✅ Visible from this observatory. "
+                    f"{vis['reason']}"
+                )
+            else:
+                st.warning(
+                    f"❌ Not visible from this location. "
+                    f"{vis['reason']}"
+                )
+
+            # Rarity
+            st.caption(eclipse_rarity(event))
+
+            st.markdown("---")
+
+            # Best observatories for this eclipse
+            st.markdown(
+                f"**Best observatories for "
+                f"this {event['type'].lower()}:**"
+            )
+
+            with st.spinner(
+                "Finding best observatories..."
+            ):
+                best_obs = get_best_observatories_for_eclipse(
+                    event, df)
+
+            if best_obs:
+                for obs in best_obs[:5]:
+                    path_badge = (
+                        " 🌟 IN TOTALITY PATH"
+                        if obs["in_totality"] else "")
+                    st.markdown(
+                        f"**{obs['observatory']}** "
+                        f"({obs['country']}) · "
+                        f"Weather: {obs['weather_score']}/100"
+                        f"{path_badge}"
+                    )
+            else:
+                st.info(
+                    "Visibility calculations running..."
+                )
+
+    st.markdown("---")
+
+    # ── Solar eclipse timeline chart ──────────────────────
+    st.subheader("📅 Eclipse timeline")
+
+    solar_events  = [e for e in events
+                     if e["category"] == "Solar Eclipse"]
+    lunar_events  = [e for e in events
+                     if e["category"] == "Lunar Eclipse"]
+
+    if solar_events or lunar_events:
+        fig, ax = plt.subplots(figsize=(12, 4))
+
+        colors_map = {
+            "total":   "#E74C3C",
+            "annular": "#F39C12",
+            "partial": "#EF9F27",
+        }
+
+        for i, e in enumerate(solar_events[:8]):
+            color  = colors_map.get(
+                e.get("subtype", "partial"), "#EF9F27")
+            days   = e["days_until"]
+            ax.barh(0.6, 30, left=days,
+                    height=0.3, color=color,
+                    alpha=0.8)
+            ax.text(days + 15, 0.6,
+                    e["type"].replace(" Solar", ""),
+                    ha="center", va="center",
+                    fontsize=7, color="white",
+                    fontweight="bold")
+            ax.text(days + 15, 0.4,
+                    e["date"][:7],
+                    ha="center", va="center",
+                    fontsize=6, color="#aaa")
+
+        for i, e in enumerate(lunar_events[:8]):
+            color  = ("#E74C3C"
+                      if e.get("subtype") == "total"
+                      else "#EF9F27")
+            days   = e["days_until"]
+            ax.barh(0.2, 20, left=days,
+                    height=0.25, color=color,
+                    alpha=0.8)
+            ax.text(days + 10, 0.2,
+                    "Total" if e.get("subtype") == "total"
+                    else "Partial",
+                    ha="center", va="center",
+                    fontsize=7, color="white")
+
+        ax.set_yticks([0.2, 0.6])
+        ax.set_yticklabels(
+            ["Lunar", "Solar"],
+            color="white", fontsize=10)
+        ax.set_xlabel(
+            "Days from today",
+            color="white", fontsize=9)
+        ax.set_title(
+            "Upcoming Eclipse Timeline",
+            color="white", fontsize=11,
+            fontweight="bold")
+        ax.set_facecolor("#0E1117")
+        fig.patch.set_facecolor("#0E1117")
+        ax.tick_params(colors="white")
+        ax.xaxis.label.set_color("white")
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.spines["left"].set_color("#444441")
+        ax.spines["bottom"].set_color("#444441")
+
+        from matplotlib.patches import Patch
+        legend = [
+            Patch(color="#E74C3C", label="Total"),
+            Patch(color="#F39C12", label="Annular"),
+            Patch(color="#EF9F27", label="Partial"),
+        ]
+        ax.legend(handles=legend, fontsize=8,
+                  facecolor="#0E1117",
+                  labelcolor="white",
+                  loc="upper right")
+
+        buf = io.BytesIO()
+        plt.tight_layout()
+        plt.savefig(buf, format="png", dpi=150,
+                    facecolor="#0E1117",
+                    bbox_inches="tight")
+        buf.seek(0)
+        st.image(buf.getvalue(), width='stretch')
+        buf.close()
+        plt.close(fig)
+
+    st.markdown("---")
+
+    # ── Educational section ───────────────────────────────
+    st.subheader("🎓 Understanding eclipses")
+    st.markdown("""
+**Solar eclipses** occur when the Moon passes between
+Earth and the Sun. The Moon's shadow falls on Earth.
+
+**Types of solar eclipse:**
+- **Total** — Moon completely covers the Sun. The corona
+  becomes visible. Day turns to night. Lasts up to 7.5 min.
+- **Annular** — Moon is too far away to fully cover the Sun.
+  A ring of fire remains visible around the Moon.
+- **Partial** — Only part of the Sun is covered. Requires
+  solar filters to observe safely at all times.
+- **Hybrid** — Starts annular, becomes total, then annular.
+  Very rare.
+
+**Lunar eclipses** occur when Earth passes between the
+Sun and Moon. Earth's shadow falls on the Moon.
+
+**Types of lunar eclipse:**
+- **Total** — Moon enters Earth's umbra completely.
+  Turns red/orange due to sunlight refracted by Earth's
+  atmosphere. Safe to observe with naked eye.
+- **Partial** — Only part of the Moon enters the umbra.
+- **Penumbral** — Moon passes through Earth's outer shadow.
+  Very subtle darkening — hard to notice.
+
+**Transits** occur when Mercury or Venus crosses the
+Sun's disc as seen from Earth. Appears as a tiny black
+dot moving slowly across the Sun. Requires solar filter.
+
+**Safety:**
+Never look at a solar eclipse without certified solar
+filters (ISO 12312-2). Regular sunglasses are NOT safe.
+Lunar eclipses are completely safe to observe.
+    """)
+
+# ═══════════════════════════════════════════════════════
+# TAB 22 — Meteor Showers   
+# ═══════════════════════════════════════════════════════
+with tab22:
     st.subheader("🔬 Observatory Detail — Live View")
     st.caption(
         "Select any observatory for a complete live "
