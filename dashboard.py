@@ -96,15 +96,6 @@ st.set_page_config(
     layout="wide"
 )
 
-st.markdown("""
-    <style>
-    .block-container {
-        padding-top: 1rem !important;
-    }
-    </style>
-""", unsafe_allow_html=True)
-
-
 import base64
 
 svg = '''<svg width="1440" height="900" viewBox="0 0 1440 900" xmlns="http://www.w3.org/2000/svg">
@@ -267,30 +258,178 @@ svg = '''<svg width="1440" height="900" viewBox="0 0 1440 900" xmlns="http://www
   <g transform="translate(482,552) rotate(-22)"><ellipse rx="8" ry="5" fill="#302828" stroke="#504040" stroke-width="0.8"/><ellipse rx="4.5" ry="2.5" fill="#241c1c" opacity="0.7"/></g>
 </svg>'''
 
-b64 = base64.b64encode(svg.encode()).decode()
 
-st.markdown(
-    f"""
+# ── Theme ─────────────────────────────────────────────
+if "theme" not in st.session_state:
+    st.session_state.theme = "dark"
+
+_t = st.session_state.theme
+
+if _t == "dark":
+    BG          = "#0d1117"
+    BG2         = "#161b22"
+    BG3         = "#21262d"
+    BORDER      = "#30363d"
+    TEXT        = "#e6edf3"
+    TEXT2       = "#8b949e"
+    ACCENT      = "#1f6feb"
+    ACCENT2     = "#388bfd"
+    SIDEBAR_BG  = "#010409"
+else:
+    BG          = "#ffffff"
+    BG2         = "#f6f8fa"
+    BG3         = "#eaeef2"
+    BORDER      = "#d0d7de"
+    TEXT        = "#1f2328"
+    TEXT2       = "#656d76"
+    ACCENT      = "#0969da"
+    ACCENT2     = "#0550ae"
+    SIDEBAR_BG  = "#f6f8fa"
+
+st.markdown(f"""
     <style>
+    /* ── Reset & base ── */
     .stApp {{
-        background-image: url("data:image/svg+xml;base64,{b64}");
-        background-size: cover;
-        background-attachment: fixed;
-        background-position: center;
-        background-repeat: no-repeat;
+        background-color: {BG} !important;
+        color: {TEXT} !important;
+        font-family: -apple-system, BlinkMacSystemFont,
+            'Segoe UI', 'Inter', sans-serif;
     }}
+    .block-container {{
+        padding-top: 1.5rem !important;
+        padding-bottom: 2rem !important;
+        max-width: 1400px;
+    }}
+
+    /* ── Sidebar ── */
     [data-testid="stSidebar"] {{
-        background-color: rgba(2, 8, 16, 0.85);
+        background-color: {SIDEBAR_BG} !important;
+        border-right: 1px solid {BORDER} !important;
     }}
+    [data-testid="stSidebar"] * {{
+        color: {TEXT} !important;
+    }}
+
+    /* ── Header ── */
     [data-testid="stHeader"] {{
-        background-color: rgba(2, 8, 16, 0.5);
+        background-color: {BG} !important;
+        border-bottom: 1px solid {BORDER};
+    }}
+
+    /* ── Metric cards ── */
+    [data-testid="stMetric"] {{
+        background-color: {BG2};
+        border: 1px solid {BORDER};
+        border-radius: 8px;
+        padding: 1rem 1.25rem;
+    }}
+    [data-testid="stMetricLabel"] {{
+        color: {TEXT2} !important;
+        font-size: 0.75rem !important;
+        font-weight: 600 !important;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }}
+    [data-testid="stMetricValue"] {{
+        color: {TEXT} !important;
+        font-size: 1.5rem !important;
+        font-weight: 700 !important;
+    }}
+
+    /* ── Dataframes ── */
+    [data-testid="stDataFrame"] {{
+        border: 1px solid {BORDER} !important;
+        border-radius: 8px !important;
+        overflow: hidden;
+    }}
+
+    /* ── Dividers ── */
+    hr {{
+        border-color: {BORDER} !important;
+        margin: 1rem 0 !important;
+    }}
+
+    /* ── Subheaders ── */
+    h1, h2, h3 {{
+        color: {TEXT} !important;
+        font-weight: 700 !important;
+        letter-spacing: -0.02em;
+    }}
+    h2 {{
+        font-size: 1.15rem !important;
+        border-bottom: 1px solid {BORDER};
+        padding-bottom: 0.5rem;
+        margin-bottom: 1rem !important;
+    }}
+
+    /* ── Buttons ── */
+    .stButton > button {{
+        background-color: {ACCENT} !important;
+        color: #ffffff !important;
+        border: none !important;
+        border-radius: 6px !important;
+        font-weight: 600 !important;
+        font-size: 0.85rem !important;
+        padding: 0.4rem 1rem !important;
+    }}
+    .stButton > button:hover {{
+        background-color: {ACCENT2} !important;
+    }}
+
+    /* ── Selectbox / radio ── */
+    [data-testid="stRadio"] label {{
+        color: {TEXT} !important;
+        font-size: 0.85rem !important;
+    }}
+
+    /* ── Captions ── */
+    [data-testid="stCaptionContainer"] {{
+        color: {TEXT2} !important;
+        font-size: 0.75rem !important;
+    }}
+
+    /* ── Progress bars ── */
+    [data-testid="stProgressBar"] > div {{
+        background-color: {ACCENT} !important;
+        border-radius: 4px;
+    }}
+    [data-testid="stProgressBar"] {{
+        background-color: {BG3} !important;
+        border-radius: 4px;
+    }}
+
+    /* ── Tabs ── */
+    .stTabs [data-baseweb="tab"] {{
+        color: {TEXT2} !important;
+        border-bottom: 2px solid transparent;
+    }}
+    .stTabs [aria-selected="true"] {{
+        color: {ACCENT} !important;
+        border-bottom: 2px solid {ACCENT} !important;
+    }}
+
+    /* ── Input fields ── */
+    .stTextInput input, .stSelectbox select {{
+        background-color: {BG2} !important;
+        border: 1px solid {BORDER} !important;
+        color: {TEXT} !important;
+        border-radius: 6px !important;
+    }}
+
+    /* ── Expander ── */
+    [data-testid="stExpander"] {{
+        border: 1px solid {BORDER} !important;
+        border-radius: 8px !important;
+        background-color: {BG2} !important;
+    }}
+
+    /* ── Alerts / info boxes ── */
+    [data-testid="stAlert"] {{
+        border-radius: 8px !important;
+        border: 1px solid {BORDER} !important;
     }}
     </style>
-    """,
-    unsafe_allow_html=True
-)
-
-import base64
+""", unsafe_allow_html=True)
 
 
 
@@ -495,6 +634,12 @@ selected_page = st.sidebar.radio(
     list(PAGES.keys()),
     label_visibility="collapsed"
 )
+
+st.sidebar.markdown("---")
+_theme_label = "Switch to Light Mode" if st.session_state.theme == "dark" else "Switch to Dark Mode"
+if st.sidebar.button(_theme_label, use_container_width=True):
+    st.session_state.theme = "light" if st.session_state.theme == "dark" else "dark"
+    st.rerun()
 
 # Current weather summary in sidebar
 st.sidebar.markdown("---")
