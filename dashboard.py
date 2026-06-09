@@ -90,9 +90,11 @@ from eclipses import (get_upcoming_events,
                       TRANSITS)
 from forecast import fetch_forecast, get_daily_summary
 
+from PIL import Image as _Image
+_favicon = _Image.open("gowc_logo.png")
 st.set_page_config(
     page_title="GOWC - Observatory Weather Tracker",
-    page_icon="🔭",
+    page_icon=_favicon,
     layout="wide"
 )
 
