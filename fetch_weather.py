@@ -13,14 +13,6 @@ def load_observatories():
     with open(path, "r") as f:
         return json.load(f)
 
-def _get_hourly_value(data, key):
-    try:
-        values   = data.get("hourly", {}).get(key, [])
-        now_hour = datetime.utcnow().hour
-        return values[now_hour] if values else None
-    except Exception:
-        return None
-
 def fetch_weather(observatory):
     url    = "https://api.open-meteo.com/v1/forecast"
     params = {
@@ -36,15 +28,6 @@ def fetch_weather(observatory):
             "dewpoint_2m",
             "windspeed_80m",
             "windspeed_120m",
-        ],
-        "hourly": [
-            "windspeed_250hPa",
-            "temperature_500hPa",
-            "temperature_850hPa",
-            "relativehumidity_1000hPa",
-            "relativehumidity_700hPa",
-            "relativehumidity_500hPa",
-            "relativehumidity_300hPa",
         ],
         "wind_speed_unit": "ms",
         "forecast_days":   1
@@ -72,20 +55,7 @@ def fetch_weather(observatory):
             "dewpoint_c":       current.get("dewpoint_2m"),
             "wind_speed_80m":   current.get("windspeed_80m"),
             "wind_speed_120m":  current.get("windspeed_120m"),
-            "jet_stream_ms":    _get_hourly_value(
-                data, "windspeed_250hPa"),
-            "temp_500hpa":      _get_hourly_value(
-                data, "temperature_500hPa"),
-            "temp_850hpa":      _get_hourly_value(
-                data, "temperature_850hPa"),
-            "rh_1000hpa":       _get_hourly_value(
-                data, "relativehumidity_1000hPa"),
-            "rh_700hpa":        _get_hourly_value(
-                data, "relativehumidity_700hPa"),
-            "rh_500hpa":        _get_hourly_value(
-                data, "relativehumidity_500hPa"),
-            "rh_300hpa":        _get_hourly_value(
-                data, "relativehumidity_300hPa"),
+            "jet_stream_ms":    None,
         }
 
     except requests.exceptions.Timeout:

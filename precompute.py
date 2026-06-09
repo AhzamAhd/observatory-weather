@@ -94,7 +94,6 @@ def precompute_all():
         })
     save("atmospheric", atm_results)
 
-    
 
     # ── Efficiency scores ─────────────────────────────────
     for tel_type in ["optical", "infrared", "radio"]:

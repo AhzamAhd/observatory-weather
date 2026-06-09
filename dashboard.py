@@ -92,11 +92,18 @@ from forecast import fetch_forecast, get_daily_summary
 
 st.set_page_config(
     page_title="GOWC - Observatory Weather Tracker",
-    page_icon= "C:\\Users\\Ahzam Ahmed\\OneDrive\\Desktop\\Observatory_weather\\gowc_logo.png",   # ← replaces 🔭
+    page_icon="🔭",
     layout="wide"
 )
 
-st.logo = st.logo("C:\\Users\\Ahzam Ahmed\\OneDrive\\Desktop\\Observatory_weather\\gowc_logo.png", size="large")   # ← sidebar logo
+st.markdown("""
+    <style>
+    .block-container {
+        padding-top: 1rem !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 
 import base64
 
@@ -446,7 +453,7 @@ df  = load_data()
 win = load_windows()
 peak = load_peak_times_cached()
 
-st.title("🔭 Global Observatory Weather Tracker")
+
 st.caption(
     f"Last updated: "
     f"{df['fetch_datetime'].iloc[0] if not df.empty else 'No data'} "
@@ -455,8 +462,8 @@ st.caption(
 )
 
 # ── Sidebar navigation ────────────────────────────────
-st.sidebar.title("🔭 Navigation")
-st.sidebar.markdown("---")
+st.sidebar.image("assets/gowc_banner.png", width=220)
+st.sidebar.title("Navigation")
 
 PAGES = {
     "🌍 Live Weather Map":       "live_map",
@@ -509,6 +516,47 @@ if not df.empty:
     )
 
 st.sidebar.markdown("---")
+st.sidebar.markdown("**Fetch Live Data**")
+
+if st.sidebar.button("Fetch Live Data", use_container_width=True):
+    with st.sidebar:
+        with st.spinner("Fetching weather for all observatories..."):
+            try:
+                from fetch_weather import fetch_all_parallel, load_observatories
+                from load_database import (build_coord_cache,
+                                           upsert_weather_readings,
+                                           insert_weather_history,
+                                           utcnow)
+                import json, os
+
+                observatories = load_observatories()
+                if observatories:
+                    results, failed = fetch_all_parallel(
+                        observatories, max_workers=50)
+
+                    os.makedirs("data/bronze", exist_ok=True)
+                    date_str = utcnow().strftime("%Y-%m-%d")
+                    filename = f"data/bronze/raw_weather_{date_str}.json"
+                    with open(filename, "w") as fp:
+                        json.dump(results, fp, indent=2)
+
+                    now = utcnow()
+                    build_coord_cache()
+                    upsert_weather_readings(results, now)
+                    insert_weather_history(results, now)
+
+                    load_data.clear()
+                    fetched_at = now.strftime("%Y-%m-%d %H:%M UTC")
+                    st.success(
+                        f"Fetched {len(results)} observatories\n\n"
+                        f"Last fetched: {fetched_at}"
+                    )
+                else:
+                    st.error("No observatories found.")
+            except Exception as e:
+                st.error(f"Fetch failed: {e}")
+
+st.sidebar.markdown("---")
 st.sidebar.caption(
     "Global Observatory Weather Tracker · "
     "Built by Ahzam Ahmed"
@@ -518,6 +566,7 @@ st.sidebar.caption(
 # TAB 1 — Live Weather Map
 # ═══════════════════════════════════════════════════════
 if selected_page == "🌍 Live Weather Map":
+    st.image("assets/gowc_banner.png", width=1500)
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Total Observatories", len(df))
     c2.metric("Excellent Tonight",
