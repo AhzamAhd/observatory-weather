@@ -926,85 +926,78 @@ if selected_page == "Live Weather Map":
     st.markdown("---")
     st.subheader("World map — live observation quality")
 
-    _tile_choice = st.radio(
+    _map_style = st.radio(
         "Map style",
-        ["Light", "Dark", "Street (cities)", "Satellite"],
+        ["Streets", "Dark", "Satellite", "Outdoors"],
         horizontal=True,
-        index=0,
+        index=1 if st.session_state.theme == "dark" else 0,
+        key="main_map_style"
     )
-    _tile_map = {
-        "Light":           ("CartoDB positron",   None, None),
-        "Dark":            ("CartoDB dark_matter", None, None),
-        "Street (cities)": ("OpenStreetMap",       None, None),
-        "Satellite": (
-            "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-            "Tiles © Esri — Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community",
-            "Esri.WorldImagery",
-        ),
+    _mapbox_styles = {
+        "Streets":   "open-street-map",
+        "Dark":      "carto-darkmatter",
+        "Satellite": "white-bg",
+        "Outdoors":  "carto-positron",
     }
-    _tile_url, _tile_attr, _tile_name = _tile_map[_tile_choice]
+    _mapbox_style = _mapbox_styles[_map_style]
 
-    if _tile_choice == "Satellite":
-        m = folium.Map(location=[20, 0], zoom_start=2,
-                       tiles=_tile_url, attr=_tile_attr)
-    else:
-        m = folium.Map(location=[20, 0], zoom_start=2,
-                       tiles=_tile_url)
-    for _, row in df.iterrows():
-        color = score_color(row["observation_score"])
-        score = int(row["observation_score"])
-        popup_html = f"""
-            <div style='font-family:-apple-system,BlinkMacSystemFont,sans-serif;
-                        width:220px;padding:4px'>
-                <div style='font-weight:700;font-size:13px;margin-bottom:4px'>
-                    {row['observatory']}</div>
-                <div style='font-size:11px;color:#888;margin-bottom:6px'>
-                    {row['country']} &middot; {row['altitude_m']}m &middot; {row['mpc_code']}</div>
-                <div style='background:{color}22;border:1px solid {color};
-                            border-radius:4px;padding:4px 8px;margin-bottom:6px;
-                            text-align:center'>
-                    <span style='font-size:18px;font-weight:700;color:{color}'>
-                        {score}</span>
-                    <span style='font-size:11px;color:#888'> / 100 &middot; {row['condition']}</span>
-                </div>
-                <div style='font-size:11px;display:grid;grid-template-columns:1fr 1fr;gap:3px'>
-                    <span>Cloud: {row['cloud_cover_pct']}%</span>
-                    <span>Humidity: {row['humidity_pct']}%</span>
-                    <span>Wind: {row['wind_speed_ms']} m/s</span>
-                    <span>Temp: {row['temperature_c']}&deg;C</span>
-                </div>
-                <div style='font-size:10px;color:#aaa;margin-top:5px'>{row['fetch_time']}</div>
-            </div>
-        """
-        _sz = 10 if score >= 80 else 8 if score >= 60 else 7 if score >= 40 else 6
-        _icon_html = f"""<svg width="{_sz*2}" height="{_sz*2}" viewBox="0 0 20 20"
-             xmlns="http://www.w3.org/2000/svg"
-             style="display:block;filter:drop-shadow(0 0 3px {color}99)">
-          <circle cx="10" cy="10" r="7" fill="{color}28" stroke="{color}" stroke-width="1.5"/>
-          <circle cx="10" cy="10" r="2.5" fill="{color}"/>
-          <line x1="10" y1="1"    x2="10" y2="5.5"  stroke="{color}" stroke-width="1.2"/>
-          <line x1="10" y1="14.5" x2="10" y2="19"   stroke="{color}" stroke-width="1.2"/>
-          <line x1="1"  y1="10"   x2="5.5" y2="10"  stroke="{color}" stroke-width="1.2"/>
-          <line x1="14.5" y1="10" x2="19" y2="10"   stroke="{color}" stroke-width="1.2"/>
-        </svg>"""
-        folium.Marker(
-            location=[row["latitude"], row["longitude"]],
-            icon=folium.DivIcon(
-                html=_icon_html,
-                icon_size=(_sz*2, _sz*2),
-                icon_anchor=(_sz, _sz),
+    import plotly.graph_objects as go
+
+    _color_map = {"Excellent": "#1D9E75", "Good": "#00b4d8",
+                  "Marginal": "#EF9F27", "Poor": "#E24B4A"}
+    _size_map  = {"Excellent": 10, "Good": 8, "Marginal": 7, "Poor": 6}
+
+    _map_fig = go.Figure()
+
+    for condition, grp in df.groupby("condition"):
+        _c = _color_map.get(condition, "#888888")
+        _s = _size_map.get(condition, 7)
+        _map_fig.add_trace(go.Scattermapbox(
+            lat=grp["latitude"],
+            lon=grp["longitude"],
+            mode="markers",
+            marker=dict(
+                size=_s,
+                color=_c,
+                opacity=0.9,
             ),
-            popup=folium.Popup(popup_html, max_width=230),
-            tooltip=f"{row['observatory']} — {score}/100 [{row['condition']}]"
-        ).add_to(m)
+            text=grp.apply(lambda r: (
+                f"<b>{r['observatory']}</b><br>"
+                f"{r['country']} · {r['altitude_m']}m<br>"
+                f"Score: <b>{int(r['observation_score'])}/100</b> [{r['condition']}]<br>"
+                f"Cloud: {r['cloud_cover_pct']}% · Humidity: {r['humidity_pct']}%<br>"
+                f"Wind: {r['wind_speed_ms']} m/s · Temp: {r['temperature_c']}°C"
+            ), axis=1),
+            hovertemplate="%{text}<extra></extra>",
+            name=condition,
+        ))
 
-    st_folium(m, width=None, height=500)
-
-    lc1, lc2, lc3, lc4 = st.columns(4)
-    lc1.markdown("<span style='color:#1D9E75;font-size:1.1em'>⊕</span> **Excellent** — 80 to 100", unsafe_allow_html=True)
-    lc2.markdown("<span style='color:#378ADD;font-size:1.1em'>⊕</span> **Good** — 60 to 79", unsafe_allow_html=True)
-    lc3.markdown("<span style='color:#EF9F27;font-size:1.1em'>⊕</span> **Marginal** — 40 to 59", unsafe_allow_html=True)
-    lc4.markdown("<span style='color:#E24B4A;font-size:1.1em'>⊕</span> **Poor** — 0 to 39", unsafe_allow_html=True)
+    _map_fig.update_layout(
+        mapbox=dict(
+            style=_mapbox_style,
+            center=dict(lat=20, lon=0),
+            zoom=1.4,
+        ),
+        margin=dict(l=0, r=0, t=0, b=0),
+        height=560,
+        paper_bgcolor="rgba(0,0,0,0)",
+        legend=dict(
+            orientation="h",
+            yanchor="bottom", y=0.01,
+            xanchor="left",   x=0.01,
+            bgcolor="rgba(10,10,20,0.7)",
+            bordercolor="#1e2d40",
+            borderwidth=1,
+            font=dict(color="#cdd9e5", size=12),
+        ),
+        uirevision="map",
+    )
+    st.plotly_chart(_map_fig, use_container_width=True, config={
+        "scrollZoom": True,
+        "displayModeBar": True,
+        "modeBarButtonsToRemove": ["select2d", "lasso2d"],
+        "displaylogo": False,
+    })
 
     st.markdown("---")
     with st.expander("Observation quality rankings", expanded=False):
