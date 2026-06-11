@@ -993,35 +993,75 @@ if selected_page == "Live Weather Map":
         _df_map = df.copy()
 
     import plotly.graph_objects as go
+    import numpy as np
 
     _color_map = {"Excellent": "#1D9E75", "Good": "#00b4d8",
                   "Marginal": "#EF9F27", "Poor": "#E24B4A"}
-    _size_map  = {"Excellent": 10, "Good": 8, "Marginal": 7, "Poor": 6}
+
+    # Cluster toggle — off when searching (already filtered)
+    _cluster_on = st.checkbox("Cluster markers", value=not bool(_obs_search), key="map_cluster")
 
     _map_fig = go.Figure()
 
-    for condition, grp in _df_map.groupby("condition"):
-        _c = _color_map.get(condition, "#888888")
-        _s = _size_map.get(condition, 7)
-        _map_fig.add_trace(go.Scattermapbox(
-            lat=grp["latitude"],
-            lon=grp["longitude"],
-            mode="markers",
-            marker=dict(
-                size=_s,
-                color=_c,
-                opacity=0.9,
-            ),
-            text=grp.apply(lambda r: (
-                f"<b>{r['observatory']}</b><br>"
-                f"{r['country']} · {r['altitude_m']}m<br>"
-                f"Score: <b>{int(r['observation_score'])}/100</b> [{r['condition']}]<br>"
-                f"Cloud: {r['cloud_cover_pct']}% · Humidity: {r['humidity_pct']}%<br>"
-                f"Wind: {r['wind_speed_ms']} m/s · Temp: {r['temperature_c']}°C"
-            ), axis=1),
-            hovertemplate="%{text}<extra></extra>",
-            name=condition,
-        ))
+    if _cluster_on and len(_df_map) > 20:
+        # Grid-bin markers: cell size ~15° at world view
+        _grid = 15.0
+        _df_map["_clat"] = (_df_map["latitude"]  // _grid) * _grid + _grid / 2
+        _df_map["_clon"] = (_df_map["longitude"] // _grid) * _grid + _grid / 2
+        _cond_order = ["Excellent", "Good", "Marginal", "Poor"]
+
+        for (_clat, _clon), _grp in _df_map.groupby(["_clat", "_clon"]):
+            _n      = len(_grp)
+            _avg    = _grp["observation_score"].mean()
+            # dominant condition = most common
+            _dom    = _grp["condition"].value_counts().idxmax()
+            _cc     = _color_map.get(_dom, "#888")
+            _size   = min(18 + _n * 0.35, 52)
+            _names  = _grp["observatory"].tolist()
+            _preview = "<br>".join(_names[:5]) + (f"<br>…+{_n-5} more" if _n > 5 else "")
+            _map_fig.add_trace(go.Scattermapbox(
+                lat=[_clat], lon=[_clon],
+                mode="markers+text",
+                marker=dict(size=_size, color=_cc, opacity=0.85),
+                text=[str(_n)],
+                textfont=dict(color="white", size=11),
+                hovertemplate=(
+                    f"<b>{_n} observatories</b><br>"
+                    f"Avg score: {_avg:.0f}/100<br>"
+                    f"Best condition: {_dom}<br>"
+                    f"{_preview}<extra></extra>"
+                ),
+                showlegend=False,
+            ))
+
+        # Legend as a separate dummy trace per condition present
+        for _cond in _cond_order:
+            if _cond in _df_map["condition"].values:
+                _map_fig.add_trace(go.Scattermapbox(
+                    lat=[None], lon=[None], mode="markers",
+                    marker=dict(size=10, color=_color_map[_cond]),
+                    name=_cond, showlegend=True,
+                ))
+    else:
+        _size_map = {"Excellent": 10, "Good": 8, "Marginal": 7, "Poor": 6}
+        for condition, grp in _df_map.groupby("condition"):
+            _c = _color_map.get(condition, "#888888")
+            _s = _size_map.get(condition, 7)
+            _map_fig.add_trace(go.Scattermapbox(
+                lat=grp["latitude"],
+                lon=grp["longitude"],
+                mode="markers",
+                marker=dict(size=_s, color=_c, opacity=0.9),
+                text=grp.apply(lambda r: (
+                    f"<b>{r['observatory']}</b><br>"
+                    f"{r['country']} · {r['altitude_m']}m<br>"
+                    f"Score: <b>{int(r['observation_score'])}/100</b> [{r['condition']}]<br>"
+                    f"Cloud: {r['cloud_cover_pct']}% · Humidity: {r['humidity_pct']}%<br>"
+                    f"Wind: {r['wind_speed_ms']} m/s · Temp: {r['temperature_c']}°C"
+                ), axis=1),
+                hovertemplate="%{text}<extra></extra>",
+                name=condition,
+            ))
 
     if _obs_search and not _df_map.empty:
         _map_clat = _df_map["latitude"].mean()
