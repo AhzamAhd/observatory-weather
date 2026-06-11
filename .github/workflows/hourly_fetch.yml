@@ -41,10 +41,3 @@ jobs:
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
 
-      - name: Commit bronze data
-        run: |
-          git config --global user.name "github-actions"
-          git config --global user.email "actions@github.com"
-          git add data/bronze/
-          git diff --staged --quiet || git commit -m "auto: hourly weather update $(date -u '+%Y-%m-%d %H:%M')"
-          git push
