@@ -312,10 +312,21 @@ st.markdown(f"""
         color: {TEXT} !important;
     }}
 
-    /* ── Header ── */
+    /* ── Hide Streamlit chrome ── */
     [data-testid="stHeader"] {{
-        background-color: {BG} !important;
-        border-bottom: 1px solid {BORDER};
+        display: none !important;
+    }}
+    [data-testid="stToolbar"] {{
+        display: none !important;
+    }}
+    #MainMenu {{
+        display: none !important;
+    }}
+    footer {{
+        display: none !important;
+    }}
+    [data-testid="stDecoration"] {{
+        display: none !important;
     }}
 
     /* ── Metric cards ── */
