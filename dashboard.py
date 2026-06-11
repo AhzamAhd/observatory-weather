@@ -6807,6 +6807,100 @@ if selected_page == "Observatory Detail":
         )
 
     st.markdown("---")
+
+    # ── Mini location map ─────────────────────────────────
+    st.subheader("Location")
+    import plotly.graph_objects as go
+    _nearby = df[
+        (abs(df["latitude"]  - live["latitude"])  < 15) &
+        (abs(df["longitude"] - live["longitude"]) < 15) &
+        (df["observatory"] != selected)
+    ].nlargest(8, "observation_score")
+
+    _det_fig = go.Figure()
+    # nearby sites (grey)
+    if not _nearby.empty:
+        _det_fig.add_trace(go.Scattermapbox(
+            lat=_nearby["latitude"], lon=_nearby["longitude"],
+            mode="markers",
+            marker=dict(size=7, color="#5c7a96", opacity=0.7),
+            text=_nearby["observatory"],
+            hovertemplate="<b>%{text}</b><extra></extra>",
+            name="Nearby",
+        ))
+    # selected site (gold star)
+    _det_fig.add_trace(go.Scattermapbox(
+        lat=[live["latitude"]], lon=[live["longitude"]],
+        mode="markers+text",
+        marker=dict(size=16, color="#f4a261"),
+        text=[selected.split(" Observatory")[0].split(" Telescope")[0]],
+        textposition="top right",
+        textfont=dict(color="#f4a261", size=12),
+        hovertemplate=f"<b>{selected}</b><br>{live['latitude']}°, {live['longitude']}°<extra></extra>",
+        name=selected,
+    ))
+    _det_fig.update_layout(
+        mapbox=dict(style="open-street-map", center=dict(lat=live["latitude"], lon=live["longitude"]), zoom=5),
+        margin=dict(l=0, r=0, t=0, b=0), height=340,
+        paper_bgcolor="rgba(0,0,0,0)",
+        legend=dict(bgcolor="rgba(10,10,20,0.7)", bordercolor="#1e2d40", borderwidth=1, font=dict(color="#cdd9e5", size=11)),
+        showlegend=True,
+    )
+    st.plotly_chart(_det_fig, use_container_width=True, config={"scrollZoom": True, "displayModeBar": False})
+
+    # ── Nearby observatories ──────────────────────────────
+    if not _nearby.empty:
+        st.subheader("Nearby observatories")
+        _nb_cols = st.columns(min(4, len(_nearby)))
+        for _ni, (_, _nr) in enumerate(_nearby.iterrows()):
+            with _nb_cols[_ni % 4]:
+                _nb_color = {"Excellent": "#1D9E75", "Good": "#00b4d8", "Marginal": "#EF9F27", "Poor": "#E24B4A"}.get(_nr["condition"], "#888")
+                st.markdown(
+                    f"<div style='background:#0e1117;border:1px solid #1e2d40;border-left:3px solid {_nb_color};"
+                    f"border-radius:6px;padding:10px;font-size:12px'>"
+                    f"<div style='color:#cdd9e5;font-weight:600'>{_nr['observatory']}</div>"
+                    f"<div style='color:{_nb_color};font-weight:700'>{int(_nr['observation_score'])}/100 · {_nr['condition']}</div>"
+                    f"<div style='color:#5c7a96'>Cloud {_nr['cloud_cover_pct']}% · Wind {_nr['wind_speed_ms']} m/s</div>"
+                    f"</div>", unsafe_allow_html=True
+                )
+
+    st.markdown("---")
+
+    # ── Historical reliability summary ────────────────────
+    st.subheader("Historical reliability (last 30 days)")
+    _rel_df = cached_reliability_scores(30)
+    if not _rel_df.empty and selected in _rel_df["observatory"].values:
+        _rel_row = _rel_df[_rel_df["observatory"] == selected].iloc[0]
+        _rh1, _rh2, _rh3, _rh4 = st.columns(4)
+        _rh1.metric("Reliability Grade", _rel_row.get("grade", "N/A"))
+        _rh2.metric("Avg Score", f"{round(_rel_row.get('avg_score', 0), 1)}/100")
+        _rh3.metric("Excellent Nights", f"{_rel_row.get('pct_excellent', 0)}%")
+        _rh4.metric("Poor Nights", f"{_rel_row.get('pct_poor', 0)}%")
+        # Sparkline using pct breakdown
+        _spark_labels = ["Excellent", "Good", "Marginal", "Poor"]
+        _spark_values = [
+            _rel_row.get("pct_excellent", 0),
+            max(0, _rel_row.get("pct_good", 0) - _rel_row.get("pct_excellent", 0)),
+            max(0, 100 - _rel_row.get("pct_good", 0) - _rel_row.get("pct_poor", 0)),
+            _rel_row.get("pct_poor", 0),
+        ]
+        _spark_colors = ["#1D9E75", "#00b4d8", "#EF9F27", "#E24B4A"]
+        _sfig = go.Figure(go.Bar(
+            x=_spark_labels, y=_spark_values,
+            marker_color=_spark_colors,
+            hovertemplate="%{x}: %{y:.1f}%<extra></extra>",
+        ))
+        _sfig.update_layout(
+            yaxis=dict(range=[0, 105], title="% of nights"),
+            template="plotly_dark" if st.session_state.theme == "dark" else "plotly_white",
+            paper_bgcolor=BG2, plot_bgcolor=BG2, font=dict(color=TEXT),
+            height=220, margin=dict(l=40, r=20, t=10, b=40),
+        )
+        st.plotly_chart(_sfig, use_container_width=True)
+    else:
+        st.info("No historical data available for this observatory yet.")
+
+    st.markdown("---")
     st.info(
         f"**{selected}** is located at "
         f"{live['latitude']}°, {live['longitude']}° "
