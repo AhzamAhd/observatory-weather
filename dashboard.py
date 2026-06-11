@@ -983,12 +983,6 @@ if selected_page == "Live Weather Map":
         index=0,
         key="main_map_style"
     )
-    _mapbox_styles = {
-        "Streets":   "open-street-map",
-        "Satellite": "white-bg",
-    }
-    _mapbox_style = _mapbox_styles[_map_style]
-
     import plotly.graph_objects as go
 
     _color_map = {"Excellent": "#1D9E75", "Good": "#00b4d8",
@@ -1020,12 +1014,26 @@ if selected_page == "Live Weather Map":
             name=condition,
         ))
 
-    _map_fig.update_layout(
-        mapbox=dict(
-            style=_mapbox_style,
+    if _map_style == "Satellite":
+        _mapbox_cfg = dict(
+            style="white-bg",
+            layers=[dict(
+                sourcetype="raster",
+                source=["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
+                below="traces",
+            )],
             center=dict(lat=20, lon=0),
             zoom=1.4,
-        ),
+        )
+    else:
+        _mapbox_cfg = dict(
+            style="open-street-map",
+            center=dict(lat=20, lon=0),
+            zoom=1.4,
+        )
+
+    _map_fig.update_layout(
+        mapbox=_mapbox_cfg,
         margin=dict(l=0, r=0, t=0, b=0),
         height=560,
         paper_bgcolor="rgba(0,0,0,0)",
