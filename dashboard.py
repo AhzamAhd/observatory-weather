@@ -928,16 +928,14 @@ if selected_page == "Live Weather Map":
 
     _map_style = st.radio(
         "Map style",
-        ["Streets", "Dark", "Satellite", "Outdoors"],
+        ["Streets", "Satellite"],
         horizontal=True,
-        index=1 if st.session_state.theme == "dark" else 0,
+        index=0,
         key="main_map_style"
     )
     _mapbox_styles = {
         "Streets":   "open-street-map",
-        "Dark":      "carto-darkmatter",
         "Satellite": "white-bg",
-        "Outdoors":  "carto-positron",
     }
     _mapbox_style = _mapbox_styles[_map_style]
 
