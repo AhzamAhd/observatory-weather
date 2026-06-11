@@ -83,39 +83,32 @@ def fetch_forecast(lat, lon, days=7):
         print(f"  [ERROR] Forecast fetch failed: {e}")
         return pd.DataFrame()
 
+def _period_stats(grp):
+    if grp.empty:
+        return {"score": None, "cloud": None, "humidity": None,
+                "wind": None, "temp": None, "precip_prob": None, "precip_mm": None}
+    return {
+        "score":      round(grp["score"].mean(), 0),
+        "cloud":      round(grp["cloud_cover"].mean(), 0),
+        "humidity":   round(grp["humidity"].mean(), 0),
+        "wind":       round(grp["wind_speed"].mean(), 0),
+        "temp":       round(grp["temperature"].mean(), 1),
+        "precip_prob":round(grp["precip_prob"].max(), 0),
+        "precip_mm":  round(grp["precip_mm"].sum(), 1),
+    }
+
 def get_daily_summary(forecast_df):
-    """
-    Summarise hourly forecast into daily scores.
-    """
     if forecast_df.empty:
         return pd.DataFrame()
 
     daily = []
     for date, group in forecast_df.groupby("date"):
-        # Night hours only (18:00 - 06:00)
-        night = group[
-            (group["hour"] >= 18) |
-            (group["hour"] <= 6)
-        ]
-        all_hours = group
+        am    = group[group["hour"].between(6, 11)]
+        pm    = group[group["hour"].between(12, 17)]
+        night = group[(group["hour"] >= 18) | (group["hour"] <= 5)]
 
-        avg_score      = round(
-            all_hours["score"].mean(), 1)
-        night_score    = round(
-            night["score"].mean(), 1) if not night.empty else avg_score
-        best_hour_idx  = all_hours["score"].idxmax()
-        best_hour      = all_hours.loc[
-            best_hour_idx, "hour"]
-        best_score     = all_hours.loc[
-            best_hour_idx, "score"]
-
-        avg_cloud  = round(all_hours["cloud_cover"].mean(), 1)
-        avg_humid  = round(all_hours["humidity"].mean(), 1)
-        avg_wind   = round(all_hours["wind_speed"].mean(), 1)
-        min_temp   = round(all_hours["temperature"].min(), 1)
-        max_temp   = round(all_hours["temperature"].max(), 1)
-        precip_prob = round(
-            all_hours["precip_prob"].max(), 1)
+        night_score = round(night["score"].mean(), 1) if not night.empty else round(group["score"].mean(), 1)
+        best_hour   = group.loc[group["score"].idxmax(), "hour"]
 
         if night_score >= 80:   condition = "Excellent"
         elif night_score >= 60: condition = "Good"
@@ -123,25 +116,23 @@ def get_daily_summary(forecast_df):
         else:                   condition = "Poor"
 
         daily.append({
-            "date":          date,
-            "day_name":      group.iloc[0]["day_name"],
-            "date_display":  group.iloc[0]["date_display"],
-            "avg_score":     avg_score,
-            "night_score":   night_score,
-            "condition":     condition,
-            "best_hour":     f"{best_hour:02d}:00 UTC",
-            "best_score":    round(best_score, 1),
-            "avg_cloud":     avg_cloud,
-            "avg_humidity":  avg_humid,
-            "avg_wind":      avg_wind,
-            "min_temp":      min_temp,
-            "max_temp":      max_temp,
-            "precip_prob":   precip_prob,
-            "hourly_scores": group[[
-                "hour", "score", "condition",
-                "cloud_cover", "humidity",
-                "wind_speed"
-            ]].to_dict("records")
+            "date":         date,
+            "day_name":     group.iloc[0]["day_name"],
+            "date_display": group.iloc[0]["date_display"],
+            "night_score":  night_score,
+            "condition":    condition,
+            "best_hour":    f"{best_hour:02d}:00 UTC",
+            "min_temp":     round(group["temperature"].min(), 1),
+            "max_temp":     round(group["temperature"].max(), 1),
+            "avg_cloud":    round(group["cloud_cover"].mean(), 1),
+            "avg_humidity": round(group["humidity"].mean(), 1),
+            "avg_wind":     round(group["wind_speed"].mean(), 1),
+            "precip_prob":  round(group["precip_prob"].max(), 1),
+            "precip_mm":    round(group["precip_mm"].sum(), 1),
+            "am":           _period_stats(am),
+            "pm":           _period_stats(pm),
+            "night":        _period_stats(night),
+            "hourly_scores": group[["hour","score","condition","cloud_cover","humidity","wind_speed"]].to_dict("records"),
         })
 
     return pd.DataFrame(daily)

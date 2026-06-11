@@ -4079,222 +4079,175 @@ if selected_page == "7-Day Forecast":
     if daily_df.empty:
         st.error("Could not fetch forecast data.")
     else:
-        # ── Summary cards ─────────────────────────────────
-        st.subheader("Week at a glance")
-        cols = st.columns(len(daily_df))
-        for i, (_, row) in enumerate(
-            daily_df.iterrows()
-        ):
-            with cols[i]:
-                score = row["night_score"]
-                if score >= 80:
-                    color = "#1D9E75"
-                    emoji = "🟢"
-                elif score >= 60:
-                    color = "#378ADD"
-                    emoji = "🔵"
-                elif score >= 40:
-                    color = "#EF9F27"
-                    emoji = "🟡"
+        # ── Meteoblue-style forecast table ────────────────
+        def _score_bg(s):
+            if s is None: return "#1e2d40", "#5c7a96"
+            s = int(s)
+            if s >= 80:   return "#0d2e1e", "#1D9E75"
+            elif s >= 60: return "#0a1e2e", "#00b4d8"
+            elif s >= 40: return "#2e1e0a", "#EF9F27"
+            else:         return "#2e0a0a", "#E24B4A"
+
+        def _cloud_icon(cloud):
+            if cloud is None: return "—"
+            c = int(cloud)
+            if c <= 10:  return "☀️"
+            elif c <= 30: return "🌤️"
+            elif c <= 60: return "⛅"
+            elif c <= 85: return "🌥️"
+            else:         return "☁️"
+
+        def _precip_icon(prob):
+            if prob is None or prob < 20: return ""
+            elif prob < 50: return "🌦️"
+            else: return "🌧️"
+
+        def _cell(p, show_icon=True):
+            if p is None or p.get("score") is None:
+                return "<td colspan='1' style='color:#3a4a5a;text-align:center'>—</td>"
+            bg, col = _score_bg(p["score"])
+            icon = _cloud_icon(p["cloud"])
+            rain = _precip_icon(p["precip_prob"])
+            wind = int(p["wind"]) if p["wind"] else 0
+            temp = p["temp"] if p["temp"] is not None else "—"
+            precip = f"{p['precip_mm']}mm" if p.get("precip_mm") and p["precip_mm"] > 0 else ""
+            return f"""<td style='background:{bg};border:1px solid #1e2d40;padding:8px 6px;text-align:center;min-width:72px'>
+  <div style='font-size:18px;line-height:1'>{icon}{rain}</div>
+  <div style='font-size:13px;font-weight:700;color:{col};margin:3px 0'>{int(p['score'])}</div>
+  <div style='font-size:10px;color:#5c7a96'>{int(p['cloud'])}% cloud</div>
+  <div style='font-size:10px;color:#5c7a96'>{wind} m/s wind</div>
+  <div style='font-size:10px;color:#cdd9e5'>{temp}°C</div>
+  {'<div style="font-size:10px;color:#00b4d8">' + precip + '</div>' if precip else ''}
+</td>"""
+
+        # Build table HTML
+        tbl = f"""<div style='overflow-x:auto;border-radius:10px;border:1px solid #1e2d40'>
+<table style='border-collapse:collapse;width:100%;font-family:Inter,sans-serif;font-size:12px;background:#0e1117'>
+<thead>
+<tr style='background:#05070d'>
+  <th style='padding:8px 12px;text-align:left;color:#5c7a96;font-size:11px;font-weight:600;letter-spacing:0.08em;border:1px solid #1e2d40;min-width:80px'>PERIOD</th>"""
+
+        for _, row in daily_df.iterrows():
+            bg, col = _score_bg(row["night_score"])
+            tbl += f"""
+  <th colspan='3' style='background:{bg};border:1px solid #1e2d40;padding:8px;text-align:center'>
+    <div style='color:{col};font-weight:700;font-size:13px'>{row['day_name'][:3]}</div>
+    <div style='color:#cdd9e5;font-size:12px'>{row['date_display']}</div>
+    <div style='color:{col};font-size:11px'>{row['condition']}</div>
+    <div style='color:#5c7a96;font-size:10px'>{row['min_temp']}° / {row['max_temp']}°C</div>
+  </th>"""
+
+        tbl += "</tr>\n<tr style='background:#08090f'>"
+        tbl += "<th style='border:1px solid #1e2d40;padding:6px 12px;color:#5c7a96;font-size:10px'></th>"
+        for _ in daily_df.iterrows():
+            for period in ["AM", "PM", "Night"]:
+                tbl += f"<th style='border:1px solid #1e2d40;padding:4px 8px;color:#5c7a96;font-size:10px;text-align:center'>{period}</th>"
+        tbl += "</tr></thead><tbody>"
+
+        # Rows
+        for label, key in [("Obs. Score", None), ("Cloud %", "cloud"),
+                            ("Humidity %", "humidity"), ("Wind m/s", "wind"),
+                            ("Precip mm", "precip_mm"), ("Precip %", "precip_prob")]:
+            tbl += f"<tr><td style='border:1px solid #1e2d40;padding:6px 12px;color:#5c7a96;font-weight:600;font-size:11px;white-space:nowrap;background:#08090f'>{label}</td>"
+            for _, row in daily_df.iterrows():
+                for period in ["am", "pm", "night"]:
+                    p = row[period]
+                    if p is None:
+                        tbl += "<td style='border:1px solid #1e2d40;text-align:center;color:#3a4a5a'>—</td>"
+                        continue
+                    if key is None:
+                        val = int(p["score"]) if p.get("score") is not None else "—"
+                        bg, col = _score_bg(p.get("score"))
+                        tbl += f"<td style='background:{bg};border:1px solid #1e2d40;text-align:center;font-weight:700;color:{col}'>{val}</td>"
+                    else:
+                        val = p.get(key)
+                        disp = f"{int(val)}" if val is not None else "—"
+                        tbl += f"<td style='border:1px solid #1e2d40;text-align:center;color:#cdd9e5'>{disp}</td>"
+            tbl += "</tr>"
+
+        # Weather icon row
+        tbl += "<tr><td style='border:1px solid #1e2d40;padding:6px 12px;color:#5c7a96;font-weight:600;font-size:11px;background:#08090f'>Conditions</td>"
+        for _, row in daily_df.iterrows():
+            for period in ["am", "pm", "night"]:
+                p = row[period]
+                if p is None:
+                    tbl += "<td style='border:1px solid #1e2d40;text-align:center'>—</td>"
                 else:
-                    color = "#E24B4A"
-                    emoji = "🔴"
+                    icon = _cloud_icon(p.get("cloud"))
+                    rain = _precip_icon(p.get("precip_prob"))
+                    tbl += f"<td style='border:1px solid #1e2d40;text-align:center;font-size:16px'>{icon}{rain}</td>"
+        tbl += "</tr>"
 
-                st.markdown(
-                    f"<div style='background:{color}22;"
-                    f"border:1px solid {color};"
-                    f"border-radius:8px;"
-                    f"padding:8px;text-align:center'>"
-                    f"<div style='font-size:11px;"
-                    f"color:#888'>{row['day_name']}</div>"
-                    f"<div style='font-size:13px;"
-                    f"color:white;font-weight:bold'>"
-                    f"{row['date_display']}</div>"
-                    f"<div style='font-size:24px;"
-                    f"font-weight:bold;color:{color}'>"
-                    f"{score}</div>"
-                    f"<div style='font-size:10px;"
-                    f"color:{color}'>"
-                    f"{row['condition']}</div>"
-                    f"<div style='font-size:10px;"
-                    f"color:#888'>☁️{row['avg_cloud']}%"
-                    f" 💧{row['avg_humidity']}%</div>"
-                    f"</div>",
-                    unsafe_allow_html=True
-                )
+        tbl += "</tbody></table></div>"
+        st.markdown(tbl, unsafe_allow_html=True)
 
         st.markdown("---")
 
-        # ── 7-day score chart ──────────────────────────────
+        # ── Score chart (Plotly) ───────────────────────────
         st.subheader("Observation score forecast")
-        import matplotlib.pyplot as plt
-        import matplotlib.patches as mpatches
-        import io
-
-        fig, ax = plt.subplots(figsize=(12, 4))
-        dates   = daily_df["date_display"].tolist()
-        scores  = daily_df["night_score"].tolist()
-        colors  = []
-        for s in scores:
-            if s >= 80:   colors.append("#1D9E75")
-            elif s >= 60: colors.append("#378ADD")
-            elif s >= 40: colors.append("#EF9F27")
-            else:         colors.append("#E24B4A")
-
-        bars = ax.bar(dates, scores,
-                      color=colors, width=0.6)
-
-        for bar, score in zip(bars, scores):
-            ax.text(
-                bar.get_x() + bar.get_width() / 2,
-                bar.get_height() + 1,
-                f"{score}",
-                ha="center", va="bottom",
-                color="white", fontsize=10,
-                fontweight="bold"
-            )
-
-        ax.axhline(y=80, color="#1D9E75",
-                   linestyle="--", alpha=0.4,
-                   linewidth=1, label="Excellent")
-        ax.axhline(y=60, color="#378ADD",
-                   linestyle="--", alpha=0.4,
-                   linewidth=1, label="Good")
-        ax.set_ylim(0, 115)
-        ax.set_ylabel("Night Score", color="white")
-        ax.set_title(
-            f"7-Day Forecast — {fc_obs}",
-            color="white", fontsize=12,
-            fontweight="bold"
+        import plotly.graph_objects as go
+        _fc_colors = [("#1D9E75" if s >= 80 else "#00b4d8" if s >= 60 else "#EF9F27" if s >= 40 else "#E24B4A")
+                      for s in daily_df["night_score"]]
+        _fc_fig = go.Figure(go.Bar(
+            x=daily_df["date_display"],
+            y=daily_df["night_score"],
+            marker_color=_fc_colors,
+            text=daily_df["night_score"].astype(int),
+            textposition="outside",
+            hovertemplate="<b>%{x}</b><br>Night score: %{y}/100<extra></extra>",
+        ))
+        _fc_fig.add_hline(y=80, line=dict(color="#1D9E75", dash="dash", width=1), annotation_text="Excellent", annotation_font_color="#1D9E75")
+        _fc_fig.add_hline(y=60, line=dict(color="#00b4d8", dash="dash", width=1), annotation_text="Good", annotation_font_color="#00b4d8")
+        _fc_fig.update_layout(
+            template="plotly_dark", paper_bgcolor=BG2, plot_bgcolor=BG2,
+            font=dict(color=TEXT), height=300, margin=dict(l=40,r=20,t=20,b=40),
+            yaxis=dict(range=[0,115], title="Night Score"),
+            showlegend=False,
         )
-        ax.set_facecolor("#0E1117")
-        fig.patch.set_facecolor("#0E1117")
-        ax.tick_params(colors="white")
-        ax.yaxis.label.set_color("white")
-        ax.spines["top"].set_visible(False)
-        ax.spines["right"].set_visible(False)
-        ax.spines["left"].set_color("#444441")
-        ax.spines["bottom"].set_color("#444441")
-
-        legend_items = [
-            mpatches.Patch(
-                color="#1D9E75", label="Excellent (80+)"),
-            mpatches.Patch(
-                color="#378ADD", label="Good (60-79)"),
-            mpatches.Patch(
-                color="#EF9F27", label="Marginal (40-59)"),
-            mpatches.Patch(
-                color="#E24B4A", label="Poor (<40)")
-        ]
-        ax.legend(
-            handles=legend_items, loc="upper right",
-            fontsize=8, facecolor="#0E1117",
-            labelcolor="white"
-        )
-
-        buf = io.BytesIO()
-        plt.tight_layout()
-        plt.savefig(buf, format="png", dpi=150,
-                    facecolor="#0E1117",
-                    bbox_inches="tight")
-        buf.seek(0)
-        img_data = buf.getvalue()
-        buf.close()
-        st.image(img_data, width='stretch')
-        plt.close()
+        st.plotly_chart(_fc_fig, use_container_width=True)
 
         st.markdown("---")
 
-        # ── Daily detail expanders ─────────────────────────
+        # ── Day by day detail ──────────────────────────────
         st.subheader("Day by day detail")
         for _, row in daily_df.iterrows():
             score = row["night_score"]
-            if score >= 80:   emoji = "🟢"
-            elif score >= 60: emoji = "🔵"
-            elif score >= 40: emoji = "🟡"
-            else:             emoji = "🔴"
+            if score >= 80:   dot = "🟢"
+            elif score >= 60: dot = "🔵"
+            elif score >= 40: dot = "🟡"
+            else:             dot = "🔴"
+            with st.expander(f"{dot} {row['day_name']} {row['date_display']} — Night score: {score}/100 [{row['condition']}] · Best: {row['best_hour']}"):
+                d1,d2,d3,d4,d5 = st.columns(5)
+                d1.metric("Night Score", f"{row['night_score']}/100")
+                d2.metric("Best Hour",   row["best_hour"])
+                d3.metric("Avg Cloud",   f"{row['avg_cloud']}%")
+                d4.metric("Avg Humidity",f"{row['avg_humidity']}%")
+                d5.metric("Avg Wind",    f"{row['avg_wind']} m/s")
+                t1,t2,t3 = st.columns(3)
+                t1.metric("Min Temp",  f"{row['min_temp']}°C")
+                t2.metric("Max Temp",  f"{row['max_temp']}°C")
+                t3.metric("Rain Prob", f"{row['precip_prob']}%")
 
-            with st.expander(
-                f"{emoji} **{row['day_name']} "
-                f"{row['date_display']}** — "
-                f"Night score: {score}/100 "
-                f"[{row['condition']}] · "
-                f"Best hour: {row['best_hour']}"
-            ):
-                d1, d2, d3, d4, d5 = st.columns(5)
-                d1.metric("Night Score",
-                          f"{row['night_score']}/100")
-                d2.metric("Best Hour",
-                          row["best_hour"])
-                d3.metric("Avg Cloud",
-                          f"{row['avg_cloud']}%")
-                d4.metric("Avg Humidity",
-                          f"{row['avg_humidity']}%")
-                d5.metric("Avg Wind",
-                          f"{row['avg_wind']} m/s")
-
-                t1, t2, t3 = st.columns(3)
-                t1.metric("Min Temp",
-                          f"{row['min_temp']}°C")
-                t2.metric("Max Temp",
-                          f"{row['max_temp']}°C")
-                t3.metric("Rain Probability",
-                          f"{row['precip_prob']}%")
-
-                # Hourly chart for this day
                 hourly = row["hourly_scores"]
                 if hourly:
-                    hours  = [h["hour"]
-                               for h in hourly]
-                    scores_h = [h["score"]
-                                 for h in hourly]
-                    h_colors = []
-                    for s in scores_h:
-                        if s >= 80:
-                            h_colors.append("#1D9E75")
-                        elif s >= 60:
-                            h_colors.append("#378ADD")
-                        elif s >= 40:
-                            h_colors.append("#EF9F27")
-                        elif s > 0:
-                            h_colors.append("#E24B4A")
-                        else:
-                            h_colors.append("#444441")
-
-                    fig2, ax2 = plt.subplots(
-                        figsize=(10, 2))
-                    ax2.bar(hours, scores_h,
-                            color=h_colors, width=0.8)
-                    ax2.set_xticks(range(0, 24, 3))
-                    ax2.set_xticklabels(
-                        [f"{h:02d}:00"
-                         for h in range(0, 24, 3)],
-                        fontsize=7, color="white"
+                    _hfig = go.Figure(go.Bar(
+                        x=[h["hour"] for h in hourly],
+                        y=[h["score"] for h in hourly],
+                        marker_color=[("#1D9E75" if h["score"]>=80 else "#00b4d8" if h["score"]>=60 else "#EF9F27" if h["score"]>=40 else "#E24B4A") for h in hourly],
+                        hovertemplate="%{x}:00 UTC<br>Score: %{y:.0f}/100<extra></extra>",
+                    ))
+                    _hfig.update_layout(
+                        template="plotly_dark", paper_bgcolor=BG3, plot_bgcolor=BG3,
+                        font=dict(color=TEXT, size=10), height=160,
+                        margin=dict(l=30,r=10,t=10,b=30),
+                        xaxis=dict(tickmode="linear", dtick=3, title="Hour UTC"),
+                        yaxis=dict(range=[0,105], title="Score"),
+                        showlegend=False,
                     )
-                    ax2.set_ylim(0, 105)
-                    ax2.set_ylabel("Score",
-                                   fontsize=8,
-                                   color="white")
-                    ax2.set_facecolor("#0E1117")
-                    fig2.patch.set_facecolor("#0E1117")
-                    ax2.tick_params(colors="white")
-                    ax2.spines["top"].set_visible(False)
-                    ax2.spines["right"].set_visible(False)
-                    ax2.spines["left"].set_color(
-                        "#444441")
-                    ax2.spines["bottom"].set_color(
-                        "#444441")
+                    st.plotly_chart(_hfig, use_container_width=True)
 
-                    buf2 = io.BytesIO()
-                    plt.tight_layout()
-                    plt.savefig(
-                        buf2, format="png", dpi=100,
-                        facecolor="#0E1117",
-                        bbox_inches="tight"
-                    )
-                    buf2.seek(0)
-                    st.image(buf2.getvalue(), width='stretch')
-                    plt.close()
+        st.markdown("---")
+
 
         st.markdown("---")
 
