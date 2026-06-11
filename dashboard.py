@@ -976,13 +976,22 @@ if selected_page == "Live Weather Map":
     st.markdown("---")
     st.subheader("World map — live observation quality")
 
-    _map_style = st.radio(
-        "Map style",
-        ["Streets", "Satellite"],
-        horizontal=True,
-        index=0,
-        key="main_map_style"
-    )
+    _map_col1, _map_col2 = st.columns([3, 1])
+    with _map_col1:
+        _obs_search = st.text_input("Search observatory", placeholder="e.g. Mauna Kea, Chile, Spain...", label_visibility="collapsed", key="map_obs_search")
+    with _map_col2:
+        _map_style = st.radio("Map style", ["Streets", "Satellite"], horizontal=True, index=0, key="main_map_style")
+
+    if _obs_search:
+        _q = _obs_search.lower()
+        _df_map = df[df["observatory"].str.lower().str.contains(_q) | df["country"].str.lower().str.contains(_q)].copy()
+        if _df_map.empty:
+            st.warning(f"No observatories found matching '{_obs_search}'.")
+        else:
+            st.caption(f"{len(_df_map)} result(s) for '{_obs_search}'")
+    else:
+        _df_map = df.copy()
+
     import plotly.graph_objects as go
 
     _color_map = {"Excellent": "#1D9E75", "Good": "#00b4d8",
@@ -991,7 +1000,7 @@ if selected_page == "Live Weather Map":
 
     _map_fig = go.Figure()
 
-    for condition, grp in df.groupby("condition"):
+    for condition, grp in _df_map.groupby("condition"):
         _c = _color_map.get(condition, "#888888")
         _s = _size_map.get(condition, 7)
         _map_fig.add_trace(go.Scattermapbox(
@@ -1014,6 +1023,13 @@ if selected_page == "Live Weather Map":
             name=condition,
         ))
 
+    if _obs_search and not _df_map.empty:
+        _map_clat = _df_map["latitude"].mean()
+        _map_clon = _df_map["longitude"].mean()
+        _map_zoom = 3 if len(_df_map) > 5 else 5
+    else:
+        _map_clat, _map_clon, _map_zoom = 20, 0, 1.4
+
     if _map_style == "Satellite":
         _mapbox_cfg = dict(
             style="white-bg",
@@ -1022,14 +1038,14 @@ if selected_page == "Live Weather Map":
                 source=["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
                 below="traces",
             )],
-            center=dict(lat=20, lon=0),
-            zoom=1.4,
+            center=dict(lat=_map_clat, lon=_map_clon),
+            zoom=_map_zoom,
         )
     else:
         _mapbox_cfg = dict(
             style="open-street-map",
-            center=dict(lat=20, lon=0),
-            zoom=1.4,
+            center=dict(lat=_map_clat, lon=_map_clon),
+            zoom=_map_zoom,
         )
 
     _map_fig.update_layout(
@@ -1054,6 +1070,39 @@ if selected_page == "Live Weather Map":
         "modeBarButtonsToRemove": ["select2d", "lasso2d"],
         "displaylogo": False,
     })
+
+    st.markdown("---")
+    st.subheader("Tonight's Best Observatories")
+    _top10 = df.nlargest(10, "observation_score").reset_index(drop=True)
+    _cond_colors = {"Excellent": "#1D9E75", "Good": "#00b4d8", "Marginal": "#EF9F27", "Poor": "#E24B4A"}
+    _top10_html = """
+    <div style='display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-bottom:8px'>
+    """
+    for i, r in _top10.iterrows():
+        _rank = i + 1
+        _score = int(r["observation_score"])
+        _cc = _cond_colors.get(r["condition"], "#888")
+        _bar_w = _score
+        _medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(_rank, f"#{_rank}")
+        _top10_html += f"""
+        <div style='background:#0e1117;border:1px solid #1e2d40;border-left:3px solid {_cc};
+                    border-radius:8px;padding:12px 14px'>
+          <div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:6px'>
+            <span style='font-size:13px;font-weight:700;color:#cdd9e5'>{_medal} {r['observatory']}</span>
+            <span style='font-size:12px;font-weight:700;color:{_cc}'>{_score}/100</span>
+          </div>
+          <div style='font-size:11px;color:#5c7a96;margin-bottom:6px'>{r['country']} &nbsp;·&nbsp; {r['altitude_m']}m alt</div>
+          <div style='background:#151b26;border-radius:4px;height:5px;overflow:hidden'>
+            <div style='width:{_bar_w}%;height:100%;background:{_cc};border-radius:4px'></div>
+          </div>
+          <div style='display:flex;gap:10px;margin-top:6px;font-size:10px;color:#5c7a96'>
+            <span>Cloud {r['cloud_cover_pct']}%</span>
+            <span>Humidity {r['humidity_pct']}%</span>
+            <span>Wind {r['wind_speed_ms']} m/s</span>
+          </div>
+        </div>"""
+    _top10_html += "</div>"
+    st.markdown(_top10_html, unsafe_allow_html=True)
 
     st.markdown("---")
     with st.expander("Observation quality rankings", expanded=False):
