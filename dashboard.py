@@ -727,8 +727,30 @@ if selected_page == "🌍 Live Weather Map":
     st.markdown("---")
     st.subheader("World map — live observation quality")
 
-    m = folium.Map(location=[20, 0], zoom_start=2,
-                   tiles="CartoDB positron")
+    _tile_choice = st.radio(
+        "Map style",
+        ["Light", "Dark", "Street (cities)", "Satellite"],
+        horizontal=True,
+        index=0,
+    )
+    _tile_map = {
+        "Light":           ("CartoDB positron",   None, None),
+        "Dark":            ("CartoDB dark_matter", None, None),
+        "Street (cities)": ("OpenStreetMap",       None, None),
+        "Satellite": (
+            "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+            "Tiles © Esri — Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community",
+            "Esri.WorldImagery",
+        ),
+    }
+    _tile_url, _tile_attr, _tile_name = _tile_map[_tile_choice]
+
+    if _tile_choice == "Satellite":
+        m = folium.Map(location=[20, 0], zoom_start=2,
+                       tiles=_tile_url, attr=_tile_attr)
+    else:
+        m = folium.Map(location=[20, 0], zoom_start=2,
+                       tiles=_tile_url)
     for _, row in df.iterrows():
         color = score_color(row["observation_score"])
         popup_html = f"""
@@ -767,32 +789,32 @@ if selected_page == "🌍 Live Weather Map":
     lc4.markdown("🔴 **Poor** — 0 to 39")
 
     st.markdown("---")
-    st.subheader("Observation quality rankings")
-    col_left, col_right = st.columns([2, 1])
-    with col_left:
-        for _, row in df.iterrows():
-            emoji = condition_emoji(row["condition"])
-            st.markdown(
-                f"{emoji} **{row['observatory']}** "
-                f"— {row['country']}")
-            st.progress(
-                int(row["observation_score"]) / 100,
-                text=f"{row['observation_score']}/100 · "
-                     f"Cloud {row['cloud_cover_pct']}% · "
-                     f"Humidity {row['humidity_pct']}% · "
-                     f"Wind {row['wind_speed_ms']} m/s"
+    with st.expander("Observation quality rankings", expanded=False):
+        col_left, col_right = st.columns([2, 1])
+        with col_left:
+            for _, row in df.iterrows():
+                emoji = condition_emoji(row["condition"])
+                st.markdown(
+                    f"{emoji} **{row['observatory']}** "
+                    f"— {row['country']}")
+                st.progress(
+                    int(row["observation_score"]) / 100,
+                    text=f"{row['observation_score']}/100 · "
+                         f"Cloud {row['cloud_cover_pct']}% · "
+                         f"Humidity {row['humidity_pct']}% · "
+                         f"Wind {row['wind_speed_ms']} m/s"
+                )
+        with col_right:
+            st.dataframe(
+                df[["observatory", "observation_score",
+                    "condition"]].rename(columns={
+                    "observatory":       "Observatory",
+                    "observation_score": "Score",
+                    "condition":         "Condition"
+                }),
+                hide_index=True,
+                height=700
             )
-    with col_right:
-        st.dataframe(
-            df[["observatory", "observation_score",
-                "condition"]].rename(columns={
-                "observatory":       "Observatory",
-                "observation_score": "Score",
-                "condition":         "Condition"
-            }),
-            hide_index=True,
-            height=700
-        )
 
     st.markdown("---")
     st.subheader("📥 Export for Google Maps / Google Earth")
@@ -1327,10 +1349,32 @@ if selected_page == "🌫️ Atmospheric Analysis":
         "Green = exceptional, Red = poor."
     )
 
-    m_atm = folium.Map(
-        location=[20, 0], zoom_start=2,
-        tiles="CartoDB positron"
+    _atm_tile_choice = st.radio(
+        "Map style",
+        ["Light", "Dark", "Street (cities)", "Satellite"],
+        horizontal=True,
+        index=0,
+        key="atm_tile",
     )
+    _atm_tile_map = {
+        "Light":           ("CartoDB positron",   None),
+        "Dark":            ("CartoDB dark_matter", None),
+        "Street (cities)": ("OpenStreetMap",       None),
+        "Satellite": (
+            "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+            "Tiles © Esri — Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community",
+        ),
+    }
+    _atm_tile_url, _atm_tile_attr = _atm_tile_map[_atm_tile_choice]
+
+    if _atm_tile_choice == "Satellite":
+        m_atm = folium.Map(location=[20, 0], zoom_start=2,
+                           tiles=_atm_tile_url, attr=_atm_tile_attr)
+    else:
+        m_atm = folium.Map(
+            location=[20, 0], zoom_start=2,
+            tiles=_atm_tile_url
+        )
 
     for _, row in atm_df.iterrows():
         obs_match = df[df["observatory"] == row["observatory"]]
@@ -1380,87 +1424,88 @@ if selected_page == "🌫️ Atmospheric Analysis":
 
     st.markdown("---")
 
-    # Three sub-tabs for each metric
-    seeing_tab, pwv_tab, jet_tab = st.tabs([
-        "👁️ Seeing Index",
-        "💧 Precipitable Water Vapor",
-        "🌪️ Jet Stream"
-    ])
+    with st.expander("Atmospheric rankings", expanded=False):
+        # Three sub-tabs for each metric
+        seeing_tab, pwv_tab, jet_tab = st.tabs([
+            "👁️ Seeing Index",
+            "💧 Precipitable Water Vapor",
+            "🌪️ Jet Stream"
+        ])
 
-    with seeing_tab:
-        st.subheader("Atmospheric seeing rankings")
-        st.caption(
-            "Seeing measures atmospheric turbulence. "
-            "Lower arcseconds = sharper images. "
-            "Professional telescopes need < 1.5\" to operate "
-            "at full resolution."
-        )
-        for _, row in atm_df.iterrows():
-            bar_val = max(0, min(1,
-                1 - (row["seeing_arcsec"] - 0.3) / 4.7))
-            st.markdown(
-                f"**{row['observatory']}** — "
-                f"{row['seeing_arcsec']}\" "
-                f"[{row['seeing_quality']}] · "
-                f"{row['country']}"
+        with seeing_tab:
+            st.subheader("Atmospheric seeing rankings")
+            st.caption(
+                "Seeing measures atmospheric turbulence. "
+                "Lower arcseconds = sharper images. "
+                "Professional telescopes need < 1.5\" to operate "
+                "at full resolution."
             )
-            st.progress(
-                bar_val,
-                text=f"Seeing {row['seeing_arcsec']}\" · "
-                     f"Alt {row['altitude_m']}m · "
-                     f"Wind {row.get('weather_score', 0)}/100 "
-                     f"weather"
-            )
+            for _, row in atm_df.iterrows():
+                bar_val = max(0, min(1,
+                    1 - (row["seeing_arcsec"] - 0.3) / 4.7))
+                st.markdown(
+                    f"**{row['observatory']}** — "
+                    f"{row['seeing_arcsec']}\" "
+                    f"[{row['seeing_quality']}] · "
+                    f"{row['country']}"
+                )
+                st.progress(
+                    bar_val,
+                    text=f"Seeing {row['seeing_arcsec']}\" · "
+                         f"Alt {row['altitude_m']}m · "
+                         f"Wind {row.get('weather_score', 0)}/100 "
+                         f"weather"
+                )
 
-    with pwv_tab:
-        st.subheader("Precipitable Water Vapor rankings")
-        st.caption(
-            "PWV measures water vapour in the atmosphere. "
-            "Critical for infrared and radio astronomy. "
-            "< 2mm is excellent for IR work. "
-            "Sites like ALMA require < 1mm."
-        )
-        pwv_sorted = atm_df.sort_values(
-            "pwv_mm", ascending=True)
-        for _, row in pwv_sorted.iterrows():
-            bar_val = max(0, min(1,
-                1 - (row["pwv_mm"] / 30)))
-            st.markdown(
-                f"**{row['observatory']}** — "
-                f"{row['pwv_mm']} mm "
-                f"[{row['pwv_quality']}] · "
-                f"{row['country']}"
+        with pwv_tab:
+            st.subheader("Precipitable Water Vapor rankings")
+            st.caption(
+                "PWV measures water vapour in the atmosphere. "
+                "Critical for infrared and radio astronomy. "
+                "< 2mm is excellent for IR work. "
+                "Sites like ALMA require < 1mm."
             )
-            st.progress(
-                bar_val,
-                text=f"PWV {row['pwv_mm']} mm · "
-                     f"Altitude {row['altitude_m']}m"
-            )
+            pwv_sorted = atm_df.sort_values(
+                "pwv_mm", ascending=True)
+            for _, row in pwv_sorted.iterrows():
+                bar_val = max(0, min(1,
+                    1 - (row["pwv_mm"] / 30)))
+                st.markdown(
+                    f"**{row['observatory']}** — "
+                    f"{row['pwv_mm']} mm "
+                    f"[{row['pwv_quality']}] · "
+                    f"{row['country']}"
+                )
+                st.progress(
+                    bar_val,
+                    text=f"PWV {row['pwv_mm']} mm · "
+                         f"Altitude {row['altitude_m']}m"
+                )
 
-    with jet_tab:
-        st.subheader("Jet stream impact rankings")
-        st.caption(
-            "The jet stream at ~10km altitude causes the worst "
-            "atmospheric seeing when directly overhead. "
-            "Below 20 m/s is ideal. Above 60 m/s degrades "
-            "image quality severely."
-        )
-        jet_sorted = atm_df.sort_values(
-            "jet_stream_ms", ascending=True)
-        for _, row in jet_sorted.iterrows():
-            js  = row["jet_stream_ms"] or 0
-            bar_val = max(0, min(1, 1 - (js / 100)))
-            st.markdown(
-                f"**{row['observatory']}** — "
-                f"{js} m/s "
-                f"[{row['jet_impact']}] · "
-                f"{row['country']}"
+        with jet_tab:
+            st.subheader("Jet stream impact rankings")
+            st.caption(
+                "The jet stream at ~10km altitude causes the worst "
+                "atmospheric seeing when directly overhead. "
+                "Below 20 m/s is ideal. Above 60 m/s degrades "
+                "image quality severely."
             )
-            st.progress(
-                bar_val,
-                text=f"Jet stream {js} m/s · "
-                     f"Impact: {row['jet_impact']}"
-            )
+            jet_sorted = atm_df.sort_values(
+                "jet_stream_ms", ascending=True)
+            for _, row in jet_sorted.iterrows():
+                js  = row["jet_stream_ms"] or 0
+                bar_val = max(0, min(1, 1 - (js / 100)))
+                st.markdown(
+                    f"**{row['observatory']}** — "
+                    f"{js} m/s "
+                    f"[{row['jet_impact']}] · "
+                    f"{row['country']}"
+                )
+                st.progress(
+                    bar_val,
+                    text=f"Jet stream {js} m/s · "
+                         f"Impact: {row['jet_impact']}"
+                )
 
     st.markdown("---")
 
