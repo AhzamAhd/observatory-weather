@@ -740,28 +740,28 @@ st.sidebar.image("assets/gowc_banner.png", width=220)
 st.sidebar.markdown(f"<p style='font-size:0.7rem;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:{TEXT2};padding:4px 12px 2px;margin:0'>Navigation</p>", unsafe_allow_html=True)
 
 PAGES = {
-    "◈  Live Weather Map":       "live_map",
-    "◑  Observing Windows":      "windows",
-    "⌖  Object Visibility":      "visibility",
-    "◷  Peak Observing Time":    "peak",
-    "≋  Atmospheric Analysis":   "atmospheric",
-    "▦  Historical Reliability": "reliability",
-    "⇌  Site Comparison":        "comparison",
-    "▤  Semester Planning":      "semester",
-    "◎  Learn Astronomy":        "education",
-    "◉  Alert Subscriptions":    "alerts",
-    "▲  Telescope Efficiency":   "efficiency",
-    "◫  SNR Calculator":         "snr",
-    "✦  Live Sky Chart":         "sky_chart",
-    "▷  7-Day Forecast":         "forecast",
-    "⊹  Comet Tracker":          "comets",
-    "◇  Observatory Reviews":    "reviews",
-    "⊕  Satellite Passes":       "satellites",
-    "∠  Airmass Calculator":     "airmass",
-    "⋆  Meteor Showers":         "meteors",
-    "⬡  Asteroid Tracker":       "asteroids",
-    "◐  Eclipses & Transits":    "eclipses",
-    "⊙  Observatory Detail":     "detail",
+    "Live Weather Map":       "live_map",
+    "Observing Windows":      "windows",
+    "Object Visibility":      "visibility",
+    "Peak Observing Time":    "peak",
+    "Atmospheric Analysis":   "atmospheric",
+    "Historical Reliability": "reliability",
+    "Site Comparison":        "comparison",
+    "Semester Planning":      "semester",
+    "Learn Astronomy":        "education",
+    "Alert Subscriptions":    "alerts",
+    "Telescope Efficiency":   "efficiency",
+    "SNR Calculator":         "snr",
+    "Live Sky Chart":         "sky_chart",
+    "7-Day Forecast":         "forecast",
+    "Comet Tracker":          "comets",
+    "Observatory Reviews":    "reviews",
+    "Satellite Passes":       "satellites",
+    "Airmass Calculator":     "airmass",
+    "Meteor Showers":         "meteors",
+    "Asteroid Tracker":       "asteroids",
+    "Eclipses & Transits":    "eclipses",
+    "Observatory Detail":     "detail",
 }
 
 selected_page = st.sidebar.radio(
@@ -845,7 +845,7 @@ st.sidebar.caption(
 # ═══════════════════════════════════════════════════════
 # TAB 1 — Live Weather Map
 # ═══════════════════════════════════════════════════════
-if selected_page == "◈  Live Weather Map":
+if selected_page == "Live Weather Map":
     st.image("assets/gowc_banner.png", width=1500)
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Total Observatories", len(df))
@@ -1017,7 +1017,7 @@ if selected_page == "◈  Live Weather Map":
 # ═══════════════════════════════════════════════════════
 # TAB 2 — Observing Windows
 # ═══════════════════════════════════════════════════════
-if selected_page == "◑  Observing Windows":
+if selected_page == "Observing Windows":
     st.subheader("🌙 Tonight's Observing Windows")
     st.caption(
         "Scores adjusted for moon phase and position. "
@@ -1090,7 +1090,7 @@ if selected_page == "◑  Observing Windows":
 # ═══════════════════════════════════════════════════════
 # TAB 3 — Object Visibility
 # ═══════════════════════════════════════════════════════
-if selected_page == "⌖  Object Visibility":
+if selected_page == "Object Visibility":
     st.subheader("🔭 Object Visibility Calculator")
     st.caption(
         "Find which observatories worldwide have the best view "
@@ -1273,7 +1273,7 @@ if selected_page == "⌖  Object Visibility":
 # ═══════════════════════════════════════════════════════
 # TAB 4 — Peak Observing Time
 # ═══════════════════════════════════════════════════════
-if selected_page == "◷  Peak Observing Time":
+if selected_page == "Peak Observing Time":
     st.subheader("⏰ Peak Observing Time Calculator")
     st.caption(
         "Find the best hour to observe tonight at each observatory. "
@@ -1462,7 +1462,7 @@ if selected_page == "◷  Peak Observing Time":
 # ═══════════════════════════════════════════════════════
 # TAB 5 — Atmospheric Analysis
 # ═══════════════════════════════════════════════════════
-if selected_page == "≋  Atmospheric Analysis":
+if selected_page == "Atmospheric Analysis":
     st.subheader("🌫️ Atmospheric Analysis")
     st.caption(
         "Seeing index, Precipitable Water Vapor (PWV), and "
@@ -1693,7 +1693,7 @@ if selected_page == "≋  Atmospheric Analysis":
 # ═══════════════════════════════════════════════════════
 # TAB 6 — Historical Reliability
 # ═══════════════════════════════════════════════════════
-if selected_page == "▦  Historical Reliability":
+if selected_page == "Historical Reliability":
     st.subheader("📊 Historical Reliability Scoring")
     st.caption(
         "Reliability grades based on accumulated daily weather "
@@ -1868,7 +1868,7 @@ if selected_page == "▦  Historical Reliability":
 # ═══════════════════════════════════════════════════════
 # TAB 7 — Site Comparison
 # ═══════════════════════════════════════════════════════
-if selected_page == "⇌  Site Comparison":
+if selected_page == "Site Comparison":
     st.subheader("⚖️ Comparative Site Analysis")
     st.caption(
         "Select 2 to 5 observatories to compare side by side. "
@@ -2081,7 +2081,7 @@ Data sourced from automated atmospheric monitoring pipeline (Open-Meteo API) wit
 # ═══════════════════════════════════════════════════════
 # TAB 8 — Semester Planning Calendar
 # ═══════════════════════════════════════════════════════
-if selected_page == "▤  Semester Planning":
+if selected_page == "Semester Planning":
     st.subheader("📅 Semester Planning Calendar")
     st.caption(
         "Plan your observing semester months in advance. "
@@ -2317,7 +2317,7 @@ Generated by Global Observatory Weather Tracker
 # ═══════════════════════════════════════════════════════
 # TAB 9 — Educational Mode
 # ═══════════════════════════════════════════════════════
-if selected_page == "◎  Learn Astronomy":
+if selected_page == "Learn Astronomy":
     st.subheader("🎓 Learn Astronomy — Educational Mode")
     st.caption(
         "Understand every metric on this dashboard. "
@@ -2507,7 +2507,7 @@ if selected_page == "◎  Learn Astronomy":
 # ═══════════════════════════════════════════════════════
 # TAB 10 — Alert Subscriptions
 # ═══════════════════════════════════════════════════════
-if selected_page == "◉  Alert Subscriptions":
+if selected_page == "Alert Subscriptions":
     st.subheader("🔔 Alert Subscriptions")
     st.caption(
         "Get emailed automatically when observing conditions "
@@ -2678,7 +2678,7 @@ weather details and an observing tip.
 # ═══════════════════════════════════════════════════════
 # TAB 11 — Telescope Efficiency
 # ═══════════════════════════════════════════════════════
-if selected_page == "▲  Telescope Efficiency":
+if selected_page == "Telescope Efficiency":
     st.subheader("🏆 Telescope Efficiency Score")
     st.caption(
         "The single most important number for planning. "
@@ -3181,7 +3181,7 @@ schedulers actually care about.
 # ═══════════════════════════════════════════════════════
 # TAB 12 — SNR Calculator
 # ═══════════════════════════════════════════════════════
-if selected_page == "◫  SNR Calculator":
+if selected_page == "SNR Calculator":
     st.subheader("📡 Signal-to-Noise Ratio Calculator")
     st.caption(
         "Calculate how detectable your target object will be "
@@ -3551,7 +3551,7 @@ if selected_page == "◫  SNR Calculator":
 # ═══════════════════════════════════════════════════════
 # TAB 13 — Live Sky Chart
 # ═══════════════════════════════════════════════════════
-if selected_page == "✦  Live Sky Chart":
+if selected_page == "Live Sky Chart":
     st.subheader("🌌 Live Sky Chart")
     st.caption(
         "Real-time sky view for any observatory. "
@@ -3938,7 +3938,7 @@ if selected_page == "✦  Live Sky Chart":
 # ═══════════════════════════════════════════════════════
 # TAB 14 — 7-Day Forecast
 # ═══════════════════════════════════════════════════════
-if selected_page == "▷  7-Day Forecast":
+if selected_page == "7-Day Forecast":
     st.subheader("📅 7-Day Observation Forecast")
     st.caption(
         "7-day weather forecast for any observatory. "
@@ -4233,7 +4233,7 @@ if selected_page == "▷  7-Day Forecast":
 # ═══════════════════════════════════════════════════════
 # TAB 15 — Comet Tracker
 # ═══════════════════════════════════════════════════════
-if selected_page == "⊹  Comet Tracker":
+if selected_page == "Comet Tracker":
     st.subheader("☄️ Comet Tracker")
     st.caption(
         "Track currently observable comets worldwide. "
@@ -4448,7 +4448,7 @@ can brighten to magnitude 1 — or completely disintegrate.
 # ═══════════════════════════════════════════════════════
 # TAB 16 — Observatory Reviews
 # ═══════════════════════════════════════════════════════
-if selected_page == "◇  Observatory Reviews":
+if selected_page == "Observatory Reviews":
     st.subheader("⭐ Observatory Reviews & Ratings")
     st.caption(
         "Share your experience visiting observatories "
@@ -4913,7 +4913,7 @@ if selected_page == "◇  Observatory Reviews":
 # ═══════════════════════════════════════════════════════
 # TAB 17 — Satellite Pass Predictor
 # ═══════════════════════════════════════════════════════
-if selected_page == "⊕  Satellite Passes":
+if selected_page == "Satellite Passes":
     st.subheader("🛸 Satellite Pass Predictor")
     st.caption(
         "Predict when the ISS and other spacecraft pass "
@@ -5234,7 +5234,7 @@ from horizon to horizon.
 # ═══════════════════════════════════════════════════════
 # TAB 18 — Airmass Calculator
 # ═══════════════════════════════════════════════════════
-if selected_page == "∠  Airmass Calculator":
+if selected_page == "Airmass Calculator":
     st.subheader("📐 Airmass Calculator")
     st.caption(
         "Calculate how much atmosphere your telescope "
@@ -5555,7 +5555,7 @@ near the horizon where the simple formula breaks down.
 # ═══════════════════════════════════════════════════════
 # TAB 19 — Meteor Shower Calendar
 # ═══════════════════════════════════════════════════════
-if selected_page == "⋆  Meteor Showers":
+if selected_page == "Meteor Showers":
     st.subheader("🌠 Meteor Shower Calendar")
     st.caption(
         "Complete calendar of annual meteor showers. "
@@ -5768,7 +5768,7 @@ contribute to science.
 # ═══════════════════════════════════════════════════════
 # TAB 20 — Asteroid Tracker
 # ═══════════════════════════════════════════════════════
-if selected_page == "⬡  Asteroid Tracker":
+if selected_page == "Asteroid Tracker":
     st.subheader("🪨 Asteroid Tracker")
     st.caption(
         "Real-time near-Earth asteroid data from "
@@ -6225,7 +6225,7 @@ are rated 0.
 # ═══════════════════════════════════════════════════════
 # TAB 21 — Eclipses & Transits
 # ═══════════════════════════════════════════════════════
-if selected_page == "◐  Eclipses & Transits":
+if selected_page == "Eclipses & Transits":
     st.subheader("🌑 Eclipses & Transits")
     st.caption(
         "Upcoming solar eclipses, lunar eclipses and "
@@ -6492,7 +6492,7 @@ Lunar eclipses are completely safe to observe.
 # ═══════════════════════════════════════════════════════
 # TAB 22 — Meteor Showers   
 # ═══════════════════════════════════════════════════════
-if selected_page == "⊙  Observatory Detail":
+if selected_page == "Observatory Detail":
     st.subheader("🔬 Observatory Detail — Live View")
     st.caption(
         "Select any observatory for a complete live "
