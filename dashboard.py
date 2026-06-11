@@ -956,6 +956,15 @@ if st.sidebar.button("Fetch Live Data", use_container_width=True):
                         f"Fetched {len(results)} observatories\n\n"
                         f"Last fetched: {fetched_at}"
                     )
+
+                with st.spinner("Precomputing dashboard data..."):
+                    try:
+                        from precompute import precompute_all
+                        precompute_all()
+                        get_all_precomputed.clear()
+                        st.success("Dashboard data precomputed.")
+                    except Exception as e:
+                        st.warning(f"Precompute skipped: {e}")
                 else:
                     st.error("No observatories found.")
             except Exception as e:
