@@ -1093,7 +1093,7 @@ if selected_page == "Live Weather Map":
             style="white-bg",
             layers=[dict(
                 sourcetype="raster",
-                source=["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
+                source=["https://mt0.google.com/vt/lyrs=s&hl=en&x={x}&y={y}&z={z}"],
                 below="traces",
             )],
             center=dict(lat=_map_clat, lon=_map_clon),
