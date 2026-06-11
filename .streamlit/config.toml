@@ -11,4 +11,4 @@ port = 8501
 
 [client]
 showErrorDetails = false
-toolbarMode = "minimal"
+toolbarMode = "viewer"

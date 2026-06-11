@@ -601,6 +601,75 @@ def condition_emoji(condition):
     return {"Excellent": "🟢", "Good": "🔵",
             "Marginal": "🟡", "Poor": "🔴"}.get(condition, "⚪")
 
+# ── Cached wrappers for heavy per-page computations ──────────────
+@st.cache_data(ttl=3600, show_spinner=False)
+def cached_reliability_scores(days):
+    return calculate_reliability_scores(days=days)
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def cached_compare_sites(sites_tuple, days):
+    return compare_sites(list(sites_tuple), days)
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def cached_calendar_data(obs, year, start_month, months):
+    return build_calendar_data(obs, year, start_month, months)
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def cached_best_months(obs, year, months):
+    return get_best_months(obs, year, months)
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def cached_snr_all(object_name, object_mag, exposure_s, moon_phase, moon_alt):
+    return get_snr_for_all_observatories(
+        object_name=object_name,
+        object_magnitude=object_mag,
+        exposure_time_s=exposure_s,
+        observatories_df=load_data(),
+        moon_phase_pct=moon_phase,
+        moon_altitude_deg=moon_alt,
+        seeing_data=load_atmospheric(),
+        pwv_data=load_atmospheric()
+    )
+
+@st.cache_data(ttl=600, show_spinner=False)
+def cached_forecast(lat, lon, days=7):
+    from forecast import fetch_forecast as _ff, get_daily_summary as _gds
+    fc = _ff(lat, lon, days=days)
+    return fc, _gds(fc)
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def cached_comets():
+    return get_current_comets()
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def cached_showers():
+    return get_all_showers_sorted(), get_active_showers(), get_upcoming_showers(30)
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def cached_eclipse_events():
+    return get_upcoming_events()
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def cached_best_obs_for_eclipse(event_name, event_date):
+    return get_best_observatories_for_eclipse(
+        {"name": event_name, "date": event_date}, load_data())
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def cached_airmass_curve(obs_name, obj_name, lat, lon, alt):
+    return get_object_airmass_curve(obj_name, lat, lon, alt)
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def cached_compare_airmass(objects, lat, lon, alt):
+    return compare_objects_airmass(list(objects), lat, lon, alt)
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def cached_reviews(obs_name):
+    return get_reviews(obs_name), get_observatory_stats(obs_name)
+
+@st.cache_data(ttl=600, show_spinner=False)
+def cached_top_reviews():
+    return get_top_rated_observatories(), get_recent_reviews(10)
+
 df  = load_data()
 win = load_windows()
 peak = load_peak_times_cached()
@@ -1567,11 +1636,8 @@ if selected_page == "📊 Historical Reliability":
         format_func=lambda x: f"Last {x} days"
     )
 
-    with st.spinner(
-        f"Calculating reliability scores over "
-        f"last {days_option} days..."
-    ):
-        hist_df = calculate_reliability_scores(days=days_option)
+    with st.spinner(f"Loading reliability scores — last {days_option} days..."):
+        hist_df = cached_reliability_scores(days_option)
 
     if hist_df.empty:
         st.warning(
@@ -1760,10 +1826,8 @@ if selected_page == "⚖️ Site Comparison":
         st.warning(
             "Please select at least 2 observatories to compare.")
     else:
-        with st.spinner(
-            f"Comparing {len(selected_sites)} sites..."
-        ):
-            comp_df = compare_sites(selected_sites, comp_days)
+        with st.spinner(f"Comparing {len(selected_sites)} sites..."):
+            comp_df = cached_compare_sites(tuple(selected_sites), comp_days)
 
         if comp_df.empty:
             st.error("Could not load comparison data.")
@@ -1985,14 +2049,9 @@ if selected_page == "📅 Semester Planning":
         key="sem_start"
     )
 
-    with st.spinner(
-        f"Building {sem_months}-month calendar for "
-        f"{sem_obs}..."
-    ):
-        cal_data  = build_calendar_data(
-            sem_obs, sem_year, start_month, sem_months)
-        best_months = get_best_months(
-            sem_obs, sem_year, sem_months)
+    with st.spinner(f"Building {sem_months}-month calendar for {sem_obs}..."):
+        cal_data    = cached_calendar_data(sem_obs, sem_year, start_month, sem_months)
+        best_months = cached_best_months(sem_obs, sem_year, sem_months)
 
     st.markdown("---")
 
@@ -3331,19 +3390,8 @@ if selected_page == "📡 SNR Calculator":
         "for your target tonight?"
     )
 
-    with st.spinner(
-        "Calculating SNR for all observatories..."
-    ):
-        all_snr = get_snr_for_all_observatories(
-            object_name      = snr_object,
-            object_magnitude = object_mag,
-            exposure_time_s  = exposure_s,
-            observatories_df = df,
-            moon_phase_pct   = moon_phase_input,
-            moon_altitude_deg = moon_alt_input,
-            seeing_data      = atm_data,
-            pwv_data         = atm_data
-        )
+    with st.spinner("Calculating SNR for all observatories..."):
+        all_snr = cached_snr_all(snr_object, object_mag, exposure_s, moon_phase_input, moon_alt_input)
 
     if not all_snr.empty:
         s1, s2, s3, s4 = st.columns(4)
@@ -3845,15 +3893,9 @@ if selected_page == "📅 7-Day Forecast":
 )
     fc_row = df[df["observatory"] == fc_obs].iloc[0]
 
-    with st.spinner(
-        f"Fetching 7-day forecast for {fc_obs}..."
-    ):
-        fc_df    = fetch_forecast(
-            float(fc_row["latitude"]),
-            float(fc_row["longitude"]),
-            days=7
-        )
-        daily_df = get_daily_summary(fc_df)
+    with st.spinner(f"Fetching 7-day forecast for {fc_obs}..."):
+        fc_df, daily_df = cached_forecast(
+            float(fc_row["latitude"]), float(fc_row["longitude"]), days=7)
 
     if daily_df.empty:
         st.error("Could not fetch forecast data.")
@@ -4128,7 +4170,7 @@ if selected_page == "☄️ Comet Tracker":
         "is needed to see each comet tonight."
     )
 
-    comets = get_current_comets()
+    comets = cached_comets()
 
     # Summary metrics
     trackable = [c for c in comets
@@ -4344,8 +4386,7 @@ if selected_page == "⭐ Observatory Reviews":
     )
 
     # ── Summary metrics ───────────────────────────────────
-    recent   = get_recent_reviews(limit=100)
-    top_rated = get_top_rated_observatories(limit=20)
+    top_rated, recent = cached_top_reviews()
 
     r1, r2, r3, r4 = st.columns(4)
     r1.metric("Total Reviews",
@@ -4506,13 +4547,11 @@ if selected_page == "⭐ Observatory Reviews":
         )
 
         if browse_obs == "All observatories":
-            reviews_df = get_recent_reviews(limit=50)
+            _, reviews_df_all = cached_top_reviews()
+            reviews_df = reviews_df_all.head(50) if not reviews_df_all.empty else reviews_df_all
             stats      = None
         else:
-            reviews_df = get_reviews(
-                observatory=browse_obs, limit=50)
-            stats      = get_observatory_stats(
-                browse_obs)
+            reviews_df, stats = cached_reviews(browse_obs)
 
         # Show stats for selected observatory
         if stats and stats["total_reviews"]:
@@ -4756,10 +4795,7 @@ if selected_page == "⭐ Observatory Reviews":
                         )
 
                     # Show latest review for this obs
-                    latest = get_reviews(
-                        observatory=row["observatory"],
-                        limit=1
-                    )
+                    latest, _ = cached_reviews(row["observatory"])
                     if not latest.empty:
                         rev = latest.iloc[0]
                         st.markdown(
@@ -5197,10 +5233,7 @@ if selected_page == "📐 Airmass Calculator":
     st.subheader("Current airmass")
 
     with st.spinner("Calculating airmass..."):
-        curve = get_object_airmass_curve(
-            am_object, am_lat, am_lon,
-            am_alt, hours=am_hours
-        )
+        curve = cached_airmass_curve(am_obs, am_object, am_lat, am_lon, am_alt)
 
     if not curve:
         st.error(
@@ -5356,8 +5389,8 @@ if selected_page == "📐 Airmass Calculator":
         )
 
         with st.spinner("Calculating..."):
-            comparison = compare_objects_airmass(
-                list(am_filtered.keys())[:30],
+            comparison = cached_compare_airmass(
+                tuple(list(am_filtered.keys())[:30]),
                 am_lat, am_lon, am_alt
             )
 
@@ -5458,9 +5491,7 @@ if selected_page == "🌠 Meteor Showers":
         "time and observing score for each shower."
     )
 
-    showers  = get_all_showers_sorted()
-    active   = get_active_showers()
-    upcoming = get_upcoming_showers(30)
+    showers, active, upcoming = cached_showers()
     year     = utcnow().year
 
     # ── Summary metrics ───────────────────────────────────
@@ -6131,7 +6162,7 @@ if selected_page == "🌑 Eclipses & Transits":
         "for each event."
     )
 
-    events   = get_upcoming_events()
+    events   = cached_eclipse_events()
     upcoming = events[:5]
 
     # ── Summary metrics ───────────────────────────────────
@@ -6296,11 +6327,9 @@ if selected_page == "🌑 Eclipses & Transits":
                 f"this {event['type'].lower()}:**"
             )
 
-            with st.spinner(
-                "Finding best observatories..."
-            ):
-                best_obs = get_best_observatories_for_eclipse(
-                    event, df)
+            with st.spinner("Finding best observatories..."):
+                best_obs = cached_best_obs_for_eclipse(
+                    event.get("name",""), event.get("date",""))
 
             if best_obs:
                 for obs in best_obs[:5]:
