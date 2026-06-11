@@ -1,13 +1,15 @@
-name: Hourly Weather Fetch
+name: Hourly Weather Fetch + Precompute
 
 on:
+  schedule:
+    - cron: '0 * * * *'   # every hour at :00
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  fetch-weather:
+  fetch-and-precompute:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -39,3 +41,10 @@ jobs:
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
 
+      - name: Precompute dashboard data
+        run: python precompute.py
+        env:
+          SUPABASE_DB_HOST: ${{ secrets.SUPABASE_DB_HOST }}
+          SUPABASE_DB_USER: ${{ secrets.SUPABASE_DB_USER }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}

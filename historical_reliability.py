@@ -1,42 +1,38 @@
-import sqlite3
 import pandas as pd
 from datetime import datetime, timedelta
+from db import query_df
 
 def get_historical_data(days=30):
     """
-    Fetch all weather readings from the past N days.
+    Fetch daily average weather readings from the past N days from Supabase.
     """
-    conn     = sqlite3.connect("data/silver/observatory_weather.db")
-    cutoff   = (datetime.utcnow() - timedelta(days=days)
-                ).strftime("%Y-%m-%d")
-
-    df = pd.read_sql(f"""
+    cutoff = (datetime.now(tz=None) - timedelta(days=days)).strftime("%Y-%m-%d")
+    return query_df("""
         SELECT
-            o.name       AS observatory,
+            o.name        AS observatory,
             o.country,
             o.altitude_m,
             o.latitude,
             o.longitude,
             w.fetch_date,
-            w.cloud_cover_pct,
-            w.humidity_pct,
-            w.wind_speed_ms,
-            w.temperature_c,
-            ROUND(MAX(0,
+            AVG(w.cloud_cover_pct)  AS cloud_cover_pct,
+            AVG(w.humidity_pct)     AS humidity_pct,
+            AVG(w.wind_speed_ms)    AS wind_speed_ms,
+            AVG(w.temperature_c)    AS temperature_c,
+            ROUND(GREATEST(0,
                 100
-                - (w.cloud_cover_pct * 0.50)
-                - (CASE WHEN w.humidity_pct > 85
-                   THEN (w.humidity_pct - 85) * 2.0 ELSE 0 END)
-                - (CASE WHEN w.wind_speed_ms > 15
-                   THEN (w.wind_speed_ms - 15) * 2.0 ELSE 0 END)
-            ), 1) AS daily_score
+                - (AVG(w.cloud_cover_pct) * 0.50)
+                - (CASE WHEN AVG(w.humidity_pct) > 85
+                   THEN (AVG(w.humidity_pct) - 85) * 2.0 ELSE 0 END)
+                - (CASE WHEN AVG(w.wind_speed_ms) > 15
+                   THEN (AVG(w.wind_speed_ms) - 15) * 2.0 ELSE 0 END)
+            )::numeric, 1) AS daily_score
         FROM weather_readings w
         JOIN observatories o ON w.observatory_id = o.id
-        WHERE w.fetch_date >= '{cutoff}'
+        WHERE w.fetch_date >= %(cutoff)s
+        GROUP BY o.name, o.country, o.altitude_m, o.latitude, o.longitude, w.fetch_date
         ORDER BY o.name, w.fetch_date
-    """, conn)
-    conn.close()
-    return df
+    """, {"cutoff": cutoff})
 
 def calculate_reliability_scores(days=30):
     """

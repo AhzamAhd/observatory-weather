@@ -89,6 +89,7 @@ from eclipses import (get_upcoming_events,
                       LUNAR_ECLIPSES,
                       TRANSITS)
 from forecast import fetch_forecast, get_daily_summary
+from precompute import load_precomputed, load_precomputed_raw
 
 from PIL import Image as _Image
 _favicon = _Image.open("gowc_logo.png")
@@ -620,7 +621,6 @@ st.markdown(f"""
 
 @st.cache_resource
 def get_all_precomputed():
-    from precompute import load_precomputed
     return {
         "windows":    load_precomputed(
             "observing_windows_slim"),
@@ -722,7 +722,6 @@ def load_windows():
         "windows", pd.DataFrame())
     if not data.empty:
         return data
-    from precompute import load_precomputed
     data = load_precomputed("observing_windows_slim")
     if not data.empty:
         return data
@@ -737,7 +736,6 @@ def load_peak_times_cached(object_name=None):
         "peak_times", pd.DataFrame())
     if not data.empty:
         return data
-    from precompute import load_precomputed
     return load_precomputed("peak_times")
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -746,7 +744,6 @@ def load_atmospheric_cached():
         "atmospheric", pd.DataFrame())
     if not data.empty:
         return data
-    from precompute import load_precomputed
     return load_precomputed("atmospheric")
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -756,9 +753,7 @@ def load_efficiency_cached(telescope_type="optical"):
             "efficiency", pd.DataFrame())
         if not data.empty:
             return data
-    from precompute import load_precomputed
-    return load_precomputed(
-        f"efficiency_{telescope_type}")
+    return load_precomputed(f"efficiency_{telescope_type}")
 
 def score_color(score):
     if score >= 80:   return "#1D9E75"
@@ -773,6 +768,10 @@ def condition_emoji(condition):
 # ── Cached wrappers for heavy per-page computations ──────────────
 @st.cache_data(ttl=3600, show_spinner=False)
 def cached_reliability_scores(days):
+    key = f"reliability_{days}d"
+    pre = load_precomputed(key)
+    if not pre.empty:
+        return pre
     return calculate_reliability_scores(days=days)
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -812,14 +811,24 @@ def cached_comets():
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def cached_showers():
+    pre = load_precomputed_raw("meteor_showers")
+    if pre:
+        return pre.get("showers", []), pre.get("active", []), pre.get("upcoming", [])
     return get_all_showers_sorted(), get_active_showers(), get_upcoming_showers(30)
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def cached_eclipse_events():
+    pre = load_precomputed_raw("eclipse_events")
+    if pre:
+        return pre
     return get_upcoming_events()
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def cached_best_obs_for_eclipse(event_name, event_date):
+    key = f"eclipse_best_{event_date}_{event_name.replace(' ', '_')}"
+    pre = load_precomputed_raw(key)
+    if pre:
+        return pre
     return get_best_observatories_for_eclipse(
         {"name": event_name, "date": event_date}, load_data())
 

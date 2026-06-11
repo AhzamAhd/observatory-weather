@@ -1,24 +1,25 @@
 import json
-from matplotlib.pylab import save
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timezone
 from db import get_connection, query_df, fetch_one
 from observing_window import get_all_windows
 from peak_time import get_all_peak_times
 from telescope_efficiency import get_all_efficiency_scores
 from atmospheric import get_full_atmospheric_analysis
+from historical_reliability import calculate_reliability_scores
+from eclipses import get_eclipse_events, get_best_observatories_for_eclipse
+from meteor_showers import get_meteor_showers
 
 def precompute_all():
     print(f"\n Pre-computing dashboard data — "
-          f"{datetime.utcnow().strftime('%Y-%m-%d %H:%M')} UTC\n")
+          f"{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')} UTC\n")
 
     conn = get_connection()
     cur  = conn.cursor()
 
     def save(key, data):
         cur.execute("""
-            INSERT INTO precomputed
-                (key, value, computed_at)
+            INSERT INTO precomputed (key, value, computed_at)
             VALUES (%s, %s::jsonb, NOW())
             ON CONFLICT (key) DO UPDATE SET
                 value       = EXCLUDED.value,
@@ -29,20 +30,21 @@ def precompute_all():
 
     # ── Observing windows ─────────────────────────────────
     print("  Computing observing windows...")
-    win    = get_all_windows()
+    win = get_all_windows()
     if not win.empty:
-        win = win.head(300)
+        save("observing_windows", win.head(300).to_dict("records"))
 
     # ── Peak times ────────────────────────────────────────
     print("  Computing peak times...")
     peak = get_all_peak_times()
     if not peak.empty:
-        peak = peak.head(300)
+        save("peak_times", peak.head(300).to_dict("records"))
 
     # ── Atmospheric analysis ──────────────────────────────
     print("  Computing atmospheric analysis...")
     df = query_df("""
-        SELECT o.name AS observatory, o.country,
+        SELECT DISTINCT ON (o.id)
+               o.name AS observatory, o.country,
                o.altitude_m, o.latitude, o.longitude,
                w.temperature_c, w.wind_speed_ms,
                w.humidity_pct, w.surface_pressure,
@@ -50,40 +52,34 @@ def precompute_all():
                ROUND(GREATEST(0,
                    100 - (w.cloud_cover_pct * 0.50)
                    - (CASE WHEN w.humidity_pct > 85
-                      THEN (w.humidity_pct - 85) * 2.0
-                      ELSE 0 END)
+                      THEN (w.humidity_pct - 85) * 2.0 ELSE 0 END)
                    - (CASE WHEN w.wind_speed_ms > 15
-                      THEN (w.wind_speed_ms - 15) * 2.0
-                      ELSE 0 END)
-                )::numeric, 1) AS weather_score
+                      THEN (w.wind_speed_ms - 15) * 2.0 ELSE 0 END)
+               )::numeric, 1) AS weather_score
         FROM weather_readings w
         JOIN observatories o ON w.observatory_id = o.id
-        WHERE w.fetch_date = (
-            SELECT MAX(fetch_date) FROM weather_readings
-        )
-        ORDER BY weather_score DESC
-        LIMIT 300
+        WHERE w.fetch_date = (SELECT MAX(fetch_date) FROM weather_readings)
+        ORDER BY o.id, w.fetch_datetime DESC
     """)
 
     atm_results = []
     for _, row in df.iterrows():
-       atm = get_full_atmospheric_analysis({
-           "temperature_c":    row["temperature_c"],
-           "wind_speed_ms":    row["wind_speed_ms"],
-           "humidity_pct":     row["humidity_pct"],
-           "altitude_m":       row["altitude_m"],
-           "surface_pressure": row.get("surface_pressure"),
-           "jet_stream_ms":    row.get("jet_stream_ms"),
-           "latitude":         row["latitude"]
+        atm = get_full_atmospheric_analysis({
+            "temperature_c":    row["temperature_c"],
+            "wind_speed_ms":    row["wind_speed_ms"],
+            "humidity_pct":     row["humidity_pct"],
+            "altitude_m":       row["altitude_m"],
+            "surface_pressure": row.get("surface_pressure"),
+            "jet_stream_ms":    row.get("jet_stream_ms"),
+            "latitude":         row["latitude"],
         })
-       atm_results.append({
+        atm_results.append({
             "observatory":    row["observatory"],
             "country":        row["country"],
             "altitude_m":     row["altitude_m"],
             "latitude":       float(row["latitude"]),
             "longitude":      float(row["longitude"]),
             "weather_score":  float(row["weather_score"]),
-            # Only keep what dashboard actually displays
             "seeing_arcsec":  atm["seeing_arcsec"],
             "seeing_quality": atm["seeing_quality"],
             "seeing_color":   atm["seeing_color"],
@@ -94,20 +90,61 @@ def precompute_all():
         })
     save("atmospheric", atm_results)
 
-
-    # ── Efficiency scores ─────────────────────────────────
+    # ── Telescope efficiency ──────────────────────────────
     for tel_type in ["optical", "infrared", "radio"]:
         print(f"  Computing {tel_type} efficiency...")
         eff = get_all_efficiency_scores(tel_type)
         if not eff.empty:
-            save(
-                f"efficiency_{tel_type}",
-                eff.to_dict("records")
-            )
+            save(f"efficiency_{tel_type}", eff.to_dict("records"))
+
+    # ── Historical reliability (30 days) ─────────────────
+    print("  Computing reliability scores (30 days)...")
+    rel_df = calculate_reliability_scores(days=30)
+    if not rel_df.empty:
+        save("reliability_30d", rel_df.to_dict("records"))
+
+    # ── Historical reliability (90 days) ─────────────────
+    print("  Computing reliability scores (90 days)...")
+    rel_df_90 = calculate_reliability_scores(days=90)
+    if not rel_df_90.empty:
+        save("reliability_90d", rel_df_90.to_dict("records"))
+
+    # ── Eclipse events ────────────────────────────────────
+    print("  Computing eclipse events...")
+    try:
+        events = get_eclipse_events()
+        if events:
+            save("eclipse_events", events)
+            # Best observatories for each upcoming eclipse
+            today = datetime.now(timezone.utc).date().isoformat()
+            upcoming = [e for e in events if e.get("date", "") >= today][:5]
+            for ev in upcoming:
+                key = f"eclipse_best_{ev['date']}_{ev['type'].replace(' ', '_')}"
+                try:
+                    best = get_best_observatories_for_eclipse(ev)
+                    if best:
+                        save(key, best)
+                except Exception as e:
+                    print(f"    Skipped eclipse best-obs for {ev['date']}: {e}")
+    except Exception as e:
+        print(f"  Skipped eclipses: {e}")
+
+    # ── Meteor showers ────────────────────────────────────
+    print("  Computing meteor showers...")
+    try:
+        showers, active, upcoming_showers = get_meteor_showers()
+        save("meteor_showers", {
+            "showers":  showers,
+            "active":   active,
+            "upcoming": upcoming_showers,
+        })
+    except Exception as e:
+        print(f"  Skipped meteor showers: {e}")
 
     cur.close()
     conn.close()
-    print("\n  ✅ Pre-computation complete.\n")
+    print("\n  Precomputation complete.\n")
+
 
 def load_precomputed(key):
     row = fetch_one(
@@ -120,6 +157,21 @@ def load_precomputed(key):
             return pd.DataFrame(json.loads(value))
         return pd.DataFrame(value)
     return pd.DataFrame()
+
+
+def load_precomputed_raw(key):
+    """Return raw value (list/dict) without wrapping in DataFrame."""
+    row = fetch_one(
+        "SELECT value FROM precomputed WHERE key = %s",
+        [key]
+    )
+    if row:
+        value = row["value"]
+        if isinstance(value, str):
+            return json.loads(value)
+        return value
+    return None
+
 
 if __name__ == "__main__":
     precompute_all()
