@@ -95,7 +95,8 @@ _favicon = _Image.open("gowc_logo.png")
 st.set_page_config(
     page_title="GOWC - Observatory Weather Tracker",
     page_icon=_favicon,
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
 import base64
@@ -327,6 +328,14 @@ st.markdown(f"""
     }}
     [data-testid="stDecoration"] {{
         display: none !important;
+    }}
+
+    /* ── Keep sidebar toggle button visible ── */
+    [data-testid="stSidebarCollapsedControl"] {{
+        display: flex !important;
+    }}
+    [data-testid="collapsedControl"] {{
+        display: flex !important;
     }}
 
     /* ── Metric cards ── */
