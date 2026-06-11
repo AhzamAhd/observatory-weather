@@ -269,34 +269,39 @@ if "theme" not in st.session_state:
 _t = st.session_state.theme
 
 if _t == "dark":
-    BG          = "#0d1117"
-    BG2         = "#161b22"
-    BG3         = "#21262d"
-    BORDER      = "#30363d"
-    TEXT        = "#e6edf3"
-    TEXT2       = "#8b949e"
-    ACCENT      = "#1f6feb"
-    ACCENT2     = "#388bfd"
-    SIDEBAR_BG  = "#010409"
+    # Deep-space dark: cosmic void backgrounds, nebula cyan accent, star gold highlight
+    BG          = "#08090f"   # deep void black
+    BG2         = "#0e1117"   # dark nebula surface
+    BG3         = "#151b26"   # slightly lighter panel
+    BORDER      = "#1e2d40"   # subtle blue-tinted border
+    TEXT        = "#cdd9e5"   # starlight white
+    TEXT2       = "#5c7a96"   # dim stellar blue-grey
+    ACCENT      = "#00b4d8"   # nebula cyan
+    ACCENT2     = "#90e0ef"   # bright nebula highlight
+    GOLD        = "#f4a261"   # warm star gold
+    SIDEBAR_BG  = "#05070d"   # darkest void for sidebar
 else:
-    BG          = "#ffffff"
-    BG2         = "#f6f8fa"
-    BG3         = "#eaeef2"
-    BORDER      = "#d0d7de"
-    TEXT        = "#1f2328"
-    TEXT2       = "#656d76"
-    ACCENT      = "#0969da"
-    ACCENT2     = "#0550ae"
-    SIDEBAR_BG  = "#f6f8fa"
+    # Light mode: observatory daytime — warm ivory, deep navy accent
+    BG          = "#f4f6fb"
+    BG2         = "#ffffff"
+    BG3         = "#e8edf5"
+    BORDER      = "#c5d0e0"
+    TEXT        = "#0d1b2a"
+    TEXT2       = "#4a6080"
+    ACCENT      = "#0077b6"   # deep observatory navy
+    ACCENT2     = "#023e8a"
+    GOLD        = "#e07b39"
+    SIDEBAR_BG  = "#edf0f7"
 
 st.markdown(f"""
     <style>
-    /* ── Reset & base ── */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+    /* ── Base ── */
     .stApp {{
         background-color: {BG} !important;
         color: {TEXT} !important;
-        font-family: -apple-system, BlinkMacSystemFont,
-            'Segoe UI', 'Inter', sans-serif;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
     }}
     .block-container {{
         padding-top: 1.5rem !important;
@@ -313,41 +318,39 @@ st.markdown(f"""
         color: {TEXT} !important;
     }}
 
-    /* ── Sidebar nav radio — clean professional style ── */
+    /* ── Sidebar nav radio ── */
     [data-testid="stSidebar"] [data-testid="stRadio"] > div {{
         gap: 0px !important;
     }}
     [data-testid="stSidebar"] [data-testid="stRadio"] label {{
         display: flex !important;
         align-items: center !important;
-        padding: 7px 12px !important;
-        border-radius: 6px !important;
-        font-size: 0.83rem !important;
+        padding: 6px 14px !important;
+        border-radius: 5px !important;
+        font-size: 0.82rem !important;
         font-weight: 500 !important;
         color: {TEXT2} !important;
         cursor: pointer !important;
         transition: none !important;
         animation: none !important;
-        letter-spacing: 0.01em !important;
+        letter-spacing: 0.02em !important;
         line-height: 1.4 !important;
-        margin: 1px 0 !important;
+        margin: 1px 4px !important;
         border: none !important;
         background: transparent !important;
     }}
     [data-testid="stSidebar"] [data-testid="stRadio"] label:hover {{
         background-color: {BG3} !important;
         color: {TEXT} !important;
-        transition: none !important;
     }}
     [data-testid="stSidebar"] [data-testid="stRadio"] label[data-checked="true"],
     [data-testid="stSidebar"] [data-testid="stRadio"] label:has(input:checked) {{
-        background-color: {ACCENT}18 !important;
-        color: {ACCENT2} !important;
+        background-color: {ACCENT}15 !important;
+        color: {ACCENT} !important;
         font-weight: 600 !important;
         border-left: 2px solid {ACCENT} !important;
-        padding-left: 10px !important;
+        padding-left: 12px !important;
     }}
-    /* Hide the radio circle dot */
     [data-testid="stSidebar"] [data-testid="stRadio"] [data-testid="stWidgetLabel"] {{
         display: none !important;
     }}
@@ -356,145 +359,208 @@ st.markdown(f"""
     }}
     [data-testid="stSidebar"] [data-testid="stRadio"] div[data-testid="stMarkdownContainer"] p {{
         margin: 0 !important;
-        font-size: 0.83rem !important;
+        font-size: 0.82rem !important;
     }}
 
     /* ── Hide Streamlit chrome ── */
-    [data-testid="stHeader"] {{
+    [data-testid="stHeader"],
+    [data-testid="stToolbar"],
+    [data-testid="stDecoration"],
+    #MainMenu, footer {{
         display: none !important;
     }}
-    [data-testid="stToolbar"] {{
-        display: none !important;
-    }}
-    #MainMenu {{
-        display: none !important;
-    }}
-    footer {{
-        display: none !important;
-    }}
-    [data-testid="stDecoration"] {{
-        display: none !important;
-    }}
-
-    /* ── Keep sidebar toggle button visible ── */
-    [data-testid="stSidebarCollapsedControl"] {{
-        display: flex !important;
-    }}
+    [data-testid="stSidebarCollapsedControl"],
     [data-testid="collapsedControl"] {{
         display: flex !important;
     }}
 
     /* ── Metric cards ── */
     [data-testid="stMetric"] {{
-        background-color: {BG2};
-        border: 1px solid {BORDER};
-        border-radius: 8px;
-        padding: 1rem 1.25rem;
+        background: linear-gradient(135deg, {BG2} 0%, {BG3} 100%) !important;
+        border: 1px solid {BORDER} !important;
+        border-radius: 10px !important;
+        padding: 1rem 1.25rem !important;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.3) !important;
     }}
     [data-testid="stMetricLabel"] {{
         color: {TEXT2} !important;
-        font-size: 0.75rem !important;
+        font-size: 0.72rem !important;
         font-weight: 600 !important;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
+        text-transform: uppercase !important;
+        letter-spacing: 0.08em !important;
     }}
     [data-testid="stMetricValue"] {{
         color: {TEXT} !important;
-        font-size: 1.5rem !important;
+        font-size: 1.6rem !important;
         font-weight: 700 !important;
+    }}
+    [data-testid="stMetricDelta"] {{
+        font-size: 0.78rem !important;
     }}
 
     /* ── Dataframes ── */
     [data-testid="stDataFrame"] {{
         border: 1px solid {BORDER} !important;
-        border-radius: 8px !important;
-        overflow: hidden;
+        border-radius: 10px !important;
+        overflow: hidden !important;
     }}
 
     /* ── Dividers ── */
     hr {{
-        border-color: {BORDER} !important;
-        margin: 1rem 0 !important;
+        border: none !important;
+        border-top: 1px solid {BORDER} !important;
+        margin: 1.2rem 0 !important;
+        opacity: 0.6 !important;
     }}
 
-    /* ── Subheaders ── */
-    h1, h2, h3 {{
+    /* ── Headings ── */
+    h1 {{
         color: {TEXT} !important;
+        font-size: 1.6rem !important;
         font-weight: 700 !important;
-        letter-spacing: -0.02em;
+        letter-spacing: -0.02em !important;
     }}
     h2 {{
-        font-size: 1.15rem !important;
-        border-bottom: 1px solid {BORDER};
-        padding-bottom: 0.5rem;
+        color: {TEXT} !important;
+        font-size: 1.1rem !important;
+        font-weight: 600 !important;
+        letter-spacing: 0.01em !important;
+        text-transform: uppercase !important;
+        border-bottom: 1px solid {BORDER} !important;
+        padding-bottom: 0.45rem !important;
         margin-bottom: 1rem !important;
+        color: {ACCENT2} !important;
+    }}
+    h3 {{
+        color: {TEXT} !important;
+        font-weight: 600 !important;
+        font-size: 1rem !important;
     }}
 
     /* ── Buttons ── */
     .stButton > button {{
-        background-color: {ACCENT} !important;
+        background: linear-gradient(135deg, {ACCENT} 0%, {ACCENT2}aa 100%) !important;
         color: #ffffff !important;
-        border: none !important;
-        border-radius: 6px !important;
+        border: 1px solid {ACCENT}88 !important;
+        border-radius: 7px !important;
         font-weight: 600 !important;
-        font-size: 0.85rem !important;
-        padding: 0.4rem 1rem !important;
+        font-size: 0.84rem !important;
+        padding: 0.45rem 1.1rem !important;
+        letter-spacing: 0.02em !important;
+        box-shadow: 0 0 10px {ACCENT}33 !important;
     }}
     .stButton > button:hover {{
-        background-color: {ACCENT2} !important;
+        background: linear-gradient(135deg, {ACCENT2} 0%, {ACCENT} 100%) !important;
+        box-shadow: 0 0 16px {ACCENT}55 !important;
     }}
 
-    /* ── Selectbox / radio ── */
+    /* ── Selectbox / radio (non-sidebar) ── */
     [data-testid="stRadio"] label {{
         color: {TEXT} !important;
         font-size: 0.85rem !important;
     }}
 
     /* ── Captions ── */
-    [data-testid="stCaptionContainer"] {{
+    [data-testid="stCaptionContainer"] p {{
         color: {TEXT2} !important;
-        font-size: 0.75rem !important;
+        font-size: 0.74rem !important;
     }}
 
     /* ── Progress bars ── */
     [data-testid="stProgressBar"] > div {{
-        background-color: {ACCENT} !important;
-        border-radius: 4px;
+        background: linear-gradient(90deg, {ACCENT} 0%, {ACCENT2} 100%) !important;
+        border-radius: 4px !important;
     }}
     [data-testid="stProgressBar"] {{
         background-color: {BG3} !important;
-        border-radius: 4px;
+        border-radius: 4px !important;
     }}
 
-    /* ── Tabs ── */
+    /* ── Tabs (sub-tabs inside pages) ── */
+    .stTabs [data-baseweb="tab-list"] {{
+        background-color: {BG2} !important;
+        border-radius: 8px 8px 0 0 !important;
+        border-bottom: 1px solid {BORDER} !important;
+        gap: 0 !important;
+        padding: 0 8px !important;
+    }}
     .stTabs [data-baseweb="tab"] {{
         color: {TEXT2} !important;
-        border-bottom: 2px solid transparent;
+        font-size: 0.83rem !important;
+        font-weight: 500 !important;
+        padding: 8px 16px !important;
+        border-bottom: 2px solid transparent !important;
+        background: transparent !important;
     }}
     .stTabs [aria-selected="true"] {{
         color: {ACCENT} !important;
         border-bottom: 2px solid {ACCENT} !important;
+        font-weight: 600 !important;
+    }}
+    .stTabs [data-baseweb="tab-panel"] {{
+        background-color: {BG2} !important;
+        border: 1px solid {BORDER} !important;
+        border-top: none !important;
+        border-radius: 0 0 8px 8px !important;
+        padding: 1rem !important;
     }}
 
     /* ── Input fields ── */
-    .stTextInput input, .stSelectbox select {{
-        background-color: {BG2} !important;
+    .stTextInput input,
+    div[data-baseweb="select"] > div,
+    div[data-baseweb="input"] > div {{
+        background-color: {BG3} !important;
         border: 1px solid {BORDER} !important;
+        border-radius: 7px !important;
         color: {TEXT} !important;
-        border-radius: 6px !important;
+    }}
+    .stSlider [data-testid="stSlider"] div {{
+        color: {TEXT} !important;
+    }}
+    div[data-baseweb="select"] svg {{
+        fill: {TEXT2} !important;
     }}
 
     /* ── Expander ── */
     [data-testid="stExpander"] {{
         border: 1px solid {BORDER} !important;
-        border-radius: 8px !important;
+        border-radius: 10px !important;
         background-color: {BG2} !important;
+        overflow: hidden !important;
+    }}
+    [data-testid="stExpander"] summary {{
+        font-weight: 600 !important;
+        font-size: 0.88rem !important;
+        color: {TEXT} !important;
+        letter-spacing: 0.01em !important;
     }}
 
     /* ── Alerts / info boxes ── */
     [data-testid="stAlert"] {{
-        border-radius: 8px !important;
+        border-radius: 9px !important;
         border: 1px solid {BORDER} !important;
+        background-color: {BG2} !important;
+    }}
+
+    /* ── Spinner ── */
+    [data-testid="stSpinner"] {{
+        color: {ACCENT} !important;
+    }}
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar {{
+        width: 6px;
+        height: 6px;
+    }}
+    ::-webkit-scrollbar-track {{
+        background: {BG2};
+    }}
+    ::-webkit-scrollbar-thumb {{
+        background: {BORDER};
+        border-radius: 3px;
+    }}
+    ::-webkit-scrollbar-thumb:hover {{
+        background: {TEXT2};
     }}
     </style>
 """, unsafe_allow_html=True)
