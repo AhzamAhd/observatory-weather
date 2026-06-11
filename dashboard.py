@@ -1201,103 +1201,31 @@ if selected_page == "⏰ Peak Observing Time":
 
         st.markdown("---")
 
-        # Hourly chart
-        fig, ax  = plt.subplots(figsize=(14, 5))
-        hours    = [h["hour"]
-                    for h in selected_row["hourly_data"]]
-        scores   = [h["combined_score"]
-                    for h in selected_row["hourly_data"]]
-        obj_alts = [h.get("object_altitude")
-                    for h in selected_row["hourly_data"]]
-
-        colors = []
-        for s in scores:
-            if s >= 80:   colors.append("#1D9E75")
-            elif s >= 60: colors.append("#378ADD")
-            elif s >= 40: colors.append("#EF9F27")
-            elif s > 0:   colors.append("#E24B4A")
-            else:         colors.append("#444441")
-
-        ax.bar(range(24), scores, color=colors, width=0.8)
-
-        # Object altitude overlay
-        if selected_peak_object and any(
-            a is not None for a in obj_alts
-        ):
-            scaled = [
-                (a / 90 * 100) if a is not None and a > 0 else 0
-                for a in obj_alts
-            ]
-            ax.plot(range(24), scaled, color="white",
-                    linewidth=1.5, linestyle="--",
-                    alpha=0.7, label="Object altitude (scaled)")
-            ax.legend(loc="upper right", fontsize=8,
-                      facecolor="#0E1117", labelcolor="white")
-
-        # Peak marker
-        peak_idx = scores.index(max(scores))
-        ax.bar(peak_idx, scores[peak_idx],
-               color="#1D9E75", width=0.8,
-               edgecolor="white", linewidth=2)
-        ax.annotate(
-            f"Peak\n{hours[peak_idx]}\n"
-            f"{scores[peak_idx]:.0f}/100",
-            xy=(peak_idx, scores[peak_idx]),
-            xytext=(peak_idx, scores[peak_idx] + 8),
-            ha="center", fontsize=9,
-            color="white", fontweight="bold"
+        # Hourly chart — Plotly
+        import plotly.graph_objects as go
+        hours    = [h["hour"] for h in selected_row["hourly_data"]]
+        scores   = [h["combined_score"] for h in selected_row["hourly_data"]]
+        obj_alts = [h.get("object_altitude") for h in selected_row["hourly_data"]]
+        _pcolors = ["#1D9E75" if s>=80 else "#378ADD" if s>=60 else "#EF9F27" if s>=40 else "#E24B4A" if s>0 else "#30363d" for s in scores]
+        _xlabels = [f"{h:02d}:00" for h in range(24)]
+        _peak_idx = scores.index(max(scores))
+        _pfig = go.Figure()
+        _pfig.add_trace(go.Bar(x=_xlabels, y=scores, marker_color=_pcolors, name="Score", hovertemplate="%{x}<br>Score: %{y:.0f}/100<extra></extra>"))
+        if selected_peak_object and any(a is not None for a in obj_alts):
+            _scaled = [(a/90*100) if a is not None and a>0 else 0 for a in obj_alts]
+            _pfig.add_trace(go.Scatter(x=_xlabels, y=_scaled, mode="lines", line=dict(color="#AFA9EC", width=2, dash="dash"), name="Object altitude (scaled)"))
+        _pfig.add_annotation(x=_xlabels[_peak_idx], y=scores[_peak_idx]+8, text=f"Peak<br>{_xlabels[_peak_idx]}<br>{scores[_peak_idx]:.0f}/100", showarrow=False, font=dict(color="white", size=10, family="sans-serif"), bgcolor="rgba(29,158,117,0.3)", bordercolor="#1D9E75", borderwidth=1)
+        _pfig.update_layout(
+            title=f"Hourly Observing Score — {selected_obs}" + (f" — {selected_peak_object}" if selected_peak_object else "") + f" — {utcnow().strftime('%Y-%m-%d')} UTC",
+            xaxis_title="Hour (UTC)", yaxis_title="Combined Score",
+            yaxis=dict(range=[0, 115]),
+            template="plotly_dark" if st.session_state.theme=="dark" else "plotly_white",
+            paper_bgcolor=BG2, plot_bgcolor=BG2,
+            font=dict(color=TEXT, family="sans-serif"),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            height=380, margin=dict(l=40, r=20, t=60, b=60)
         )
-
-        ax.set_xticks(range(24))
-        ax.set_xticklabels(
-            [f"{h:02d}:00" for h in range(24)],
-            rotation=45, fontsize=8
-        )
-        ax.set_ylim(0, 115)
-        ax.set_ylabel("Combined Observing Score", fontsize=10)
-        ax.set_title(
-            f"Hourly Observing Score — {selected_obs}"
-            + (f" — {selected_peak_object}"
-               if selected_peak_object else "")
-            + f" — {utcnow().strftime('%Y-%m-%d')} UTC",
-            fontsize=11, fontweight="bold"
-        )
-        ax.spines["top"].set_visible(False)
-        ax.spines["right"].set_visible(False)
-        ax.set_facecolor("#0E1117")
-        fig.patch.set_facecolor("#0E1117")
-        ax.tick_params(colors="white")
-        ax.yaxis.label.set_color("white")
-        ax.title.set_color("white")
-        ax.spines["left"].set_color("#444441")
-        ax.spines["bottom"].set_color("#444441")
-
-        legend_items = [
-            mpatches.Patch(color="#1D9E75",
-                           label="Excellent (80+)"),
-            mpatches.Patch(color="#378ADD",
-                           label="Good (60-79)"),
-            mpatches.Patch(color="#EF9F27",
-                           label="Marginal (40-59)"),
-            mpatches.Patch(color="#E24B4A",
-                           label="Poor (<40)"),
-            mpatches.Patch(color="#444441",
-                           label="Daytime")
-        ]
-        ax.legend(handles=legend_items, loc="upper left",
-                  fontsize=8, facecolor="#0E1117",
-                  labelcolor="white")
-
-        buf = io.BytesIO()
-        plt.tight_layout()
-        plt.savefig(buf, format="png", dpi=120,
-                    facecolor="#0E1117",
-                    bbox_inches="tight")
-        buf.seek(0)
-        img_data = buf.getvalue()
-        buf.close()
-        plt.close()
-        st.image(img_data, width='stretch')
+        st.plotly_chart(_pfig, use_container_width=True)
 
         st.markdown("---")
         st.subheader("Hourly breakdown table")
@@ -1682,59 +1610,25 @@ if selected_page == "📊 Historical Reliability":
                 d2.metric("Worst Day",  row["worst_day"])
                 d3.metric("Trend",      row["trend"])
 
-                # Mini score history chart
+                # Mini score history chart — Plotly
                 if row["daily_scores"]:
-                    import matplotlib.pyplot as plt
-                    import io
-
-                    dates  = [d["fetch_date"]
-                              for d in row["daily_scores"]]
-                    scores = [d["daily_score"]
-                              for d in row["daily_scores"]]
-
-                    fig, ax = plt.subplots(figsize=(10, 2))
-                    ax.fill_between(
-                        range(len(scores)), scores,
-                        alpha=0.3, color=grade_color)
-                    ax.plot(
-                        range(len(scores)), scores,
-                        color=grade_color, linewidth=2)
-                    ax.axhline(
-                        y=80, color="#1D9E75",
-                        linestyle="--", alpha=0.5,
-                        linewidth=1, label="Excellent")
-                    ax.axhline(
-                        y=60, color="#378ADD",
-                        linestyle="--", alpha=0.5,
-                        linewidth=1, label="Good")
-                    ax.set_ylim(0, 105)
-                    ax.set_xticks(range(len(dates)))
-                    ax.set_xticklabels(
-                        dates, rotation=45, fontsize=7)
-                    ax.set_ylabel("Score", fontsize=8)
-                    ax.set_facecolor("#0E1117")
-                    fig.patch.set_facecolor("#0E1117")
-                    ax.tick_params(colors="white",
-                                   labelsize=7)
-                    ax.yaxis.label.set_color("white")
-                    ax.spines["top"].set_visible(False)
-                    ax.spines["right"].set_visible(False)
-                    ax.spines["left"].set_color("#444441")
-                    ax.spines["bottom"].set_color("#444441")
-                    ax.legend(
-                        fontsize=7, facecolor="#0E1117",
-                        labelcolor="white",
-                        loc="upper right")
-                    buf = io.BytesIO()
-                    plt.tight_layout()
-                    plt.savefig(buf, format="png", dpi=120,
-                                facecolor="#0E1117",
-                                bbox_inches="tight")
-                    buf.seek(0)
-                    img_data = buf.getvalue()
-                    buf.close()
-                    plt.close()
-                    st.image(img_data, width='stretch')
+                    import plotly.graph_objects as go
+                    dates  = [d["fetch_date"] for d in row["daily_scores"]]
+                    scores = [d["daily_score"] for d in row["daily_scores"]]
+                    _mfig  = go.Figure()
+                    _mfig.add_trace(go.Scatter(x=dates, y=scores, fill="tozeroy", fillcolor=f"rgba(55,138,221,0.15)", line=dict(color=grade_color, width=2), mode="lines", name="Score"))
+                    _mfig.add_hline(y=80, line=dict(color="#1D9E75", dash="dash", width=1), annotation_text="Excellent", annotation_font_color="#1D9E75")
+                    _mfig.add_hline(y=60, line=dict(color="#378ADD", dash="dash", width=1), annotation_text="Good", annotation_font_color="#378ADD")
+                    _mfig.update_layout(
+                        yaxis=dict(range=[0,105], title="Score"),
+                        xaxis=dict(tickangle=45),
+                        template="plotly_dark" if st.session_state.theme=="dark" else "plotly_white",
+                        paper_bgcolor=BG3, plot_bgcolor=BG3,
+                        font=dict(color=TEXT, size=10),
+                        height=180, margin=dict(l=40, r=10, t=10, b=60),
+                        showlegend=False
+                    )
+                    st.plotly_chart(_mfig, use_container_width=True)
 
                 st.caption(
                     f"{row['country']} · "
@@ -1870,81 +1764,32 @@ if selected_page == "⚖️ Site Comparison":
             st.subheader(
                 f"Score history — last {comp_days} days")
 
-            import matplotlib.pyplot as plt
-            import matplotlib.patches as mpatches
-            import io
-
-            colors_palette = [
-                "#1D9E75", "#378ADD", "#EF9F27",
-                "#E24B4A", "#AFA9EC"
-            ]
-
-            fig, ax = plt.subplots(figsize=(12, 5))
-
+            import plotly.graph_objects as go
+            colors_palette = ["#1D9E75","#378ADD","#EF9F27","#E24B4A","#AFA9EC"]
+            _hfig = go.Figure()
             has_history = False
             for i, (_, row) in enumerate(comp_df.iterrows()):
                 if row["daily_scores"]:
                     has_history = True
-                    dates  = [d["fetch_date"]
-                              for d in row["daily_scores"]]
-                    scores = [d["daily_score"]
-                              for d in row["daily_scores"]]
-                    color  = colors_palette[
-                        i % len(colors_palette)]
-                    label  = row["observatory"].replace(
-                        " Observatory", "").replace(
-                        " Telescope", "")[:25]
-                    ax.plot(range(len(scores)), scores,
-                            color=color, linewidth=2,
-                            marker="o", markersize=4,
-                            label=label)
-                    ax.fill_between(
-                        range(len(scores)), scores,
-                        alpha=0.1, color=color)
-
+                    dates  = [d["fetch_date"] for d in row["daily_scores"]]
+                    scores = [d["daily_score"] for d in row["daily_scores"]]
+                    color  = colors_palette[i % len(colors_palette)]
+                    label  = row["observatory"].replace(" Observatory","").replace(" Telescope","")[:25]
+                    _hfig.add_trace(go.Scatter(x=dates, y=scores, mode="lines+markers", line=dict(color=color, width=2), marker=dict(size=4), fill="tozeroy", fillcolor=f"rgba({int(color[1:3],16)},{int(color[3:5],16)},{int(color[5:7],16)},0.08)", name=label))
             if has_history:
-                ax.axhline(y=80, color="#1D9E75",
-                           linestyle="--", alpha=0.4,
-                           linewidth=1, label="Excellent (80)")
-                ax.axhline(y=60, color="#378ADD",
-                           linestyle="--", alpha=0.4,
-                           linewidth=1, label="Good (60)")
-                ax.set_ylim(0, 105)
-                ax.set_ylabel("Observation Score",
-                              fontsize=10)
-                ax.set_title(
-                    "Historical Score Comparison",
-                    fontsize=12, fontweight="bold")
-                ax.legend(fontsize=9,
-                          facecolor="#0E1117",
-                          labelcolor="white",
-                          loc="upper right")
-                ax.set_facecolor("#0E1117")
-                fig.patch.set_facecolor("#0E1117")
-                ax.tick_params(colors="white")
-                ax.yaxis.label.set_color("white")
-                ax.title.set_color("white")
-                ax.spines["top"].set_visible(False)
-                ax.spines["right"].set_visible(False)
-                ax.spines["left"].set_color("#444441")
-                ax.spines["bottom"].set_color("#444441")
-
-                buf = io.BytesIO()
-                plt.tight_layout()
-                plt.savefig(buf, format="png", dpi=120,
-                    facecolor="#0E1117",
-                    bbox_inches="tight")
-                buf.seek(0)
-                img_data = buf.getvalue()
-                buf.close()
-                plt.close()
-                st.image(img_data, width='stretch')
-            else:
-                st.info(
-                    "Not enough historical data yet. "
-                    "Come back after a few days of pipeline "
-                    "runs to see score trends here."
+                _hfig.add_hline(y=80, line=dict(color="#1D9E75", dash="dash", width=1))
+                _hfig.add_hline(y=60, line=dict(color="#378ADD", dash="dash", width=1))
+                _hfig.update_layout(
+                    title="Historical Score Comparison", yaxis=dict(range=[0,105], title="Observation Score"),
+                    xaxis=dict(tickangle=45),
+                    template="plotly_dark" if st.session_state.theme=="dark" else "plotly_white",
+                    paper_bgcolor=BG2, plot_bgcolor=BG2, font=dict(color=TEXT),
+                    height=420, margin=dict(l=40,r=20,t=60,b=80),
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
                 )
+                st.plotly_chart(_hfig, use_container_width=True)
+            else:
+                st.info("Not enough historical data yet. Come back after a few days of pipeline runs to see score trends here.")
 
             st.markdown("---")
 
@@ -1960,82 +1805,23 @@ if selected_page == "⚖️ Site Comparison":
                 "PWV (inverted)":   "pwv_mm"
             }
 
-            fig2, axes = plt.subplots(
-                2, 3, figsize=(14, 8))
-            axes = axes.flatten()
-            names = [
-                r["observatory"].replace(
-                    " Observatory", "").replace(
-                    " Telescope", "")[:15]
-                for _, r in comp_df.iterrows()
-            ]
-
-            for idx, (label, col) in enumerate(
-                metrics.items()
-            ):
-                ax = axes[idx]
+            import plotly.graph_objects as go
+            from plotly.subplots import make_subplots
+            names = [r["observatory"].replace(" Observatory","").replace(" Telescope","")[:15] for _, r in comp_df.iterrows()]
+            _cfig = make_subplots(rows=2, cols=3, subplot_titles=list(metrics.keys()))
+            for idx, (label, col) in enumerate(metrics.items()):
+                row_i, col_i = divmod(idx, 3)
                 vals = comp_df[col].tolist()
-
-                # Invert seeing and PWV
-                # (lower is better so invert for chart)
-                if "inverted" in label:
-                    plot_vals = [
-                        max(0, 100 - v * 10)
-                        if v is not None else 0
-                        for v in vals
-                    ]
-                else:
-                    plot_vals = [
-                        v if v is not None else 0
-                        for v in vals
-                    ]
-
-                bar_colors = [
-                    colors_palette[i % len(colors_palette)]
-                    for i in range(len(names))
-                ]
-                bars = ax.bar(names, plot_vals,
-                              color=bar_colors, width=0.6)
-
-                for bar, val in zip(bars, vals):
-                    display = (
-                        f"{val}\"" if "Seeing" in label
-                        else f"{val}mm" if "PWV" in label
-                        else f"{val}"
-                    )
-                    ax.text(
-                        bar.get_x() + bar.get_width() / 2,
-                        bar.get_height() + 1,
-                        display,
-                        ha="center", va="bottom",
-                        fontsize=8, color="white"
-                    )
-
-                ax.set_title(label, fontsize=10,
-                             fontweight="bold",
-                             color="white")
-                ax.set_ylim(0, 110)
-                ax.set_facecolor("#0E1117")
-                ax.tick_params(colors="white", labelsize=8)
-                ax.spines["top"].set_visible(False)
-                ax.spines["right"].set_visible(False)
-                ax.spines["left"].set_color("#444441")
-                ax.spines["bottom"].set_color("#444441")
-                ax.tick_params(axis="x", rotation=15)
-
-            fig2.patch.set_facecolor("#0E1117")
-            fig2.suptitle(
-                "Observatory Comparison Dashboard",
-                fontsize=14, fontweight="bold",
-                color="white", y=1.02)
-            buf2 = io.BytesIO()
-            plt.tight_layout()
-            plt.savefig(buf2, format="png", dpi=150,
-                        facecolor="#0E1117",
-                        bbox_inches="tight")
-            buf2.seek(0)
-            st.image(buf2.getvalue(), width='stretch')
-            plt.close()
+                plot_vals = [max(0,100-v*10) if "inverted" in label and v is not None else (v if v is not None else 0) for v in vals]
+                bar_colors = [colors_palette[i % len(colors_palette)] for i in range(len(names))]
+                _cfig.add_trace(go.Bar(x=names, y=plot_vals, marker_color=bar_colors, showlegend=False, hovertemplate="%{x}<br>%{y:.1f}<extra></extra>"), row=row_i+1, col=col_i+1)
+            _cfig.update_layout(
+                title="Observatory Comparison Dashboard",
+                template="plotly_dark" if st.session_state.theme=="dark" else "plotly_white",
+                paper_bgcolor=BG2, plot_bgcolor=BG2, font=dict(color=TEXT),
+                height=600, margin=dict(l=40,r=20,t=80,b=40)
+            )
+            st.plotly_chart(_cfig, use_container_width=True)
 
             st.markdown("---")
 
@@ -2169,54 +1955,24 @@ if selected_page == "📅 Semester Planning":
 
     st.markdown("---")
 
-    # Monthly bar chart
-    st.subheader("Monthly excellent days comparison")
-    import matplotlib.pyplot as plt
-    import io
+    # Monthly bar chart — Plotly
+    import plotly.graph_objects as go
     import calendar as cal_module
-
-    fig, ax = plt.subplots(figsize=(12, 4))
-    month_names  = best_months["month"].tolist()
-    exc_days     = best_months["excellent_days"].tolist()
-    good_days    = best_months["good_days"].tolist()
-
-    x      = range(len(month_names))
-    width  = 0.35
-    bars1  = ax.bar(
-        [i - width/2 for i in x], exc_days,
-        width, label="Excellent nights",
-        color="#1D9E75", alpha=0.9)
-    bars2  = ax.bar(
-        [i + width/2 for i in x], good_days,
-        width, label="Good nights",
-        color="#378ADD", alpha=0.9)
-
-    ax.set_xticks(x)
-    ax.set_xticklabels(month_names, rotation=45,
-                       fontsize=9, color="white")
-    ax.set_ylabel("Number of nights", color="white")
-    ax.set_title(
-        f"Observing Quality by Month — {sem_obs}",
-        fontsize=12, fontweight="bold", color="white")
-    ax.legend(facecolor="#0E1117", labelcolor="white",
-              fontsize=9)
-    ax.set_facecolor("#0E1117")
-    fig.patch.set_facecolor("#0E1117")
-    ax.tick_params(colors="white")
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-    ax.spines["left"].set_color("#444441")
-    ax.spines["bottom"].set_color("#444441")
-
-    buf = io.BytesIO()
-    plt.tight_layout()
-    plt.savefig(buf, format="png", dpi=150,
-                facecolor="#0E1117", bbox_inches="tight")
-    buf.seek(0)
-    img_data = buf.getvalue()
-    buf.close()
-    st.image(img_data, width='stretch')
-    plt.close()
+    month_names = best_months["month"].tolist()
+    exc_days    = best_months["excellent_days"].tolist()
+    good_days   = best_months["good_days"].tolist()
+    _sfig = go.Figure()
+    _sfig.add_trace(go.Bar(name="Excellent nights", x=month_names, y=exc_days, marker_color="#1D9E75"))
+    _sfig.add_trace(go.Bar(name="Good nights", x=month_names, y=good_days, marker_color="#378ADD"))
+    _sfig.update_layout(
+        title=f"Observing Quality by Month — {sem_obs}",
+        barmode="group", yaxis_title="Number of nights",
+        template="plotly_dark" if st.session_state.theme=="dark" else "plotly_white",
+        paper_bgcolor=BG2, plot_bgcolor=BG2, font=dict(color=TEXT),
+        height=360, margin=dict(l=40,r=20,t=60,b=60),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+    )
+    st.plotly_chart(_sfig, use_container_width=True)
 
     st.markdown("---")
 
@@ -3489,73 +3245,25 @@ if selected_page == "📡 SNR Calculator":
     t4.metric("SNR = 100 (publication)",
               result["time_for_snr100"])
 
-    # Noise budget chart
+    # Noise budget chart — Plotly
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
     st.markdown("**Noise budget breakdown**")
-    budget = result["noise_budget"]
-
-    import matplotlib.pyplot as plt
-    import io
-
-    fig, (ax1, ax2) = plt.subplots(
-        1, 2, figsize=(12, 4))
-
-    # Bar chart
+    budget  = result["noise_budget"]
     sources = list(budget.keys())
     values  = list(budget.values())
-    colors  = ["#1D9E75", "#378ADD", "#EF9F27",
-                "#E24B4A", "#AFA9EC"]
-
-    bars = ax1.barh(sources, values,
-                    color=colors[:len(sources)],
-                    height=0.6)
-    for bar, val in zip(bars, values):
-        ax1.text(
-            bar.get_width() + 0.5,
-            bar.get_y() + bar.get_height() / 2,
-            f"{val:.1f}e⁻",
-            va="center", fontsize=9, color="white"
-        )
-    ax1.set_xlabel("Noise (electrons)",
-                   color="white", fontsize=9)
-    ax1.set_title("Noise sources",
-                  color="white", fontsize=11,
-                  fontweight="bold")
-    ax1.set_facecolor("#0E1117")
-    ax1.tick_params(colors="white", labelsize=9)
-    ax1.spines["top"].set_visible(False)
-    ax1.spines["right"].set_visible(False)
-    ax1.spines["left"].set_color("#444441")
-    ax1.spines["bottom"].set_color("#444441")
-
-    # Pie chart
-    non_zero = [(s, v) for s, v in
-                zip(sources, values) if v > 0]
+    _ncolors = ["#1D9E75","#378ADD","#EF9F27","#E24B4A","#AFA9EC"]
+    non_zero = [(s,v) for s,v in zip(sources,values) if v>0]
+    _nfig = make_subplots(rows=1, cols=2, subplot_titles=["Noise sources","Noise distribution"], specs=[[{"type":"bar"},{"type":"pie"}]])
+    _nfig.add_trace(go.Bar(x=values, y=sources, orientation="h", marker_color=_ncolors[:len(sources)], text=[f"{v:.1f}e⁻" for v in values], textposition="outside", showlegend=False), row=1, col=1)
     if non_zero:
-        pie_sources = [x[0] for x in non_zero]
-        pie_values  = [x[1] for x in non_zero]
-        ax2.pie(
-            pie_values,
-            labels=pie_sources,
-            colors=colors[:len(pie_sources)],
-            autopct="%1.1f%%",
-            textprops={"color": "white",
-                       "fontsize": 9}
-        )
-        ax2.set_title("Noise distribution",
-                      color="white", fontsize=11,
-                      fontweight="bold")
-
-    fig.patch.set_facecolor("#0E1117")
-    buf = io.BytesIO()
-    plt.tight_layout()
-    plt.savefig(buf, format="png", dpi=150,
-                facecolor="#0E1117",
-                bbox_inches="tight")
-    buf.seek(0)
-    img_data = buf.getvalue()
-    buf.close()
-    st.image(img_data, width='stretch')
-    plt.close()
+        _nfig.add_trace(go.Pie(labels=[x[0] for x in non_zero], values=[x[1] for x in non_zero], marker_colors=_ncolors[:len(non_zero)], textfont_size=11, hole=0.3), row=1, col=2)
+    _nfig.update_layout(
+        template="plotly_dark" if st.session_state.theme=="dark" else "plotly_white",
+        paper_bgcolor=BG2, plot_bgcolor=BG2, font=dict(color=TEXT),
+        height=360, margin=dict(l=40,r=20,t=60,b=40)
+    )
+    st.plotly_chart(_nfig, use_container_width=True)
 
     st.markdown("---")
 
@@ -5520,132 +5228,43 @@ if selected_page == "📐 Airmass Calculator":
         st.subheader(
             f"Airmass curve — next {am_hours} hours")
 
-        fig, (ax1, ax2) = plt.subplots(
-            2, 1, figsize=(12, 6),
-            gridspec_kw={"height_ratios": [3, 1]}
-        )
-
-        times      = [p["time"] for p in curve]
-        altitudes  = [p["altitude"] for p in curve]
-        airmasses  = [p["airmass"] if p["airmass"]
-                      else 0 for p in curve]
-        is_dark    = [p["is_dark"] for p in curve]
-        is_night   = [p["is_night"] for p in curve]
-        colors_am  = [p["color"] for p in curve]
-
-        # Shade night/dark periods
-        for i in range(len(times) - 1):
+        # Airmass chart — Plotly
+        import plotly.graph_objects as go
+        from plotly.subplots import make_subplots
+        times     = [p["time"] for p in curve]
+        altitudes = [p["altitude"] for p in curve]
+        airmasses = [p["airmass"] if p["airmass"] else None for p in curve]
+        is_dark   = [p["is_dark"] for p in curve]
+        is_night  = [p["is_night"] for p in curve]
+        dot_colors= [p["color"] for p in curve]
+        _afig = make_subplots(rows=2, cols=1, row_heights=[0.7,0.3], shared_xaxes=True, vertical_spacing=0.05)
+        # Night shading
+        for i in range(len(times)-1):
             if is_dark[i]:
-                ax1.axvspan(i, i+1,
-                            alpha=0.15, color="#000033")
+                _afig.add_vrect(x0=times[i], x1=times[min(i+1,len(times)-1)], fillcolor="rgba(0,0,51,0.25)", line_width=0, row=1, col=1)
             elif is_night[i]:
-                ax1.axvspan(i, i+1,
-                            alpha=0.08, color="#000066")
-
-        # Plot airmass line
-        valid_x  = [i for i, a in enumerate(airmasses)
-                    if a > 0]
-        valid_am = [a for a in airmasses if a > 0]
-
-        if valid_x:
-            ax1.plot(valid_x, valid_am,
-                     color="#378ADD", linewidth=2.5,
-                     zorder=3)
-            ax1.fill_between(
-                valid_x, valid_am, 10,
-                alpha=0.1, color="#378ADD")
-
-            # Color dots by quality
-            for i, (x, a) in enumerate(
-                zip(valid_x, valid_am)
-            ):
-                ax1.scatter(x, a, s=30,
-                            color=colors_am[valid_x[i]],
-                            zorder=4)
-
-        # Reference lines
-        ax1.axhline(y=1.0, color="#1D9E75",
-                    linestyle="--", alpha=0.6,
-                    linewidth=1,
-                    label="Zenith (AM=1.0)")
-        ax1.axhline(y=1.5, color="#378ADD",
-                    linestyle="--", alpha=0.6,
-                    linewidth=1,
-                    label="Good limit (AM=1.5)")
-        ax1.axhline(y=2.0, color="#EF9F27",
-                    linestyle="--", alpha=0.6,
-                    linewidth=1,
-                    label="Acceptable limit (AM=2.0)")
-        ax1.axhline(y=3.0, color="#E24B4A",
-                    linestyle="--", alpha=0.5,
-                    linewidth=1,
-                    label="Poor limit (AM=3.0)")
-
-        ax1.set_ylim(0.8, 6.0)
-        ax1.invert_yaxis()  # Lower airmass = better
-        ax1.set_ylabel("Airmass (lower = better)",
-                        color="white", fontsize=10)
-        ax1.set_title(
-            f"Airmass curve — {am_object} "
-            f"from {am_obs}",
-            color="white", fontsize=11,
-            fontweight="bold"
+                _afig.add_vrect(x0=times[i], x1=times[min(i+1,len(times)-1)], fillcolor="rgba(0,0,80,0.12)", line_width=0, row=1, col=1)
+        valid_t  = [times[i] for i,a in enumerate(airmasses) if a]
+        valid_am = [a for a in airmasses if a]
+        if valid_t:
+            _afig.add_trace(go.Scatter(x=valid_t, y=valid_am, mode="lines+markers", line=dict(color="#378ADD", width=2.5), marker=dict(color=dot_colors[:len(valid_t)], size=6), name="Airmass", fill="tonexty", fillcolor="rgba(55,138,221,0.08)"), row=1, col=1)
+        _afig.add_hline(y=1.0, line=dict(color="#1D9E75",dash="dash",width=1), annotation_text="Zenith", row=1, col=1)
+        _afig.add_hline(y=1.5, line=dict(color="#378ADD",dash="dash",width=1), annotation_text="Good", row=1, col=1)
+        _afig.add_hline(y=2.0, line=dict(color="#EF9F27",dash="dash",width=1), annotation_text="Acceptable", row=1, col=1)
+        _afig.add_hline(y=3.0, line=dict(color="#E24B4A",dash="dash",width=1), annotation_text="Poor", row=1, col=1)
+        _afig.add_trace(go.Scatter(x=times, y=altitudes, mode="lines", line=dict(color="#AFA9EC",width=1.5), name="Altitude (°)"), row=2, col=1)
+        _afig.add_hline(y=30, line=dict(color="#378ADD",dash="dash",width=1), row=2, col=1)
+        _afig.update_yaxes(title_text="Airmass (lower=better)", autorange="reversed", range=[6.0,0.8], row=1, col=1)
+        _afig.update_yaxes(title_text="Altitude (°)", row=2, col=1)
+        _afig.update_xaxes(tickangle=45, row=2, col=1)
+        _afig.update_layout(
+            title=f"Airmass curve — {am_object} from {am_obs}",
+            template="plotly_dark" if st.session_state.theme=="dark" else "plotly_white",
+            paper_bgcolor=BG2, plot_bgcolor=BG2, font=dict(color=TEXT),
+            height=500, margin=dict(l=50,r=20,t=60,b=60),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
         )
-        ax1.set_xticks(range(0, len(times), 2))
-        ax1.set_xticklabels(
-            [times[i] for i in
-             range(0, len(times), 2)],
-            rotation=45, fontsize=7,
-            color="white"
-        )
-        ax1.set_facecolor("#0E1117")
-        fig.patch.set_facecolor("#0E1117")
-        ax1.tick_params(colors="white")
-        ax1.yaxis.label.set_color("white")
-        ax1.spines["top"].set_visible(False)
-        ax1.spines["right"].set_visible(False)
-        ax1.spines["left"].set_color("#444441")
-        ax1.spines["bottom"].set_color("#444441")
-        ax1.legend(fontsize=8,
-                   facecolor="#0E1117",
-                   labelcolor="white",
-                   loc="upper right")
-
-        # Altitude subplot
-        ax2.plot(range(len(altitudes)), altitudes,
-                 color="#AFA9EC", linewidth=1.5)
-        ax2.axhline(y=0, color="#888",
-                    linestyle="-", linewidth=0.5)
-        ax2.axhline(y=30, color="#378ADD",
-                    linestyle="--", alpha=0.4,
-                    linewidth=1)
-        ax2.set_ylabel("Altitude (°)",
-                        color="white", fontsize=9)
-        ax2.set_xticks(range(0, len(times), 2))
-        ax2.set_xticklabels(
-            [times[i] for i in
-             range(0, len(times), 2)],
-            rotation=45, fontsize=7,
-            color="white"
-        )
-        ax2.set_facecolor("#0E1117")
-        ax2.tick_params(colors="white")
-        ax2.yaxis.label.set_color("white")
-        ax2.spines["top"].set_visible(False)
-        ax2.spines["right"].set_visible(False)
-        ax2.spines["left"].set_color("#444441")
-        ax2.spines["bottom"].set_color("#444441")
-
-        buf = io.BytesIO()
-        plt.tight_layout()
-        plt.savefig(buf, format="png", dpi=150,
-                    facecolor="#0E1117",
-                    bbox_inches="tight")
-        buf.seek(0)
-        img_data = buf.getvalue()
-        buf.close()
-        plt.close(fig)
-        st.image(img_data, width='stretch')
+        st.plotly_chart(_afig, use_container_width=True)
 
         st.markdown("---")
 
@@ -5845,43 +5464,15 @@ if selected_page == "🌠 Meteor Showers":
         elif zhr >= 10: colors_bar.append("#378ADD")
         else:           colors_bar.append("#888888")
 
-    fig, ax = plt.subplots(figsize=(12, 3))
-    bars = ax.bar(month_names, monthly_max_zhr,
-                  color=colors_bar, width=0.7)
-
-    for bar, zhr in zip(bars, monthly_max_zhr):
-        if zhr > 0:
-            ax.text(
-                bar.get_x() + bar.get_width() / 2,
-                bar.get_height() + 2,
-                f"{zhr}", ha="center", va="bottom",
-                color="white", fontsize=9,
-                fontweight="bold"
-            )
-
-    ax.set_ylabel("Peak ZHR", color="white", fontsize=9)
-    ax.set_title(
-        f"Best ZHR by Month — {year}",
-        color="white", fontsize=11, fontweight="bold")
-    ax.set_facecolor("#0E1117")
-    fig.patch.set_facecolor("#0E1117")
-    ax.tick_params(colors="white")
-    ax.yaxis.label.set_color("white")
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-    ax.spines["left"].set_color("#444441")
-    ax.spines["bottom"].set_color("#444441")
-
-    buf = io.BytesIO()
-    plt.tight_layout()
-    plt.savefig(buf, format="png", dpi=150,
-                facecolor="#0E1117",
-                bbox_inches="tight")
-    buf.seek(0)
-    img_data = buf.getvalue()
-    buf.close()
-    plt.close(fig)
-    st.image(img_data, width='stretch')
+    import plotly.graph_objects as go
+    _zfig = go.Figure(go.Bar(x=month_names, y=monthly_max_zhr, marker_color=colors_bar, text=monthly_max_zhr, textposition="outside"))
+    _zfig.update_layout(
+        title=f"Best ZHR by Month — {year}", yaxis_title="Peak ZHR",
+        template="plotly_dark" if st.session_state.theme=="dark" else "plotly_white",
+        paper_bgcolor=BG2, plot_bgcolor=BG2, font=dict(color=TEXT),
+        height=320, margin=dict(l=40,r=20,t=60,b=40)
+    )
+    st.plotly_chart(_zfig, use_container_width=True)
 
     st.markdown("---")
 
@@ -6212,91 +5803,41 @@ are rated 0.
                   for a in top15]
         colors = [a["threat_color"] for a in top15]
 
-        fig, ax = plt.subplots(figsize=(12, 5))
-        bars    = ax.barh(
-            names, dists, color=colors, height=0.6)
-
-        for bar, dist in zip(bars, dists):
-            ax.text(
-                bar.get_width() + 0.1,
-                bar.get_y() + bar.get_height() / 2,
-                f"{dist:.1f} LD",
-                va="center", color="white", fontsize=8
-            )
-
-        ax.axvline(x=1, color="#FFD700",
-                   linestyle="--", alpha=0.7,
-                   linewidth=1, label="1 LD (Moon)")
-        ax.axvline(x=5, color="#EF9F27",
-                   linestyle="--", alpha=0.5,
-                   linewidth=1, label="5 LD")
-        ax.set_xlabel(
-            "Miss Distance (Lunar Distances)",
-            color="white", fontsize=9)
-        ax.set_title(
-            "Closest Approaching Asteroids",
-            color="white", fontsize=11,
-            fontweight="bold")
-        ax.set_facecolor("#0E1117")
-        fig.patch.set_facecolor("#0E1117")
-        ax.tick_params(colors="white", labelsize=8)
-        ax.xaxis.label.set_color("white")
-        ax.spines["top"].set_visible(False)
-        ax.spines["right"].set_visible(False)
-        ax.spines["left"].set_color("#444441")
-        ax.spines["bottom"].set_color("#444441")
-        ax.legend(fontsize=8, facecolor="#0E1117",
-                  labelcolor="white")
-        buf = io.BytesIO()
-        plt.tight_layout()
-        plt.savefig(buf, format="png", dpi=150,
-                    facecolor="#0E1117",
-                    bbox_inches="tight")
-        buf.seek(0)
-        st.image(buf.getvalue(), width='stretch')
-        buf.close()
-        plt.close(fig)
+        import plotly.graph_objects as go
+        _abfig = go.Figure(go.Bar(y=names, x=dists, orientation="h", marker_color=colors, text=[f"{d:.1f} LD" for d in dists], textposition="outside"))
+        _abfig.add_vline(x=1, line=dict(color="#FFD700", dash="dash", width=1), annotation_text="1 LD (Moon)", annotation_font_color="#FFD700")
+        _abfig.add_vline(x=5, line=dict(color="#EF9F27", dash="dash", width=1), annotation_text="5 LD")
+        _abfig.update_layout(
+            title="Closest Approaching Asteroids", xaxis_title="Miss Distance (Lunar Distances)",
+            template="plotly_dark" if st.session_state.theme=="dark" else "plotly_white",
+            paper_bgcolor=BG2, plot_bgcolor=BG2, font=dict(color=TEXT),
+            height=420, margin=dict(l=160,r=80,t=60,b=40)
+        )
+        st.plotly_chart(_abfig, use_container_width=True)
 
         st.markdown("---")
 
         # ── Scatter plot ──────────────────────────────────
         st.subheader("Size vs miss distance")
-        fig2, ax2 = plt.subplots(figsize=(10, 5))
+        _asfig = go.Figure()
         for a in asteroids:
-            marker = "D" if a["hazardous"] else "o"
-            ax2.scatter(
-                a["miss_distance_lunar"],
-                a["diameter_m"],
-                c=a["threat_color"],
-                s=80, marker=marker,
-                alpha=0.8, zorder=3
-            )
-        ax2.axvline(x=1, color="#FFD700",
-                    linestyle="--", alpha=0.5,
-                    linewidth=1,
-                    label="Moon distance (1 LD)")
-        ax2.axhline(y=140, color="#EF9F27",
-                    linestyle="--", alpha=0.5,
-                    linewidth=1,
-                    label="PHA size limit (140m)")
-        ax2.set_xlabel(
-            "Miss Distance (Lunar Distances)",
-            color="white", fontsize=9)
-        ax2.set_ylabel(
-            "Estimated Diameter (meters)",
-            color="white", fontsize=9)
-        ax2.set_title(
-            "Asteroid Size vs Miss Distance "
-            "(◆ = Hazardous)",
-            color="white", fontsize=11,
-            fontweight="bold")
-        ax2.set_facecolor("#0E1117")
-        fig2.patch.set_facecolor("#0E1117")
-        ax2.tick_params(colors="white")
-        ax2.xaxis.label.set_color("white")
-        ax2.yaxis.label.set_color("white")
-        ax2.spines["top"].set_visible(False)
-        ax2.spines["right"].set_visible(False)
+            _asfig.add_trace(go.Scatter(
+                x=[a["miss_distance_lunar"]], y=[a["diameter_m"]],
+                mode="markers",
+                marker=dict(color=a["threat_color"], size=10, symbol="diamond" if a["hazardous"] else "circle"),
+                name=a["name"], showlegend=False,
+                hovertemplate=f"{a['name']}<br>Miss: {a['miss_distance_lunar']:.1f} LD<br>Size: {a['diameter_m']:.0f}m<extra></extra>"
+            ))
+        _asfig.add_vline(x=1, line=dict(color="#FFD700", dash="dash", width=1), annotation_text="Moon distance")
+        _asfig.add_hline(y=140, line=dict(color="#EF9F27", dash="dash", width=1), annotation_text="PHA limit (140m)")
+        _asfig.update_layout(
+            title="Asteroid Size vs Miss Distance (◆ = Hazardous)",
+            xaxis_title="Miss Distance (Lunar Distances)", yaxis_title="Estimated Diameter (m)",
+            template="plotly_dark" if st.session_state.theme=="dark" else "plotly_white",
+            paper_bgcolor=BG2, plot_bgcolor=BG2, font=dict(color=TEXT),
+            height=420, margin=dict(l=60,r=20,t=60,b=40)
+        )
+        # removed old ax2 spines code
         ax2.spines["left"].set_color("#444441")
         ax2.spines["bottom"].set_color("#444441")
         ax2.legend(fontsize=8, facecolor="#0E1117",
@@ -6732,85 +6273,25 @@ if selected_page == "🌑 Eclipses & Transits":
                      if e["category"] == "Lunar Eclipse"]
 
     if solar_events or lunar_events:
-        fig, ax = plt.subplots(figsize=(12, 4))
-
-        colors_map = {
-            "total":   "#E74C3C",
-            "annular": "#F39C12",
-            "partial": "#EF9F27",
-        }
-
-        for i, e in enumerate(solar_events[:8]):
-            color  = colors_map.get(
-                e.get("subtype", "partial"), "#EF9F27")
-            days   = e["days_until"]
-            ax.barh(0.6, 30, left=days,
-                    height=0.3, color=color,
-                    alpha=0.8)
-            ax.text(days + 15, 0.6,
-                    e["type"].replace(" Solar", ""),
-                    ha="center", va="center",
-                    fontsize=7, color="white",
-                    fontweight="bold")
-            ax.text(days + 15, 0.4,
-                    e["date"][:7],
-                    ha="center", va="center",
-                    fontsize=6, color="#aaa")
-
-        for i, e in enumerate(lunar_events[:8]):
-            color  = ("#E74C3C"
-                      if e.get("subtype") == "total"
-                      else "#EF9F27")
-            days   = e["days_until"]
-            ax.barh(0.2, 20, left=days,
-                    height=0.25, color=color,
-                    alpha=0.8)
-            ax.text(days + 10, 0.2,
-                    "Total" if e.get("subtype") == "total"
-                    else "Partial",
-                    ha="center", va="center",
-                    fontsize=7, color="white")
-
-        ax.set_yticks([0.2, 0.6])
-        ax.set_yticklabels(
-            ["Lunar", "Solar"],
-            color="white", fontsize=10)
-        ax.set_xlabel(
-            "Days from today",
-            color="white", fontsize=9)
-        ax.set_title(
-            "Upcoming Eclipse Timeline",
-            color="white", fontsize=11,
-            fontweight="bold")
-        ax.set_facecolor("#0E1117")
-        fig.patch.set_facecolor("#0E1117")
-        ax.tick_params(colors="white")
-        ax.xaxis.label.set_color("white")
-        ax.spines["top"].set_visible(False)
-        ax.spines["right"].set_visible(False)
-        ax.spines["left"].set_color("#444441")
-        ax.spines["bottom"].set_color("#444441")
-
-        from matplotlib.patches import Patch
-        legend = [
-            Patch(color="#E74C3C", label="Total"),
-            Patch(color="#F39C12", label="Annular"),
-            Patch(color="#EF9F27", label="Partial"),
-        ]
-        ax.legend(handles=legend, fontsize=8,
-                  facecolor="#0E1117",
-                  labelcolor="white",
-                  loc="upper right")
-
-        buf = io.BytesIO()
-        plt.tight_layout()
-        plt.savefig(buf, format="png", dpi=150,
-                    facecolor="#0E1117",
-                    bbox_inches="tight")
-        buf.seek(0)
-        st.image(buf.getvalue(), width='stretch')
-        buf.close()
-        plt.close(fig)
+        import plotly.graph_objects as go
+        colors_map = {"total":"#E74C3C","annular":"#F39C12","partial":"#EF9F27"}
+        _efig = go.Figure()
+        for e in solar_events[:8]:
+            color = colors_map.get(e.get("subtype","partial"),"#EF9F27")
+            days  = e["days_until"]
+            _efig.add_trace(go.Bar(x=[30], y=["Solar"], base=[days], orientation="h", marker_color=color, showlegend=False, hovertemplate=f"{e['type']}<br>{e['date']}<extra></extra>", text=e["type"].replace(" Solar",""), textposition="inside"))
+        for e in lunar_events[:8]:
+            color = "#E74C3C" if e.get("subtype")=="total" else "#EF9F27"
+            days  = e["days_until"]
+            _efig.add_trace(go.Bar(x=[20], y=["Lunar"], base=[days], orientation="h", marker_color=color, showlegend=False, hovertemplate=f"{e['type']}<br>{e['date']}<extra></extra>", text="Total" if e.get("subtype")=="total" else "Partial", textposition="inside"))
+        _efig.update_layout(
+            title="Upcoming Eclipse Timeline", xaxis_title="Days from today",
+            barmode="overlay",
+            template="plotly_dark" if st.session_state.theme=="dark" else "plotly_white",
+            paper_bgcolor=BG2, plot_bgcolor=BG2, font=dict(color=TEXT),
+            height=280, margin=dict(l=80,r=20,t=60,b=40)
+        )
+        st.plotly_chart(_efig, use_container_width=True)
 
     st.markdown("---")
 
@@ -6994,43 +6475,19 @@ if selected_page == "🔬 Observatory Detail":
             elif s > 0:   colors.append("#E24B4A")
             else:         colors.append("#444441")
 
-        fig, ax = plt.subplots(figsize=(12, 3))
-        ax.bar(range(24), scores, color=colors, width=0.8)
-
-        if scores:
-            peak_idx = scores.index(max(scores))
-            ax.bar(peak_idx, scores[peak_idx],
-                   color="#1D9E75", width=0.8,
-                   edgecolor="white", linewidth=2)
-
-        ax.set_xticks(range(24))
-        ax.set_xticklabels(
-            [f"{h:02d}:00" for h in range(24)],
-            rotation=45, fontsize=7)
-        ax.set_ylim(0, 110)
-        ax.set_ylabel("Score", fontsize=9)
-        ax.set_title(
-            f"Hourly observing score — {selected}",
-            fontsize=10, fontweight="bold", color="white")
-        ax.set_facecolor("#0E1117")
-        fig.patch.set_facecolor("#0E1117")
-        ax.tick_params(colors="white")
-        ax.yaxis.label.set_color("white")
-        ax.title.set_color("white")
-        ax.spines["top"].set_visible(False)
-        ax.spines["right"].set_visible(False)
-        ax.spines["left"].set_color("#444441")
-        ax.spines["bottom"].set_color("#444441")
-        buf = io.BytesIO()
-        plt.tight_layout()
-        plt.savefig(buf, format="png", dpi=120,
-                    facecolor="#0E1117",
-                    bbox_inches="tight")
-        buf.seek(0)
-        img_data = buf.getvalue()
-        buf.close()
-        plt.close(fig)
-        st.image(img_data, width='stretch')
+        import plotly.graph_objects as go
+        _dlabels = [f"{h:02d}:00" for h in range(24)]
+        _dpeak   = scores.index(max(scores)) if scores else 0
+        _dfig = go.Figure(go.Bar(x=_dlabels, y=scores, marker_color=colors, hovertemplate="%{x}<br>Score: %{y:.0f}/100<extra></extra>"))
+        _dfig.add_annotation(x=_dlabels[_dpeak], y=scores[_dpeak]+8, text=f"Peak<br>{scores[_dpeak]:.0f}/100", showarrow=False, font=dict(color="white",size=10), bgcolor="rgba(29,158,117,0.3)", bordercolor="#1D9E75", borderwidth=1)
+        _dfig.update_layout(
+            title=f"Hourly observing score — {selected}",
+            yaxis=dict(range=[0,110], title="Score"), xaxis_title="Hour (UTC)",
+            template="plotly_dark" if st.session_state.theme=="dark" else "plotly_white",
+            paper_bgcolor=BG2, plot_bgcolor=BG2, font=dict(color=TEXT),
+            height=320, margin=dict(l=40,r=20,t=60,b=60)
+        )
+        st.plotly_chart(_dfig, use_container_width=True)
 
     st.markdown("---")
 
