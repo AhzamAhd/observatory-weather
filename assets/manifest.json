@@ -1,0 +1,25 @@
+{
+  "name": "GOWC — Global Observatory Weather Tracker",
+  "short_name": "GOWC",
+  "description": "Real-time weather intelligence for astronomers worldwide",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#08090f",
+  "theme_color": "#00b4d8",
+  "icons": [
+    {
+      "src": "/app/static/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/app/static/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["weather", "science", "utilities"]
+}

@@ -99,7 +99,57 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-import base64
+# ── PWA manifest + meta tags injected into <head> ─────────────────
+import base64, pathlib
+
+def _img_to_b64(path):
+    try:
+        return base64.b64encode(pathlib.Path(path).read_bytes()).decode()
+    except Exception:
+        return ""
+
+_icon192 = _img_to_b64("assets/icons/icon-192.png")
+_icon512 = _img_to_b64("assets/icons/icon-512.png")
+
+_manifest = f"""{{
+  "name": "GOWC — Global Observatory Weather Tracker",
+  "short_name": "GOWC",
+  "description": "Real-time weather intelligence for astronomers worldwide",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#08090f",
+  "theme_color": "#00b4d8",
+  "icons": [
+    {{"src": "data:image/png;base64,{_icon192}", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"}},
+    {{"src": "data:image/png;base64,{_icon512}", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}}
+  ]
+}}"""
+
+_manifest_b64 = base64.b64encode(_manifest.encode()).decode()
+
+st.markdown(f"""
+    <link rel="manifest" href="data:application/manifest+json;base64,{_manifest_b64}">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="GOWC">
+    <meta name="theme-color" content="#00b4d8">
+    <meta name="application-name" content="GOWC">
+    <link rel="apple-touch-icon" href="data:image/png;base64,{_icon192}">
+    <script>
+    if ('serviceWorker' in navigator) {{
+        const sw = `
+self.addEventListener('install', e => self.skipWaiting());
+self.addEventListener('activate', e => clients.claim());
+self.addEventListener('fetch', e => e.respondWith(fetch(e.request).catch(() => caches.match(e.request))));
+        `;
+        const blob = new Blob([sw], {{type: 'application/javascript'}});
+        navigator.serviceWorker.register(URL.createObjectURL(blob), {{scope: '/'}})
+            .catch(() => {{}});
+    }}
+    </script>
+""", unsafe_allow_html=True)
 
 svg = '''<svg width="1440" height="900" viewBox="0 0 1440 900" xmlns="http://www.w3.org/2000/svg">
   <rect x="0" y="0" width="1440" height="900" fill="#020810"/>
