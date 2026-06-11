@@ -313,6 +313,52 @@ st.markdown(f"""
         color: {TEXT} !important;
     }}
 
+    /* ── Sidebar nav radio — clean professional style ── */
+    [data-testid="stSidebar"] [data-testid="stRadio"] > div {{
+        gap: 0px !important;
+    }}
+    [data-testid="stSidebar"] [data-testid="stRadio"] label {{
+        display: flex !important;
+        align-items: center !important;
+        padding: 7px 12px !important;
+        border-radius: 6px !important;
+        font-size: 0.83rem !important;
+        font-weight: 500 !important;
+        color: {TEXT2} !important;
+        cursor: pointer !important;
+        transition: none !important;
+        animation: none !important;
+        letter-spacing: 0.01em !important;
+        line-height: 1.4 !important;
+        margin: 1px 0 !important;
+        border: none !important;
+        background: transparent !important;
+    }}
+    [data-testid="stSidebar"] [data-testid="stRadio"] label:hover {{
+        background-color: {BG3} !important;
+        color: {TEXT} !important;
+        transition: none !important;
+    }}
+    [data-testid="stSidebar"] [data-testid="stRadio"] label[data-checked="true"],
+    [data-testid="stSidebar"] [data-testid="stRadio"] label:has(input:checked) {{
+        background-color: {ACCENT}18 !important;
+        color: {ACCENT2} !important;
+        font-weight: 600 !important;
+        border-left: 2px solid {ACCENT} !important;
+        padding-left: 10px !important;
+    }}
+    /* Hide the radio circle dot */
+    [data-testid="stSidebar"] [data-testid="stRadio"] [data-testid="stWidgetLabel"] {{
+        display: none !important;
+    }}
+    [data-testid="stSidebar"] [data-testid="stRadio"] input[type="radio"] {{
+        display: none !important;
+    }}
+    [data-testid="stSidebar"] [data-testid="stRadio"] div[data-testid="stMarkdownContainer"] p {{
+        margin: 0 !important;
+        font-size: 0.83rem !important;
+    }}
+
     /* ── Hide Streamlit chrome ── */
     [data-testid="stHeader"] {{
         display: none !important;
@@ -691,31 +737,31 @@ st.caption(
 
 # ── Sidebar navigation ────────────────────────────────
 st.sidebar.image("assets/gowc_banner.png", width=220)
-st.sidebar.title("Navigation")
+st.sidebar.markdown(f"<p style='font-size:0.7rem;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:{TEXT2};padding:4px 12px 2px;margin:0'>Navigation</p>", unsafe_allow_html=True)
 
 PAGES = {
-    "🌍 Live Weather Map":       "live_map",
-    "🌙 Observing Windows":      "windows",
-    "🔭 Object Visibility":      "visibility",
-    "⏰ Peak Observing Time":    "peak",
-    "🌫️ Atmospheric Analysis":  "atmospheric",
-    "📊 Historical Reliability": "reliability",
-    "⚖️ Site Comparison":        "comparison",
-    "📅 Semester Planning":      "semester",
-    "🎓 Learn Astronomy":        "education",
-    "🔔 Alert Subscriptions":    "alerts",
-    "🏆 Telescope Efficiency":   "efficiency",
-    "📡 SNR Calculator":         "snr",
-    "🌌 Live Sky Chart":         "sky_chart",
-    "📅 7-Day Forecast":         "forecast",
-    "☄️ Comet Tracker":          "comets",
-    "⭐ Observatory Reviews":    "reviews",
-    "🛸 Satellite Passes":       "satellites",
-    "📐 Airmass Calculator":     "airmass",
-    "🌠 Meteor Showers":         "meteors",
-    "🪨 Asteroid Tracker":       "asteroids",
-    "🌑 Eclipses & Transits":    "eclipses",
-    "🔬 Observatory Detail":     "detail",
+    "◈  Live Weather Map":       "live_map",
+    "◑  Observing Windows":      "windows",
+    "⌖  Object Visibility":      "visibility",
+    "◷  Peak Observing Time":    "peak",
+    "≋  Atmospheric Analysis":   "atmospheric",
+    "▦  Historical Reliability": "reliability",
+    "⇌  Site Comparison":        "comparison",
+    "▤  Semester Planning":      "semester",
+    "◎  Learn Astronomy":        "education",
+    "◉  Alert Subscriptions":    "alerts",
+    "▲  Telescope Efficiency":   "efficiency",
+    "◫  SNR Calculator":         "snr",
+    "✦  Live Sky Chart":         "sky_chart",
+    "▷  7-Day Forecast":         "forecast",
+    "⊹  Comet Tracker":          "comets",
+    "◇  Observatory Reviews":    "reviews",
+    "⊕  Satellite Passes":       "satellites",
+    "∠  Airmass Calculator":     "airmass",
+    "⋆  Meteor Showers":         "meteors",
+    "⬡  Asteroid Tracker":       "asteroids",
+    "◐  Eclipses & Transits":    "eclipses",
+    "⊙  Observatory Detail":     "detail",
 }
 
 selected_page = st.sidebar.radio(
