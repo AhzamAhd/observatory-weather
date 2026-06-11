@@ -4145,9 +4145,10 @@ if selected_page == "7-Day Forecast":
         tbl += "</tr></thead><tbody>"
 
         # Rows
-        for label, key in [("Obs. Score", None), ("Cloud %", "cloud"),
-                            ("Humidity %", "humidity"), ("Wind m/s", "wind"),
-                            ("Precip mm", "precip_mm"), ("Precip %", "precip_prob")]:
+        for label, key, unit in [("Obs. Score", None, ""), ("Cloud %", "cloud", "%"),
+                                  ("Humidity %", "humidity", "%"), ("Wind m/s", "wind", " m/s"),
+                                  ("Temp °C", "temp", "°C"), ("Precip mm", "precip_mm", " mm"),
+                                  ("Precip %", "precip_prob", "%")]:
             tbl += f"<tr><td style='border:1px solid #1e2d40;padding:6px 12px;color:#5c7a96;font-weight:600;font-size:11px;white-space:nowrap;background:#08090f'>{label}</td>"
             for _, row in daily_df.iterrows():
                 for period in ["am", "pm", "night"]:
@@ -4161,7 +4162,12 @@ if selected_page == "7-Day Forecast":
                         tbl += f"<td style='background:{bg};border:1px solid #1e2d40;text-align:center;font-weight:700;color:{col}'>{val}</td>"
                     else:
                         val = p.get(key)
-                        disp = f"{int(val)}" if val is not None else "—"
+                        if val is None:
+                            disp = "—"
+                        elif key == "temp":
+                            disp = f"{val:.1f}{unit}"
+                        else:
+                            disp = f"{int(val)}{unit}"
                         tbl += f"<td style='border:1px solid #1e2d40;text-align:center;color:#cdd9e5'>{disp}</td>"
             tbl += "</tr>"
 
