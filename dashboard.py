@@ -985,7 +985,7 @@ if selected_page == "Live Weather Map":
     _n_excellent = len(df[df["condition"] == "Excellent"])
     _avg_score = round(df["observation_score"].mean(), 1)
 
-    st.image("assets/gowc_banner.png", width=800)
+    st.image("assets/gowc_banner_cropped.png", use_container_width=True)
 
     _hc1, _hc2, _hc3, _hc4 = st.columns(4)
     _hc1.metric("Total Sites", f"{len(df):,}")
