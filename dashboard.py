@@ -1862,7 +1862,7 @@ if selected_page == "Peak Observing Time":
                 key="peak_object"
             )
 
-    with st.spinner(...):
+    with st.spinner("Calculating peak observing times..."):
         peak = load_peak_times_cached(
             object_name=selected_peak_object)
 
@@ -2009,6 +2009,11 @@ if selected_page == "Atmospheric Analysis":
 
     # Calculate atmospheric data for all observatories
     atm_df = load_atmospheric_cached()
+
+    if atm_df.empty:
+        st.info("Atmospheric analysis data is not available yet. "
+                "Try refreshing with Fetch Live Data.")
+        st.stop()
 
     # Summary metrics
     a1, a2, a3, a4 = st.columns(4)
@@ -2661,6 +2666,11 @@ if selected_page == "Semester Planning":
     with st.spinner(f"Building {sem_months}-month calendar for {sem_obs}..."):
         cal_data    = cached_calendar_data(sem_obs, sem_year, start_month, sem_months)
         best_months = cached_best_months(sem_obs, sem_year, sem_months)
+
+    if best_months is None or best_months.empty:
+        st.info("Not enough data to build a semester plan for this "
+                "selection yet. Try a different observatory or year.")
+        st.stop()
 
     st.markdown("---")
 
