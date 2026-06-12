@@ -980,45 +980,18 @@ st.sidebar.caption(
 # TAB 1 — Live Weather Map
 # ═══════════════════════════════════════════════════════
 if selected_page == "Live Weather Map":
-    # ── Compact professional header ────────────────────────
+    # ── Banner + compact stats row ─────────────────────────
     _best_name = df.iloc[0]["observatory"].replace(" Observatory","").replace(" Telescope","")
     _n_excellent = len(df[df["condition"] == "Excellent"])
     _avg_score = round(df["observation_score"].mean(), 1)
 
-    st.markdown(f"""
-<div style="display:flex;align-items:center;gap:20px;padding:14px 20px;
-            background:linear-gradient(135deg,#0d1b2a 0%,#1a2e44 100%);
-            border-radius:10px;border:1px solid #1e3a5f;margin-bottom:12px;">
-  <img src="app/static/gowc_logo.png" style="height:48px;object-fit:contain;"
-       onerror="this.style.display='none'">
-  <div style="flex:1;">
-    <div style="font-size:1.3rem;font-weight:700;color:#e8f4fd;letter-spacing:0.04em;">
-      GOWC &nbsp;·&nbsp; Global Observatory Weather Tracker
-    </div>
-    <div style="font-size:0.78rem;color:#7dafc8;margin-top:2px;">
-      Real-time weather intelligence for astronomers worldwide
-    </div>
-  </div>
-  <div style="display:flex;gap:28px;text-align:center;">
-    <div>
-      <div style="font-size:1.5rem;font-weight:700;color:#00d4ff;">{len(df):,}</div>
-      <div style="font-size:0.68rem;color:#7dafc8;text-transform:uppercase;letter-spacing:0.06em;">Sites</div>
-    </div>
-    <div>
-      <div style="font-size:1.5rem;font-weight:700;color:#1D9E75;">{_n_excellent:,}</div>
-      <div style="font-size:0.68rem;color:#7dafc8;text-transform:uppercase;letter-spacing:0.06em;">Excellent</div>
-    </div>
-    <div>
-      <div style="font-size:1.5rem;font-weight:700;color:#EF9F27;">{_avg_score}</div>
-      <div style="font-size:0.68rem;color:#7dafc8;text-transform:uppercase;letter-spacing:0.06em;">Avg Score</div>
-    </div>
-    <div style="max-width:160px;">
-      <div style="font-size:1rem;font-weight:700;color:#e8f4fd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{_best_name}</div>
-      <div style="font-size:0.68rem;color:#7dafc8;text-transform:uppercase;letter-spacing:0.06em;">Best Tonight</div>
-    </div>
-  </div>
-</div>
-""", unsafe_allow_html=True)
+    st.image("assets/gowc_banner.png", use_container_width=True)
+
+    _hc1, _hc2, _hc3, _hc4 = st.columns(4)
+    _hc1.metric("Total Sites", f"{len(df):,}")
+    _hc2.metric("Excellent Tonight", f"{_n_excellent:,}")
+    _hc3.metric("Avg Score", f"{_avg_score} / 100")
+    _hc4.metric("Best Tonight", _best_name[:28])
 
     st.subheader("World map — live observation quality")
 
