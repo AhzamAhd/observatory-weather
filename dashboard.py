@@ -982,80 +982,130 @@ st.sidebar.caption(
 # ═══════════════════════════════════════════════════════
 if selected_page == "Home":
     st.image("assets/gowc_banner_cropped.png", use_container_width=True)
-    st.markdown("---")
 
-    # ── Platform description ───────────────────────────
-    st.markdown("""
-## Welcome to GOWC — Global Observatory Weather Tracker
-
-GOWC is a real-time weather intelligence platform built for astronomers, researchers,
-and observatory operators worldwide. It monitors **1,163 professional observatories**
-across the globe, delivering live weather conditions, atmospheric quality scores,
-and multi-day forecasts — all in one place.
-
-Whether you're planning a deep-sky imaging session, scheduling telescope time, or
-comparing sites for a future expedition, GOWC gives you the data you need to make
-the right call.
-""")
-
-    st.markdown("---")
-
-    # ── Live stats ─────────────────────────────────────
-    _n_excellent = len(df[df["condition"] == "Excellent"])
-    _n_good      = len(df[df["condition"] == "Good"])
-    _avg_score   = round(df["observation_score"].mean(), 1)
-    _best_site   = df.iloc[0]["observatory"]
+    _n_excellent  = len(df[df["condition"] == "Excellent"])
+    _n_good       = len(df[df["condition"] == "Good"])
+    _avg_score    = round(df["observation_score"].mean(), 1)
+    _best_site    = df.iloc[0]["observatory"]
     _best_country = df.iloc[0]["country"]
 
-    st.subheader("Live Platform Stats")
-    _sc1, _sc2, _sc3, _sc4 = st.columns(4)
-    _sc1.metric("Observatories Monitored", f"{len(df):,}")
-    _sc2.metric("Excellent Conditions", f"{_n_excellent:,}")
-    _sc3.metric("Good Conditions", f"{_n_good:,}")
-    _sc4.metric("Global Avg Score", f"{_avg_score} / 100")
+    # ── Tagline + description ──────────────────────────
+    st.markdown("""
+<div style="text-align:center;padding:28px 20px 8px;">
+  <div style="font-size:1.15rem;color:#7dafc8;letter-spacing:0.06em;text-transform:uppercase;font-weight:600;margin-bottom:10px;">
+    Real-time weather intelligence for astronomers worldwide
+  </div>
+  <div style="font-size:1rem;color:#a8bfd4;max-width:780px;margin:0 auto;line-height:1.7;">
+    GOWC monitors <strong style="color:#00d4ff;">1,163 professional observatories</strong> across the globe,
+    delivering live weather conditions, atmospheric quality scores, and multi-day forecasts —
+    so you always know where and when the sky is clearest.
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
-    st.markdown("---")
+    # ── Live stat cards ────────────────────────────────
+    st.markdown(f"""
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:24px 0;">
+  <div style="background:linear-gradient(135deg,#0d1b2a,#0f2236);border:1px solid #1e3a5f;border-top:3px solid #00d4ff;border-radius:10px;padding:18px 20px;text-align:center;">
+    <div style="font-size:2rem;font-weight:800;color:#00d4ff;">{len(df):,}</div>
+    <div style="font-size:0.72rem;color:#7dafc8;text-transform:uppercase;letter-spacing:0.08em;margin-top:4px;">Observatories Monitored</div>
+  </div>
+  <div style="background:linear-gradient(135deg,#0d1b2a,#0f2236);border:1px solid #1e3a5f;border-top:3px solid #1D9E75;border-radius:10px;padding:18px 20px;text-align:center;">
+    <div style="font-size:2rem;font-weight:800;color:#1D9E75;">{_n_excellent:,}</div>
+    <div style="font-size:0.72rem;color:#7dafc8;text-transform:uppercase;letter-spacing:0.08em;margin-top:4px;">Excellent Tonight</div>
+  </div>
+  <div style="background:linear-gradient(135deg,#0d1b2a,#0f2236);border:1px solid #1e3a5f;border-top:3px solid #378ADD;border-radius:10px;padding:18px 20px;text-align:center;">
+    <div style="font-size:2rem;font-weight:800;color:#378ADD;">{_n_good:,}</div>
+    <div style="font-size:0.72rem;color:#7dafc8;text-transform:uppercase;letter-spacing:0.08em;margin-top:4px;">Good Conditions</div>
+  </div>
+  <div style="background:linear-gradient(135deg,#0d1b2a,#0f2236);border:1px solid #1e3a5f;border-top:3px solid #EF9F27;border-radius:10px;padding:18px 20px;text-align:center;">
+    <div style="font-size:2rem;font-weight:800;color:#EF9F27;">{_avg_score}</div>
+    <div style="font-size:0.72rem;color:#7dafc8;text-transform:uppercase;letter-spacing:0.08em;margin-top:4px;">Global Avg Score</div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
-    # ── Feature highlights ─────────────────────────────
-    st.subheader("What Can You Do Here?")
+    # ── Best site banner ───────────────────────────────
+    st.markdown(f"""
+<div style="background:linear-gradient(90deg,#0d2137,#0a2e1f);border:1px solid #1D9E75;border-radius:10px;
+            padding:14px 22px;display:flex;align-items:center;gap:16px;margin-bottom:28px;">
+  <div style="font-size:1.6rem;">🏆</div>
+  <div>
+    <div style="font-size:0.7rem;color:#5dcaa5;text-transform:uppercase;letter-spacing:0.1em;font-weight:700;">Best Site Tonight</div>
+    <div style="font-size:1.1rem;font-weight:700;color:#e8f4fd;">{_best_site}</div>
+    <div style="font-size:0.78rem;color:#7dafc8;">{_best_country}</div>
+  </div>
+  <div style="margin-left:auto;text-align:right;">
+    <div style="font-size:1.8rem;font-weight:800;color:#1D9E75;">{int(df.iloc[0]['observation_score'])}<span style="font-size:1rem;color:#5dcaa5;">/100</span></div>
+    <div style="font-size:0.7rem;color:#5dcaa5;">Observation Score</div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
-    _f = [
-        ("🗺️", "Live Weather Map",       "See real-time observation quality scores for every observatory on an interactive world map with satellite imagery."),
-        ("🔭", "Observing Windows",       "Find the best time windows to observe tonight at any observatory, factoring in weather, darkness, and atmospheric conditions."),
-        ("🌌", "Object Visibility",       "Check which astronomical objects — galaxies, nebulae, planets — are visible tonight at your chosen site."),
-        ("⏱️", "Peak Observing Time",     "Pinpoint the exact hour when conditions peak at each observatory for the sharpest images."),
-        ("🌬️", "Atmospheric Analysis",   "Dive into seeing quality, precipitable water vapour, jet stream impact, and turbulence indices."),
-        ("📈", "Historical Reliability",  "Compare observatories by their long-term reliability scores, trend direction, and percentage of excellent nights."),
-        ("🔬", "Site Comparison",         "Compare up to 5 observatories side-by-side across all weather and atmospheric metrics."),
-        ("📅", "Semester Planning",       "Plan your observing semester by finding the best months and sites for your target objects."),
-        ("🛰️", "Telescope Efficiency",   "Get efficiency ratings for optical, infrared, and radio telescopes based on current conditions."),
-        ("☄️", "Comet Tracker",           "Track active comets and find which observatories have the best view tonight."),
-        ("🌑", "Eclipses & Transits",     "Find upcoming solar and lunar eclipses and the best observatories to view them from."),
-        ("🌠", "Meteor Showers",          "See active and upcoming meteor showers with ZHR, moon phase impact, and best viewing sites."),
+    # ── Feature grid ───────────────────────────────────
+    st.markdown("<div style='font-size:1.2rem;font-weight:700;color:#e8f4fd;margin-bottom:16px;'>Platform Features</div>", unsafe_allow_html=True)
+
+    _features = [
+        ("🗺️", "#00d4ff", "Live Weather Map",      "Real-time observation quality scores on an interactive world map with satellite imagery."),
+        ("🔭", "#1D9E75", "Observing Windows",      "Best time windows to observe tonight factoring in weather, darkness and atmosphere."),
+        ("🌌", "#9b59b6", "Object Visibility",      "See which galaxies, nebulae and planets are visible tonight at any chosen site."),
+        ("⏱️", "#378ADD", "Peak Observing Time",    "Pinpoint the exact hour conditions peak at each observatory for the sharpest images."),
+        ("🌬️", "#00b4d8", "Atmospheric Analysis",  "Seeing quality, precipitable water vapour, jet stream impact and turbulence indices."),
+        ("📈", "#1D9E75", "Historical Reliability", "Long-term reliability scores, trend direction and percentage of excellent nights."),
+        ("🔬", "#EF9F27", "Site Comparison",        "Compare up to 5 observatories side-by-side across all weather and atmospheric metrics."),
+        ("📅", "#e74c3c", "Semester Planning",      "Find the best months and sites for your target objects across a full semester."),
+        ("🛰️", "#378ADD", "Telescope Efficiency",  "Efficiency ratings for optical, infrared and radio telescopes based on live conditions."),
+        ("☄️", "#EF9F27", "Comet Tracker",          "Track active comets and find which observatories have the best view tonight."),
+        ("🌑", "#9b59b6", "Eclipses & Transits",    "Upcoming solar and lunar eclipses with the best observatories to view them from."),
+        ("🌠", "#00d4ff", "Meteor Showers",         "Active and upcoming showers with ZHR, moon phase impact and best viewing sites."),
     ]
 
-    for i in range(0, len(_f), 3):
-        _row = st.columns(3)
-        for j, col in enumerate(_row):
-            if i + j < len(_f):
-                icon, title, desc = _f[i + j]
-                with col:
-                    st.markdown(f"**{icon} {title}**")
-                    st.caption(desc)
-
-    st.markdown("---")
+    _feat_html = "<div style='display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:28px;'>"
+    for icon, color, title, desc in _features:
+        _feat_html += f"""
+<div style="background:#0d1b2a;border:1px solid #1e2d40;border-radius:10px;padding:16px 18px;display:flex;gap:14px;align-items:flex-start;">
+  <div style="background:{color}22;border-radius:8px;padding:8px;font-size:1.3rem;flex-shrink:0;">{icon}</div>
+  <div>
+    <div style="font-size:0.9rem;font-weight:700;color:#e8f4fd;margin-bottom:4px;">{title}</div>
+    <div style="font-size:0.78rem;color:#7dafc8;line-height:1.5;">{desc}</div>
+  </div>
+</div>"""
+    _feat_html += "</div>"
+    st.markdown(_feat_html, unsafe_allow_html=True)
 
     # ── Quick start ────────────────────────────────────
-    st.subheader("Getting Started")
-    st.markdown("""
-1. **Click → Live Weather Map** in the sidebar to see tonight's conditions worldwide.
-2. Use the **search bar** on the map to find a specific observatory or country.
-3. **Click any observatory** on the map or in rankings to open its detail page.
-4. Use **Fetch Live Data** in the sidebar to refresh weather readings on demand.
-5. Explore the other pages for forecasts, atmospheric analysis, eclipse planning, and more.
-""")
+    st.markdown("<div style='font-size:1.2rem;font-weight:700;color:#e8f4fd;margin-bottom:16px;'>Getting Started</div>", unsafe_allow_html=True)
 
-    st.info(f"Last data fetch: {df.attrs.get('fetched_at', 'see sidebar')} · {len(df):,} observatories · {len(OBJECTS)} astronomical objects tracked.", icon="ℹ️")
+    _steps = [
+        ("01", "#00d4ff", "Open Live Weather Map",    "Click 'Live Weather Map' in the sidebar to see tonight's conditions for all 1,163 observatories on the globe."),
+        ("02", "#1D9E75", "Search or Browse",         "Use the search bar to filter by observatory name or country, or zoom into any region on the map."),
+        ("03", "#378ADD", "Explore Observatory Detail","Click any marker or ranking entry to open a detailed page with mini-map, nearby sites, and history."),
+        ("04", "#EF9F27", "Refresh Live Data",        "Hit 'Fetch Live Data' in the sidebar to pull fresh weather readings from all observatories on demand."),
+        ("05", "#9b59b6", "Plan & Compare",           "Use Semester Planning, Site Comparison, and Atmospheric Analysis to make informed observing decisions."),
+    ]
+
+    _steps_html = "<div style='display:flex;flex-direction:column;gap:10px;margin-bottom:28px;'>"
+    for num, color, title, desc in _steps:
+        _steps_html += f"""
+<div style="background:#0d1b2a;border:1px solid #1e2d40;border-left:3px solid {color};border-radius:10px;padding:14px 18px;display:flex;gap:16px;align-items:flex-start;">
+  <div style="font-size:1.1rem;font-weight:800;color:{color};flex-shrink:0;min-width:28px;">{num}</div>
+  <div>
+    <div style="font-size:0.9rem;font-weight:700;color:#e8f4fd;margin-bottom:3px;">{title}</div>
+    <div style="font-size:0.78rem;color:#7dafc8;line-height:1.5;">{desc}</div>
+  </div>
+</div>"""
+    _steps_html += "</div>"
+    st.markdown(_steps_html, unsafe_allow_html=True)
+
+    # ── Footer info ────────────────────────────────────
+    st.markdown(f"""
+<div style="background:#0a1628;border:1px solid #1e2d40;border-radius:8px;padding:12px 18px;
+            font-size:0.78rem;color:#5c7a96;text-align:center;">
+  ℹ️ &nbsp; Data last updated: <strong style="color:#7dafc8;">2026-06-11 05:24 UTC</strong>
+  &nbsp;·&nbsp; {len(df):,} observatories monitored
+  &nbsp;·&nbsp; {len(OBJECTS)} astronomical objects tracked
+</div>
+""", unsafe_allow_html=True)
 
 
 # ═══════════════════════════════════════════════════════
