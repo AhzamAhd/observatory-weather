@@ -6246,20 +6246,7 @@ are rated 0.
             paper_bgcolor=BG2, plot_bgcolor=BG2, font=dict(color=TEXT),
             height=420, margin=dict(l=60,r=20,t=60,b=40)
         )
-        # removed old ax2 spines code
-        ax2.spines["left"].set_color("#444441")
-        ax2.spines["bottom"].set_color("#444441")
-        ax2.legend(fontsize=8, facecolor="#0E1117",
-                   labelcolor="white")
-        buf2 = io.BytesIO()
-        plt.tight_layout()
-        plt.savefig(buf2, format="png", dpi=150,
-                    facecolor="#0E1117",
-                    bbox_inches="tight")
-        buf2.seek(0)
-        st.image(buf2.getvalue(), width='stretch')
-        buf2.close()
-        plt.close(fig2)
+        st.plotly_chart(_asfig, use_container_width=True)
 
         st.markdown("---")
 
