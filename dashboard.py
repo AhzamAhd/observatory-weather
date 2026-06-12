@@ -852,10 +852,20 @@ df  = load_data()
 win = load_windows()
 peak = load_peak_times_cached()
 
+# Real last-update timestamp, formatted once and reused everywhere.
+def _format_last_updated(dataframe):
+    if dataframe.empty or "fetch_datetime" not in dataframe.columns:
+        return "No data yet"
+    ts = dataframe["fetch_datetime"].iloc[0]
+    try:
+        return pd.to_datetime(ts).strftime("%Y-%m-%d %H:%M UTC")
+    except Exception:
+        return str(ts)
+
+LAST_UPDATED = _format_last_updated(df)
 
 st.caption(
-    f"Last updated: "
-    f"{df['fetch_datetime'].iloc[0] if not df.empty else 'No data'} "
+    f"Last updated: {LAST_UPDATED} "
     f"· {len(df)} observatories monitored "
     f"· {len(OBJECTS)} astronomical objects"
 )
@@ -1101,7 +1111,7 @@ if selected_page == "Home":
     st.markdown(f"""
 <div style="background:#0a1628;border:1px solid #1e2d40;border-radius:8px;padding:12px 18px;
             font-size:0.78rem;color:#5c7a96;text-align:center;">
-  ℹ️ &nbsp; Data last updated: <strong style="color:#7dafc8;">2026-06-11 05:24 UTC</strong>
+  ℹ️ &nbsp; Data last updated: <strong style="color:#7dafc8;">{LAST_UPDATED}</strong>
   &nbsp;·&nbsp; {len(df):,} observatories monitored
   &nbsp;·&nbsp; {len(OBJECTS)} astronomical objects tracked
 </div>
