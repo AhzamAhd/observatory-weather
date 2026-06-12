@@ -49,27 +49,66 @@ def airmass_color(airmass):
     elif airmass <= 3.0:  return "#E24B4A"
     else:                 return "#880000"
 
-def extinction_magnitudes(airmass, filter_band="V"):
+# Reference extinction coefficients (mag/airmass) for a
+# "good mountain site" at ~2000 m, per filter band.
+EXTINCTION_REFERENCE = {
+    "U": 0.55,  # UV
+    "B": 0.30,  # Blue
+    "V": 0.18,  # Visual (green)
+    "R": 0.12,  # Red
+    "I": 0.08,  # Near-IR
+    "J": 0.05,  # IR
+    "H": 0.03,  # IR
+    "K": 0.02,  # IR
+}
+
+# Altitude (m) the reference coefficients above are tied to.
+_REFERENCE_ALTITUDE_M = 2000.0
+
+
+def site_extinction_scale(altitude_m):
+    """
+    Scale factor for atmospheric extinction based on site
+    altitude. Higher, drier sites sit above more of the
+    atmosphere, so extinction drops with elevation.
+
+    Returns a multiplier applied to the reference (2000 m)
+    extinction coefficients. The atmospheric column scales
+    roughly as exp(-h / H) with scale height H ≈ 8000 m, so
+    we anchor that ratio to the 2000 m reference and clamp to
+    a sensible range.
+    """
+    if altitude_m is None or altitude_m <= 0:
+        # Sea-level / unknown — most extinction.
+        altitude_m = 0.0
+
+    H = 8000.0  # atmospheric scale height in metres
+    scale = math.exp(-(altitude_m - _REFERENCE_ALTITUDE_M) / H)
+    # Clamp: dry 4200 m peak ~0.78x, low coastal site ~1.65x
+    return max(0.70, min(1.8, scale))
+
+
+def extinction_coefficient(altitude_m=_REFERENCE_ALTITUDE_M,
+                           filter_band="V"):
+    """
+    Site- and filter-specific extinction coefficient k
+    (magnitudes per airmass).
+    """
+    base = EXTINCTION_REFERENCE.get(filter_band, 0.18)
+    return round(base * site_extinction_scale(altitude_m), 4)
+
+
+def extinction_magnitudes(airmass, filter_band="V",
+                          altitude_m=_REFERENCE_ALTITUDE_M):
     """
     Calculate atmospheric extinction in magnitudes.
     How much dimmer an object appears due to atmosphere.
+    Extinction now scales with site altitude.
     """
     if airmass is None:
         return None
 
-    # Typical extinction coefficients per airmass
-    # at a good mountain site
-    k = {
-        "U": 0.55,  # UV
-        "B": 0.30,  # Blue
-        "V": 0.18,  # Visual (green)
-        "R": 0.12,  # Red
-        "I": 0.08,  # Near-IR
-        "J": 0.05,  # IR
-        "H": 0.03,  # IR
-        "K": 0.02,  # IR
-    }
-    coeff = k.get(filter_band, 0.18)
+    coeff = extinction_coefficient(altitude_m, filter_band)
     return round(coeff * airmass, 3)
 
 def get_ephem_body(object_name, observer):
@@ -165,7 +204,7 @@ def get_object_airmass_curve(
                 "is_dark":    sun_alt < -18,
                 "is_night":   sun_alt < 0,
                 "extinction": extinction_magnitudes(
-                    airmass),
+                    airmass, altitude_m=alt_m),
             })
         except Exception:
             continue
@@ -236,7 +275,7 @@ def compare_objects_airmass(
                 "quality":    airmass_quality(airmass),
                 "color":      airmass_color(airmass),
                 "extinction": extinction_magnitudes(
-                    airmass),
+                    airmass, altitude_m=alt_m),
                 "visible":    alt_deg > 10,
             })
         except Exception:

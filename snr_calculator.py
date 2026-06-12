@@ -239,7 +239,9 @@ def get_sky_brightness(moon_phase_pct, moon_altitude_deg):
     return round(max(17.0, base - (alt_factor * 2.0)), 2)
 
 def atmospheric_extinction(altitude_deg,
-                           extinction_coeff=0.12):
+                           extinction_coeff=None,
+                           site_altitude_m=2000.0,
+                           filter_band="V"):
     if altitude_deg is None or altitude_deg <= 0:
         return 0.5
     if altitude_deg >= 90:
@@ -248,6 +250,14 @@ def atmospheric_extinction(altitude_deg,
         airmass = 40.0
     else:
         airmass = 1 / math.sin(math.radians(altitude_deg))
+
+    # Site-dependent extinction coefficient unless caller
+    # supplies an explicit value.
+    if extinction_coeff is None:
+        from airmass_calculator import extinction_coefficient
+        extinction_coeff = extinction_coefficient(
+            site_altitude_m, filter_band)
+
     extinction_mag = extinction_coeff * airmass
     transmission   = 10 ** (-extinction_mag / 2.5)
     return round(min(1.0, max(0.0, transmission)), 4)
@@ -328,7 +338,9 @@ def calculate_snr(
     object_altitude_deg=None,
     object_angular_size_arcsec=None,
     pwv_mm=None,
-    telescope_type="optical"
+    telescope_type="optical",
+    site_altitude_m=2000.0,
+    filter_band="V"
 ):
     aperture     = telescope_specs["aperture_m"]
     pixel_scale  = telescope_specs["pixel_scale"]
@@ -347,7 +359,9 @@ def calculate_snr(
     # Atmospheric extinction
     if object_altitude_deg is not None:
         ext_transmission = atmospheric_extinction(
-            object_altitude_deg)
+            object_altitude_deg,
+            site_altitude_m=site_altitude_m,
+            filter_band=filter_band)
         effective_throughput = throughput * ext_transmission
         airmass = (
             1 / math.sin(
@@ -557,7 +571,8 @@ def get_snr_for_all_observatories(
                 sky_brightness_mag = sky_brightness,
                 seeing_arcsec      = seeing,
                 object_name        = object_name,
-                pwv_mm             = pwv
+                pwv_mm             = pwv,
+                site_altitude_m    = row.get("altitude_m", 2000) or 2000
             )
             results.append({
                 "observatory":   obs_name,
