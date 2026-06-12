@@ -8,7 +8,7 @@ from telescope_efficiency import get_all_efficiency_scores
 from atmospheric import get_full_atmospheric_analysis
 from historical_reliability import calculate_reliability_scores
 from eclipses import get_upcoming_events, get_best_observatories_for_eclipse
-from meteor_showers import get_meteor_showers
+from meteor_showers import get_all_showers_sorted, get_active_showers, get_upcoming_showers
 
 def precompute_all():
     print(f"\n Pre-computing dashboard data — "
@@ -132,7 +132,9 @@ def precompute_all():
     # ── Meteor showers ────────────────────────────────────
     print("  Computing meteor showers...")
     try:
-        showers, active, upcoming_showers = get_meteor_showers()
+        showers = get_all_showers_sorted()
+        active = get_active_showers()
+        upcoming_showers = get_upcoming_showers(30)
         save("meteor_showers", {
             "showers":  showers,
             "active":   active,
