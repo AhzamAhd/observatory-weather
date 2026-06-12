@@ -1160,35 +1160,21 @@ if selected_page == "Live Weather Map":
     st.markdown("---")
     st.subheader("Tonight's Best Observatories")
     _top10 = df.nlargest(10, "observation_score").reset_index(drop=True)
-    _cond_colors = {"Excellent": "#1D9E75", "Good": "#00b4d8", "Marginal": "#EF9F27", "Poor": "#E24B4A"}
-    _top10_html = """
-    <div style='display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-bottom:8px'>
-    """
+    _medals = {0: "🥇", 1: "🥈", 2: "🥉"}
+    _top10_cols = st.columns(5)
     for i, r in _top10.iterrows():
-        _rank = i + 1
+        _col = _top10_cols[i % 5]
         _score = int(r["observation_score"])
-        _cc = _cond_colors.get(r["condition"], "#888")
-        _bar_w = _score
-        _medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(_rank, f"#{_rank}")
-        _top10_html += f"""
-        <div style='background:#0e1117;border:1px solid #1e2d40;border-left:3px solid {_cc};
-                    border-radius:8px;padding:12px 14px'>
-          <div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:6px'>
-            <span style='font-size:13px;font-weight:700;color:#cdd9e5'>{_medal} {r['observatory']}</span>
-            <span style='font-size:12px;font-weight:700;color:{_cc}'>{_score}/100</span>
-          </div>
-          <div style='font-size:11px;color:#5c7a96;margin-bottom:6px'>{r['country']} &nbsp;·&nbsp; {r['altitude_m']}m alt</div>
-          <div style='background:#151b26;border-radius:4px;height:5px;overflow:hidden'>
-            <div style='width:{_bar_w}%;height:100%;background:{_cc};border-radius:4px'></div>
-          </div>
-          <div style='display:flex;gap:10px;margin-top:6px;font-size:10px;color:#5c7a96'>
-            <span>Cloud {r['cloud_cover_pct']}%</span>
-            <span>Humidity {r['humidity_pct']}%</span>
-            <span>Wind {r['wind_speed_ms']} m/s</span>
-          </div>
-        </div>"""
-    _top10_html += "</div>"
-    st.markdown(_top10_html, unsafe_allow_html=True)
+        _medal = _medals.get(i, f"#{i+1}")
+        _cond_icon = {"Excellent": "🟢", "Good": "🔵", "Marginal": "🟡", "Poor": "🔴"}.get(r["condition"], "⚪")
+        with _col:
+            st.metric(
+                label=f"{_medal} {r['observatory'][:22]}",
+                value=f"{_score}/100",
+                delta=r["condition"],
+            )
+            st.progress(_score / 100)
+            st.caption(f"{r['country']} · {int(r['altitude_m'])}m · Cloud {r['cloud_cover_pct']}%")
 
     st.markdown("---")
     with st.expander("Observation quality rankings", expanded=False):
