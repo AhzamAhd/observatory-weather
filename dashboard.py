@@ -943,19 +943,32 @@ PAGE_CATEGORIES = {
     ],
 }
 
-_selected_category = st.sidebar.selectbox(
-    "Category",
-    list(PAGE_CATEGORIES.keys()),
-    label_visibility="collapsed",
-    key="nav_category",
-)
+# Single dropdown listing every page, with non-selectable
+# category headers as visual separators so all 24 pages are
+# visible in one place.
+_nav_options = []
+_nav_headers = set()
+for _cat, _pages in PAGE_CATEGORIES.items():
+    _header = f"— {_cat} —"
+    _nav_options.append(_header)
+    _nav_headers.add(_header)
+    _nav_options.extend(_pages)
 
-selected_page = st.sidebar.radio(
-    "Select a page",
-    PAGE_CATEGORIES[_selected_category],
+_picked = st.sidebar.selectbox(
+    "Navigation",
+    _nav_options,
+    index=_nav_options.index("Home"),
     label_visibility="collapsed",
     key="nav_page",
 )
+
+# If a category header was somehow selected, fall back to its
+# first real page.
+if _picked in _nav_headers:
+    _cat_name = _picked.strip("— ").strip()
+    selected_page = PAGE_CATEGORIES.get(_cat_name, ["Home"])[0]
+else:
+    selected_page = _picked
 
 # Dynamic browser-tab title per page ("Live Weather Map · GOWC").
 _tab_title = ("GOWC · Observatory Weather"
