@@ -1060,6 +1060,23 @@ st.sidebar.caption(
     "Built by Ahzam Ahmed"
 )
 
+# ── Global empty-data guard ───────────────────────────
+# If the core weather dataset failed to load (DB unreachable
+# or no data yet), show a friendly message instead of letting
+# every page crash on df.iloc[0]. The About page needs no data.
+if df.empty and selected_page != "About & Methodology":
+    st.warning(
+        "Live weather data is currently unavailable. This can happen "
+        "if the data source is being refreshed or temporarily "
+        "unreachable. Please try again in a few minutes.",
+        icon="⚠️",
+    )
+    st.caption(
+        "If you are the site owner, use **Fetch Live Data** in the "
+        "sidebar to repopulate the dataset."
+    )
+    st.stop()
+
 # ═══════════════════════════════════════════════════════
 # HOME — Landing page
 # ═══════════════════════════════════════════════════════
