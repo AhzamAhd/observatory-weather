@@ -2,5 +2,9 @@ venv/
 __pycache__/
 *.pyc
 .env
+.env.*
+.streamlit/secrets.toml
+*.pem
+*.key
 data/bronze/
 subscriptions.json
