@@ -865,6 +865,7 @@ st.sidebar.image("assets/gowc_banner.png", width=220)
 st.sidebar.markdown(f"<p style='font-size:0.7rem;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:{TEXT2};padding:4px 12px 2px;margin:0'>Navigation</p>", unsafe_allow_html=True)
 
 PAGES = {
+    "Home":                   "home",
     "Live Weather Map":       "live_map",
     "Observing Windows":      "windows",
     "Object Visibility":      "visibility",
@@ -975,6 +976,87 @@ st.sidebar.caption(
     "Global Observatory Weather Tracker · "
     "Built by Ahzam Ahmed"
 )
+
+# ═══════════════════════════════════════════════════════
+# HOME — Landing page
+# ═══════════════════════════════════════════════════════
+if selected_page == "Home":
+    st.image("assets/gowc_banner_cropped.png", use_container_width=True)
+    st.markdown("---")
+
+    # ── Platform description ───────────────────────────
+    st.markdown("""
+## Welcome to GOWC — Global Observatory Weather Tracker
+
+GOWC is a real-time weather intelligence platform built for astronomers, researchers,
+and observatory operators worldwide. It monitors **1,163 professional observatories**
+across the globe, delivering live weather conditions, atmospheric quality scores,
+and multi-day forecasts — all in one place.
+
+Whether you're planning a deep-sky imaging session, scheduling telescope time, or
+comparing sites for a future expedition, GOWC gives you the data you need to make
+the right call.
+""")
+
+    st.markdown("---")
+
+    # ── Live stats ─────────────────────────────────────
+    _n_excellent = len(df[df["condition"] == "Excellent"])
+    _n_good      = len(df[df["condition"] == "Good"])
+    _avg_score   = round(df["observation_score"].mean(), 1)
+    _best_site   = df.iloc[0]["observatory"]
+    _best_country = df.iloc[0]["country"]
+
+    st.subheader("Live Platform Stats")
+    _sc1, _sc2, _sc3, _sc4 = st.columns(4)
+    _sc1.metric("Observatories Monitored", f"{len(df):,}")
+    _sc2.metric("Excellent Conditions", f"{_n_excellent:,}")
+    _sc3.metric("Good Conditions", f"{_n_good:,}")
+    _sc4.metric("Global Avg Score", f"{_avg_score} / 100")
+
+    st.markdown("---")
+
+    # ── Feature highlights ─────────────────────────────
+    st.subheader("What Can You Do Here?")
+
+    _f = [
+        ("🗺️", "Live Weather Map",       "See real-time observation quality scores for every observatory on an interactive world map with satellite imagery."),
+        ("🔭", "Observing Windows",       "Find the best time windows to observe tonight at any observatory, factoring in weather, darkness, and atmospheric conditions."),
+        ("🌌", "Object Visibility",       "Check which astronomical objects — galaxies, nebulae, planets — are visible tonight at your chosen site."),
+        ("⏱️", "Peak Observing Time",     "Pinpoint the exact hour when conditions peak at each observatory for the sharpest images."),
+        ("🌬️", "Atmospheric Analysis",   "Dive into seeing quality, precipitable water vapour, jet stream impact, and turbulence indices."),
+        ("📈", "Historical Reliability",  "Compare observatories by their long-term reliability scores, trend direction, and percentage of excellent nights."),
+        ("🔬", "Site Comparison",         "Compare up to 5 observatories side-by-side across all weather and atmospheric metrics."),
+        ("📅", "Semester Planning",       "Plan your observing semester by finding the best months and sites for your target objects."),
+        ("🛰️", "Telescope Efficiency",   "Get efficiency ratings for optical, infrared, and radio telescopes based on current conditions."),
+        ("☄️", "Comet Tracker",           "Track active comets and find which observatories have the best view tonight."),
+        ("🌑", "Eclipses & Transits",     "Find upcoming solar and lunar eclipses and the best observatories to view them from."),
+        ("🌠", "Meteor Showers",          "See active and upcoming meteor showers with ZHR, moon phase impact, and best viewing sites."),
+    ]
+
+    for i in range(0, len(_f), 3):
+        _row = st.columns(3)
+        for j, col in enumerate(_row):
+            if i + j < len(_f):
+                icon, title, desc = _f[i + j]
+                with col:
+                    st.markdown(f"**{icon} {title}**")
+                    st.caption(desc)
+
+    st.markdown("---")
+
+    # ── Quick start ────────────────────────────────────
+    st.subheader("Getting Started")
+    st.markdown("""
+1. **Click → Live Weather Map** in the sidebar to see tonight's conditions worldwide.
+2. Use the **search bar** on the map to find a specific observatory or country.
+3. **Click any observatory** on the map or in rankings to open its detail page.
+4. Use **Fetch Live Data** in the sidebar to refresh weather readings on demand.
+5. Explore the other pages for forecasts, atmospheric analysis, eclipse planning, and more.
+""")
+
+    st.info(f"Last data fetch: {df.attrs.get('fetched_at', 'see sidebar')} · {len(df):,} observatories · {len(OBJECTS)} astronomical objects tracked.", icon="ℹ️")
+
 
 # ═══════════════════════════════════════════════════════
 # TAB 1 — Live Weather Map
