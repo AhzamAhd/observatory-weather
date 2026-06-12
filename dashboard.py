@@ -903,10 +903,58 @@ PAGES = {
     "About & Methodology":    "about",
 }
 
+# Group pages into categories for a two-level sidebar nav.
+# The page names inside must match the keys used by every
+# downstream `if selected_page == ...` block.
+PAGE_CATEGORIES = {
+    "Overview": [
+        "Home",
+        "Live Weather Map",
+        "About & Methodology",
+    ],
+    "Planning": [
+        "Observing Windows",
+        "Object Visibility",
+        "Peak Observing Time",
+        "Semester Planning",
+        "7-Day Forecast",
+        "Airmass Calculator",
+    ],
+    "Analysis": [
+        "Atmospheric Analysis",
+        "Historical Reliability",
+        "Site Comparison",
+        "Telescope Efficiency",
+        "SNR Calculator",
+        "Observatory Detail",
+    ],
+    "Sky Events": [
+        "Comet Tracker",
+        "Asteroid Tracker",
+        "Satellite Passes",
+        "Meteor Showers",
+        "Eclipses & Transits",
+    ],
+    "More": [
+        "Live Sky Chart",
+        "Learn Astronomy",
+        "Alert Subscriptions",
+        "Observatory Reviews",
+    ],
+}
+
+_selected_category = st.sidebar.selectbox(
+    "Category",
+    list(PAGE_CATEGORIES.keys()),
+    label_visibility="collapsed",
+    key="nav_category",
+)
+
 selected_page = st.sidebar.radio(
     "Select a page",
-    list(PAGES.keys()),
-    label_visibility="collapsed"
+    PAGE_CATEGORIES[_selected_category],
+    label_visibility="collapsed",
+    key="nav_page",
 )
 
 # Dynamic browser-tab title per page ("Live Weather Map · GOWC").
