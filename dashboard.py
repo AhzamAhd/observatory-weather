@@ -475,14 +475,12 @@ st.markdown(f"""
     }}
     h2 {{
         color: {TEXT} !important;
-        font-size: 1.1rem !important;
+        font-size: 1.15rem !important;
         font-weight: 600 !important;
-        letter-spacing: 0.01em !important;
-        text-transform: uppercase !important;
+        letter-spacing: 0.005em !important;
         border-bottom: 1px solid {BORDER} !important;
-        padding-bottom: 0.45rem !important;
+        padding-bottom: 0.4rem !important;
         margin-bottom: 1rem !important;
-        color: {ACCENT2} !important;
     }}
     h3 {{
         color: {TEXT} !important;
@@ -959,7 +957,7 @@ PAGE_CATEGORIES = {
         "Live Sky Chart",
         "Learn Astronomy",
         "Alert Subscriptions",
-        "Observatory Reviews",
+        # "Observatory Reviews",  # hidden until we have real reviews
     ],
 }
 
@@ -998,12 +996,6 @@ components.html(
     f"<script>document.title = {json.dumps(_tab_title)};</script>",
     height=0,
 )
-
-st.sidebar.markdown("---")
-_theme_label = "Switch to Light Mode" if st.session_state.theme == "dark" else "Switch to Dark Mode"
-if st.sidebar.button(_theme_label, use_container_width=True):
-    st.session_state.theme = "light" if st.session_state.theme == "dark" else "dark"
-    st.rerun()
 
 # Current weather summary in sidebar
 st.sidebar.markdown("---")
