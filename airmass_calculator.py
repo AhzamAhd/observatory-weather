@@ -49,17 +49,21 @@ def airmass_color(airmass):
     elif airmass <= 3.0:  return "#E24B4A"
     else:                 return "#880000"
 
-# Reference extinction coefficients (mag/airmass) for a
-# "good mountain site" at ~2000 m, per filter band.
+# Reference extinction coefficients (mag/airmass) at the
+# 2000 m reference altitude, per filter band. Calibrated so
+# that the altitude scaling reproduces published mean
+# extinction at ORM La Palma (2326 m): U~0.46, B~0.22,
+# V~0.12, R~0.09, I~0.05 (King 1985; ORM site monitoring),
+# consistent with ESO Paranal (V~0.11) once scaled.
 EXTINCTION_REFERENCE = {
-    "U": 0.55,  # UV
-    "B": 0.30,  # Blue
-    "V": 0.18,  # Visual (green)
-    "R": 0.12,  # Red
-    "I": 0.08,  # Near-IR
-    "J": 0.05,  # IR
-    "H": 0.03,  # IR
-    "K": 0.02,  # IR
+    "U": 0.479,  # UV
+    "B": 0.229,  # Blue
+    "V": 0.125,  # Visual (green)
+    "R": 0.094,  # Red
+    "I": 0.052,  # Near-IR
+    "J": 0.031,  # IR
+    "H": 0.021,  # IR
+    "K": 0.015,  # IR
 }
 
 # Altitude (m) the reference coefficients above are tied to.
