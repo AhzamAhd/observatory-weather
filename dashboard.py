@@ -898,6 +898,7 @@ PAGES = {
     "Asteroid Tracker":       "asteroids",
     "Eclipses & Transits":    "eclipses",
     "Observatory Detail":     "detail",
+    "About & Methodology":    "about",
 }
 
 selected_page = st.sidebar.radio(
@@ -1116,6 +1117,102 @@ if selected_page == "Home":
   &nbsp;·&nbsp; {len(OBJECTS)} astronomical objects tracked
 </div>
 """, unsafe_allow_html=True)
+
+
+# ═══════════════════════════════════════════════════════
+# ABOUT & METHODOLOGY
+# ═══════════════════════════════════════════════════════
+if selected_page == "About & Methodology":
+    st.header("About & Methodology")
+    st.caption("How GOWC works, the physics behind the numbers, and where the data comes from.")
+
+    st.markdown("""
+GOWC (Global Observatory Weather Tracker) is a real-time observing-conditions
+platform covering **1,163 professional observatories** worldwide. It combines live
+weather data with established astronomy physics to estimate how good observing
+conditions are at each site — right now, tonight, and over the coming week.
+""")
+
+    st.info(
+        "GOWC provides forecasts and physics-based **estimates** for observation "
+        "planning. It is not a substitute for on-site measurements or official "
+        "observatory conditions.",
+        icon="⚠️"
+    )
+
+    st.subheader("Observation Quality Score")
+    st.markdown("""
+Each observatory gets a **0–100 score** from current conditions. The weighting
+reflects how each variable actually affects telescope performance:
+
+| Variable | Effect | Penalty |
+|---|---|---|
+| **Cloud cover** | Blocks optical observation entirely | −0.50 per % cloud |
+| **Humidity** | Condensation on optics above ~85% | −2.0 per % above 85% |
+| **Wind speed** | Vibration / tracking errors above 15 m/s | −2.0 per m/s above 15 |
+
+| Score | Condition |
+|---|---|
+| 80–100 | Excellent |
+| 60–79 | Good |
+| 40–59 | Marginal |
+| 0–39 | Poor |
+""")
+
+    st.subheader("Airmass")
+    st.markdown(r"""
+Airmass measures how much atmosphere light passes through (1.0 at the zenith,
+rising toward the horizon). GOWC uses the **Pickering (2002)** formula, which is
+accurate near the horizon where the simple plane-parallel $\sec(z)$ approximation
+breaks down:
+
+$$X = \frac{1}{\sin\!\left(h + \dfrac{244}{165 + 47\,h^{1.1}}\right)}$$
+
+where $h$ is the apparent altitude in degrees.
+""")
+
+    st.subheader("Atmospheric Extinction")
+    st.markdown(r"""
+Light is dimmed by the atmosphere by an amount that grows with airmass and depends
+on the observing band and the **site's altitude** — higher, drier sites sit above
+more of the atmosphere. GOWC scales per-filter extinction coefficients by elevation
+using an exponential atmospheric-column model (scale height ≈ 8 km), calibrated to
+published values:
+
+| Site | Altitude | k (V) | k (R) |
+|---|---|---|---|
+| ORM, La Palma | 2326 m | ~0.12 | ~0.09 |
+| Paranal (ESO) | 2635 m | ~0.12 | ~0.09 |
+| Mauna Kea | 4205 m | ~0.10 | ~0.07 |
+
+Transmission is then $T = 10^{-k\,X/2.5}$, where $k$ is the extinction coefficient
+and $X$ the airmass. These match published ORM (King 1985) and ESO Paranal site
+monitoring.
+""")
+
+    st.subheader("Signal-to-Noise (SNR)")
+    st.markdown(r"""
+The SNR Calculator uses the standard **CCD equation**, including a scintillation
+term and surface-brightness handling for extended objects:
+
+$$\mathrm{SNR} = \frac{N_{\star}}{\sqrt{N_{\star} + N_{\mathrm{sky}} + N_{\mathrm{dark}} + N_{\mathrm{read}}^2 + N_{\mathrm{scint}}^2}}$$
+
+where $N_\star$ is source counts, $N_{\mathrm{sky}}$ sky-background counts,
+$N_{\mathrm{dark}}$ dark current, $N_{\mathrm{read}}$ read noise, and
+$N_{\mathrm{scint}}$ scintillation noise.
+""")
+
+    st.subheader("Data Sources & References")
+    st.markdown("""
+- **Weather** — [Open-Meteo](https://open-meteo.com) (free, open-source API)
+- **Ephemerides** — [PyEphem](https://rhodesmill.org/pyephem/)
+- **Airmass** — Pickering, K. A. (2002), *The Southern Limits of the Ancient Star Catalog*
+- **Extinction** — King (1985); ESO Paranal site monitoring; ORM La Palma
+- **SFR / Hα methodology** — Kennicutt (1998)
+""")
+
+    st.markdown("---")
+    st.caption(f"Data last updated: {LAST_UPDATED} · {len(df):,} observatories · {len(OBJECTS)} objects · Built by Ahzam Ahmed")
 
 
 # ═══════════════════════════════════════════════════════
