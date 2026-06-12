@@ -18,6 +18,8 @@ from datetime import datetime, timezone
 def utcnow():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 import streamlit as st
+import streamlit.components.v1 as components
+import json
 import math
 import sqlite3
 import pandas as pd
@@ -905,6 +907,15 @@ selected_page = st.sidebar.radio(
     "Select a page",
     list(PAGES.keys()),
     label_visibility="collapsed"
+)
+
+# Dynamic browser-tab title per page ("Live Weather Map · GOWC").
+_tab_title = ("GOWC · Observatory Weather"
+              if selected_page == "Home"
+              else f"{selected_page} · GOWC")
+components.html(
+    f"<script>document.title = {json.dumps(_tab_title)};</script>",
+    height=0,
 )
 
 st.sidebar.markdown("---")
