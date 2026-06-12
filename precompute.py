@@ -7,7 +7,7 @@ from peak_time import get_all_peak_times
 from telescope_efficiency import get_all_efficiency_scores
 from atmospheric import get_full_atmospheric_analysis
 from historical_reliability import calculate_reliability_scores
-from eclipses import get_eclipse_events, get_best_observatories_for_eclipse
+from eclipses import get_upcoming_events, get_best_observatories_for_eclipse
 from meteor_showers import get_meteor_showers
 
 def precompute_all():
@@ -112,7 +112,7 @@ def precompute_all():
     # ── Eclipse events ────────────────────────────────────
     print("  Computing eclipse events...")
     try:
-        events = get_eclipse_events()
+        events = get_upcoming_events()
         if events:
             save("eclipse_events", events)
             # Best observatories for each upcoming eclipse
