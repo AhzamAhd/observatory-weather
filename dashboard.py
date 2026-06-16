@@ -140,6 +140,21 @@ st.markdown(f"""
     <meta name="theme-color" content="#00b4d8">
     <meta name="application-name" content="GOWC">
     <link rel="apple-touch-icon" href="data:image/png;base64,{_icon192}">
+
+    <!-- SEO + social sharing (OpenGraph / Twitter Card) -->
+    <meta name="description" content="Real-time weather intelligence for astronomers worldwide — observing conditions, seeing, airmass and SNR for 1,163 observatories.">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="GOWC">
+    <meta property="og:title" content="GOWC — Global Observatory Weather Tracker">
+    <meta property="og:description" content="Real-time weather intelligence for astronomers worldwide — observing conditions, seeing, airmass and SNR for 1,163 observatories.">
+    <meta property="og:url" content="https://gowcastroclimate.com">
+    <meta property="og:image" content="https://raw.githubusercontent.com/AhzamAhd/observatory-weather/main/assets/gowc_banner.png">
+    <meta property="og:image:width" content="1243">
+    <meta property="og:image:height" content="357">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="GOWC — Global Observatory Weather Tracker">
+    <meta name="twitter:description" content="Real-time observing conditions, seeing, airmass and SNR for 1,163 observatories worldwide.">
+    <meta name="twitter:image" content="https://raw.githubusercontent.com/AhzamAhd/observatory-weather/main/assets/gowc_banner.png">
     <script>
     if ('serviceWorker' in navigator) {{
         const sw = `
@@ -1222,8 +1237,9 @@ if selected_page == "Home":
 # ABOUT & METHODOLOGY
 # ═══════════════════════════════════════════════════════
 if selected_page == "About & Methodology":
-    st.header("About & Methodology")
-    st.caption("How GOWC works, the physics behind the numbers, and where the data comes from.")
+    page_header("📖", "About & Methodology",
+        "How GOWC works, the physics behind the numbers, "
+        "and where the data comes from.")
 
     st.markdown("""
 GOWC (Global Observatory Weather Tracker) is a real-time observing-conditions
@@ -7286,3 +7302,24 @@ if selected_page == "Observatory Detail":
         f"All astronomical calculations are performed "
         f"live when you select this observatory."
     )
+
+
+# ═══════════════════════════════════════════════════════
+# GLOBAL FOOTER — rendered on every page
+# ═══════════════════════════════════════════════════════
+st.markdown(f"""
+<div style="margin-top:48px;padding:18px 0 8px;border-top:1px solid {BORDER};
+            display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;
+            justify-content:center;font-size:0.74rem;color:{TEXT2};">
+  <span style="font-weight:700;color:{TEXT};letter-spacing:0.04em;">GOWC</span>
+  <span>·</span>
+  <span>Global Observatory Weather Tracker</span>
+  <span>·</span>
+  <span>Weather data: <a href="https://open-meteo.com" target="_blank"
+        style="color:{ACCENT};text-decoration:none;">Open-Meteo</a></span>
+  <span>·</span>
+  <span>Built by Ahzam Ahmed</span>
+  <span>·</span>
+  <span>Forecasts are estimates for planning, not official observatory conditions.</span>
+</div>
+""", unsafe_allow_html=True)
