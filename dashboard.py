@@ -48,7 +48,7 @@ from sheets_subscriptions import (add_subscription,
 from telescope_efficiency import get_all_efficiency_scores
 from snr_calculator import (calculate_snr, get_snr_for_all_observatories,
                               TELESCOPE_SPECS, OBJECT_MAGNITUDES,
-                              get_sky_brightness)
+                              get_sky_brightness, PHOTOMETRIC_FILTERS)
 from airmass_calculator import (
     get_object_airmass_curve,
     compare_objects_airmass,
@@ -3793,6 +3793,22 @@ if selected_page == "SNR Calculator":
             key="snr_object"
         )
 
+        # Photometric filter — universal standard bands, default V.
+        snr_filter_name = st.selectbox(
+            "Filter / band",
+            list(PHOTOMETRIC_FILTERS.keys()),
+            index=2,  # V (visual)
+            key="snr_filter",
+            help="Standard Johnson-Cousins bands plus narrowband "
+                 "filters. Narrowband (Hα, OIII) collects far fewer "
+                 "photons but isolates emission lines."
+        )
+        _filt = PHOTOMETRIC_FILTERS[snr_filter_name]
+        st.caption(
+            f"λ = {_filt['wavelength_nm']} nm · "
+            f"bandwidth {_filt['bandwidth_nm']} nm"
+        )
+
     with snr_col2:
         # Custom magnitude option
         use_custom_mag = st.toggle(
@@ -3924,13 +3940,6 @@ if selected_page == "SNR Calculator":
         seeing = 1.5
         pwv    = None
 
-    # Debug display - remove later
-    st.caption(
-        f"DEBUG: obj={snr_object}, mag={object_mag}, "
-        f"obs={snr_obs}, exp={exposure_s}s, "
-        f"seeing={seeing}, sky={sky_brightness}"
-    )
-
     result = calculate_snr(
         object_magnitude      = float(object_mag),
         exposure_time_s       = int(exposure_s),
@@ -3939,7 +3948,11 @@ if selected_page == "SNR Calculator":
         seeing_arcsec         = float(seeing),
         object_name           = snr_object,
         object_altitude_deg   = None,
-        pwv_mm                = pwv
+        pwv_mm                = pwv,
+        site_altitude_m       = obs_row.get("altitude_m", 2000) or 2000,
+        filter_band           = _filt["band"],
+        wavelength_nm         = _filt["wavelength_nm"],
+        bandwidth_nm          = _filt["bandwidth_nm"],
     )
 
     # SNR display

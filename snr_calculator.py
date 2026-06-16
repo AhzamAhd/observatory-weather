@@ -105,6 +105,21 @@ def get_telescope_specs(observatory_name, altitude_m=0):
         "type":               "optical"
     }
 
+# ── Standard photometric filters ──────────────────────────────────
+# Johnson-Cousins broadband system plus common narrowband filters.
+# These are universal definitions (same at every observatory) —
+# centre wavelength and bandwidth in nanometres, plus the band key
+# used for site-altitude-dependent atmospheric extinction.
+PHOTOMETRIC_FILTERS = {
+    "U (ultraviolet)":  {"wavelength_nm": 365,  "bandwidth_nm": 66,  "band": "U"},
+    "B (blue)":         {"wavelength_nm": 445,  "bandwidth_nm": 94,  "band": "B"},
+    "V (visual)":       {"wavelength_nm": 551,  "bandwidth_nm": 88,  "band": "V"},
+    "R (red)":          {"wavelength_nm": 658,  "bandwidth_nm": 138, "band": "R"},
+    "I (near-IR)":      {"wavelength_nm": 806,  "bandwidth_nm": 149, "band": "I"},
+    "Hα (narrowband)":  {"wavelength_nm": 656,  "bandwidth_nm": 3,   "band": "R"},
+    "OIII (narrowband)":{"wavelength_nm": 501,  "bandwidth_nm": 3,   "band": "V"},
+}
+
 # ── Sky background by moon phase ──────────────────────────────────
 SKY_BRIGHTNESS = {
     "new_moon":  22.0,
@@ -340,7 +355,9 @@ def calculate_snr(
     pwv_mm=None,
     telescope_type="optical",
     site_altitude_m=2000.0,
-    filter_band="V"
+    filter_band="V",
+    wavelength_nm=550.0,
+    bandwidth_nm=100.0
 ):
     aperture     = telescope_specs["aperture_m"]
     pixel_scale  = telescope_specs["pixel_scale"]
@@ -389,10 +406,12 @@ def calculate_snr(
         effective_magnitude = object_magnitude
         is_extended         = False
 
-    # Source signal
+    # Source signal — photon collection depends on the chosen
+    # filter's central wavelength and bandwidth.
     source_flux   = mag_to_flux(effective_magnitude)
     source_rate   = flux_to_photons(
         source_flux, aperture,
+        bandwidth_nm=bandwidth_nm, wavelength_nm=wavelength_nm,
         throughput=effective_throughput, qe=qe
     )
     source_counts = source_rate * exposure_time_s
@@ -401,6 +420,7 @@ def calculate_snr(
     sky_flux       = mag_to_flux(sky_brightness_mag)
     sky_rate_pixel = flux_to_photons(
         sky_flux, aperture,
+        bandwidth_nm=bandwidth_nm, wavelength_nm=wavelength_nm,
         throughput=effective_throughput, qe=qe
     ) * (pixel_scale ** 2)
 
@@ -445,6 +465,7 @@ def calculate_snr(
         test_flux   = mag_to_flux(lim_mag + step)
         test_rate   = flux_to_photons(
             test_flux, aperture,
+            bandwidth_nm=bandwidth_nm, wavelength_nm=wavelength_nm,
             throughput=effective_throughput, qe=qe
         )
         test_counts = test_rate * exposure_time_s
