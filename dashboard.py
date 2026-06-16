@@ -1030,10 +1030,17 @@ if not df.empty:
         f"Updated: {df['fetch_datetime'].iloc[0]}"
     )
 
-st.sidebar.markdown("---")
-st.sidebar.markdown("**Fetch Live Data**")
+# Manual fetch is an admin action (it re-fetches the whole global
+# dataset on our infra), so it's hidden from public visitors. Append
+# ?admin=1 to the URL to reveal it. Scheduled GitHub Actions keep the
+# data fresh for everyone automatically.
+_is_admin = st.query_params.get("admin") == "1"
 
-if st.sidebar.button("Fetch Live Data", use_container_width=True):
+if _is_admin:
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("**Fetch Live Data** (admin)")
+
+if _is_admin and st.sidebar.button("Fetch Live Data", use_container_width=True):
     with st.sidebar:
         with st.spinner("Fetching weather for all observatories..."):
             try:

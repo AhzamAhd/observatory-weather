@@ -1,6 +1,10 @@
 name: Hourly Weather Fetch + Precompute
 
 on:
+  schedule:
+    # Twice daily at 05:00 and 17:00 UTC — keeps the public
+    # dataset fresh without excessive Action usage.
+    - cron: '0 5,17 * * *'
   workflow_dispatch:
 
 permissions:
