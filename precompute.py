@@ -1,7 +1,22 @@
 import json
+import math
 import pandas as pd
 from datetime import datetime, timezone
 from db import get_connection, query_df, fetch_one
+
+
+def _json_safe(obj):
+    """
+    Recursively replace NaN / Infinity (which Postgres JSON rejects)
+    with None so the payload is valid JSON.
+    """
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else None
+    if isinstance(obj, dict):
+        return {k: _json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_json_safe(v) for v in obj]
+    return obj
 from observing_window import get_all_windows
 from peak_time import get_all_peak_times
 from telescope_efficiency import get_all_efficiency_scores
@@ -24,7 +39,8 @@ def precompute_all():
             ON CONFLICT (key) DO UPDATE SET
                 value       = EXCLUDED.value,
                 computed_at = EXCLUDED.computed_at
-        """, (key, json.dumps(data, default=str)))
+        """, (key, json.dumps(_json_safe(data), default=str,
+                              allow_nan=False)))
         conn.commit()
         print(f"  Saved → {key}")
 
