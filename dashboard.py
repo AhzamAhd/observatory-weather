@@ -131,43 +131,60 @@ _manifest = f"""{{
 
 _manifest_b64 = base64.b64encode(_manifest.encode()).decode()
 
-st.markdown(f"""
-    <link rel="manifest" href="data:application/manifest+json;base64,{_manifest_b64}">
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="GOWC">
-    <meta name="theme-color" content="#00b4d8">
-    <meta name="application-name" content="GOWC">
-    <link rel="apple-touch-icon" href="data:image/png;base64,{_icon192}">
-
-    <!-- SEO + social sharing (OpenGraph / Twitter Card) -->
-    <meta name="description" content="Real-time weather intelligence for astronomers worldwide — observing conditions, seeing, airmass and SNR for 1,163 observatories.">
-    <meta property="og:type" content="website">
-    <meta property="og:site_name" content="GOWC">
-    <meta property="og:title" content="GOWC — Global Observatory Weather Tracker">
-    <meta property="og:description" content="Real-time weather intelligence for astronomers worldwide — observing conditions, seeing, airmass and SNR for 1,163 observatories.">
-    <meta property="og:url" content="https://gowcastroclimate.com">
-    <meta property="og:image" content="https://raw.githubusercontent.com/AhzamAhd/observatory-weather/main/assets/gowc_banner.png">
-    <meta property="og:image:width" content="1243">
-    <meta property="og:image:height" content="357">
-    <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="GOWC — Global Observatory Weather Tracker">
-    <meta name="twitter:description" content="Real-time observing conditions, seeing, airmass and SNR for 1,163 observatories worldwide.">
-    <meta name="twitter:image" content="https://raw.githubusercontent.com/AhzamAhd/observatory-weather/main/assets/gowc_banner.png">
-    <script>
-    if ('serviceWorker' in navigator) {{
-        const sw = `
-self.addEventListener('install', e => self.skipWaiting());
-self.addEventListener('activate', e => clients.claim());
-self.addEventListener('fetch', e => e.respondWith(fetch(e.request).catch(() => caches.match(e.request))));
-        `;
-        const blob = new Blob([sw], {{type: 'application/javascript'}});
-        navigator.serviceWorker.register(URL.createObjectURL(blob), {{scope: '/'}})
-            .catch(() => {{}});
-    }}
-    </script>
-""", unsafe_allow_html=True)
+# Inject PWA manifest, head meta tags (incl. OpenGraph/Twitter) and the
+# service worker into the PARENT document head via a 0-height component.
+# st.markdown sanitises <meta>/<script>, so we build the head nodes in JS.
+_OG_IMG = "https://raw.githubusercontent.com/AhzamAhd/observatory-weather/main/assets/gowc_banner.png"
+_HEAD_TAGS = [
+    ("link", {"rel": "manifest", "href": f"data:application/manifest+json;base64,{_manifest_b64}"}),
+    ("meta", {"name": "mobile-web-app-capable", "content": "yes"}),
+    ("meta", {"name": "apple-mobile-web-app-capable", "content": "yes"}),
+    ("meta", {"name": "apple-mobile-web-app-status-bar-style", "content": "black-translucent"}),
+    ("meta", {"name": "apple-mobile-web-app-title", "content": "GOWC"}),
+    ("meta", {"name": "theme-color", "content": "#00b4d8"}),
+    ("meta", {"name": "application-name", "content": "GOWC"}),
+    ("link", {"rel": "apple-touch-icon", "href": f"data:image/png;base64,{_icon192}"}),
+    ("meta", {"name": "description", "content": "Real-time weather intelligence for astronomers worldwide — observing conditions, seeing, airmass and SNR for 1,163 observatories."}),
+    ("meta", {"property": "og:type", "content": "website"}),
+    ("meta", {"property": "og:site_name", "content": "GOWC"}),
+    ("meta", {"property": "og:title", "content": "GOWC — Global Observatory Weather Tracker"}),
+    ("meta", {"property": "og:description", "content": "Real-time weather intelligence for astronomers worldwide — observing conditions, seeing, airmass and SNR for 1,163 observatories."}),
+    ("meta", {"property": "og:url", "content": "https://gowcastroclimate.com"}),
+    ("meta", {"property": "og:image", "content": _OG_IMG}),
+    ("meta", {"property": "og:image:width", "content": "1243"}),
+    ("meta", {"property": "og:image:height", "content": "357"}),
+    ("meta", {"name": "twitter:card", "content": "summary_large_image"}),
+    ("meta", {"name": "twitter:title", "content": "GOWC — Global Observatory Weather Tracker"}),
+    ("meta", {"name": "twitter:description", "content": "Real-time observing conditions, seeing, airmass and SNR for 1,163 observatories worldwide."}),
+    ("meta", {"name": "twitter:image", "content": _OG_IMG}),
+]
+components.html(
+    f"""
+<script>
+(function() {{
+  var doc = window.parent.document;
+  var tags = {json.dumps(_HEAD_TAGS)};
+  tags.forEach(function(t) {{
+    var sel = t[0] + Object.keys(t[1]).map(function(k) {{
+      return '[' + k + '="' + t[1][k].replace(/"/g, '\\\\"') + '"]';
+    }}).join('');
+    try {{ if (doc.head.querySelector(t[0] + (t[1].property ? '[property="'+t[1].property+'"]' : t[1].name ? '[name="'+t[1].name+'"]' : ''))) return; }} catch(e) {{}}
+    var el = doc.createElement(t[0]);
+    for (var k in t[1]) el.setAttribute(k, t[1][k]);
+    doc.head.appendChild(el);
+  }});
+  if ('serviceWorker' in window.parent.navigator) {{
+    var sw = "self.addEventListener('install',e=>self.skipWaiting());"
+           + "self.addEventListener('activate',e=>clients.claim());"
+           + "self.addEventListener('fetch',e=>e.respondWith(fetch(e.request).catch(()=>caches.match(e.request))));";
+    var blob = new Blob([sw], {{type:'application/javascript'}});
+    window.parent.navigator.serviceWorker.register(URL.createObjectURL(blob), {{scope:'/'}}).catch(function(){{}});
+  }}
+}})();
+</script>
+""",
+    height=0,
+)
 
 svg = '''<svg width="1440" height="900" viewBox="0 0 1440 900" xmlns="http://www.w3.org/2000/svg">
   <rect x="0" y="0" width="1440" height="900" fill="#020810"/>
