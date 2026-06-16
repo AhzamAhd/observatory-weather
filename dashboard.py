@@ -933,7 +933,6 @@ PAGE_CATEGORIES = {
     "Planning": [
         "Observing Windows",
         "Object Visibility",
-        "Peak Observing Time",
         "Semester Planning",
         "7-Day Forecast",
         "Airmass Calculator",
@@ -1159,9 +1158,8 @@ if selected_page == "Home":
 
     _features = [
         ("🗺️", "#00d4ff", "Live Weather Map",      "Real-time observation quality scores on an interactive world map with satellite imagery."),
-        ("🔭", "#1D9E75", "Observing Windows",      "Best time windows to observe tonight factoring in weather, darkness and atmosphere."),
+        ("🔭", "#1D9E75", "Observing Windows",      "Best time windows and the peak observing hour tonight, factoring weather, darkness and moon."),
         ("🌌", "#9b59b6", "Object Visibility",      "See which galaxies, nebulae and planets are visible tonight at any chosen site."),
-        ("⏱️", "#378ADD", "Peak Observing Time",    "Pinpoint the exact hour conditions peak at each observatory for the sharpest images."),
         ("🌬️", "#00b4d8", "Atmospheric Analysis",  "Seeing quality, precipitable water vapour, jet stream impact and turbulence indices."),
         ("📈", "#1D9E75", "Historical Reliability", "Long-term reliability scores, trend direction and percentage of excellent nights."),
         ("🔬", "#EF9F27", "Site Comparison",        "Compare up to 5 observatories side-by-side across all weather and atmospheric metrics."),
@@ -1589,8 +1587,9 @@ if selected_page == "Live Weather Map":
 # ═══════════════════════════════════════════════════════
 if selected_page == "Observing Windows":
     page_header("🌙", "Tonight's Observing Windows",
-        "Scores adjusted for moon phase and position. "
-        "Dark hours calculated using astronomical twilight (-18°).")
+        "Dark-time windows plus the peak observing hour for every site. "
+        "Scores adjusted for moon phase and position; dark hours from "
+        "astronomical twilight (-18°).")
 
     if not win.empty:
         w1, w2, w3, w4 = st.columns(4)
@@ -1837,13 +1836,16 @@ if selected_page == "Object Visibility":
             )
 
 # ═══════════════════════════════════════════════════════
-# TAB 4 — Peak Observing Time
+# Peak Observing Time — now a section within Observing Windows
 # ═══════════════════════════════════════════════════════
-if selected_page == "Peak Observing Time":
-    page_header("⏰", "Peak Observing Time Calculator",
-        "Find the best hour to observe tonight at each observatory. "
+if selected_page == "Observing Windows":
+    st.markdown("---")
+    st.subheader("⏰ Peak observing hour & hourly breakdown")
+    st.caption(
+        "The single best hour to observe tonight at each observatory. "
         "Toggle on a target object to factor in its altitude "
-        "alongside weather, darkness, and moon position.")
+        "alongside weather, darkness, and moon position."
+    )
 
     use_object           = st.toggle(
         "Factor in a specific target object", value=False)
