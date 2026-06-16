@@ -1071,7 +1071,7 @@ if _is_admin and st.sidebar.button("Fetch Live Data", use_container_width=True):
                 observatories = load_observatories()
                 if observatories:
                     results, failed = fetch_all_parallel(
-                        observatories, max_workers=50)
+                        observatories, max_workers=12)
 
                     os.makedirs("data/bronze", exist_ok=True)
                     date_str = utcnow().strftime("%Y-%m-%d")

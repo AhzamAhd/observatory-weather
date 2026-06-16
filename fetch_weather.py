@@ -1,6 +1,7 @@
 import requests
 import json
 import os
+import time
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -33,37 +34,46 @@ def fetch_weather(observatory):
         "forecast_days":   1
     }
 
-    try:
-        response = requests.get(url, params=params, timeout=15)
-        response.raise_for_status()
-        data    = response.json()
-        current = data["current"]
+    # Retry with backoff, mainly to ride out Open-Meteo 429 rate limits.
+    for attempt in range(4):
+        try:
+            response = requests.get(url, params=params, timeout=15)
+            if response.status_code == 429:
+                # Honour Retry-After if present, else exponential backoff.
+                wait = float(response.headers.get("Retry-After", 2 ** attempt))
+                time.sleep(min(wait, 15))
+                continue
+            response.raise_for_status()
+            current = response.json()["current"]
 
-        return {
-            "observatory_name": observatory["name"],
-            "country":          observatory.get("country", "Unknown"),
-            "latitude":         observatory["latitude"],
-            "longitude":        observatory["longitude"],
-            "altitude_m":       observatory.get("altitude_m", 0),
-            "mpc_code":         observatory.get("code", ""),
-            "cloud_cover_pct":  current.get("cloudcover"),
-            "humidity_pct":     current.get("relativehumidity_2m"),
-            "wind_speed_ms":    current.get("windspeed_10m"),
-            "temperature_c":    current.get("temperature_2m"),
-            "precipitation_mm": current.get("precipitation"),
-            "surface_pressure": current.get("surface_pressure"),
-            "dewpoint_c":       current.get("dewpoint_2m"),
-            "wind_speed_80m":   current.get("windspeed_80m"),
-            "wind_speed_120m":  current.get("windspeed_120m"),
-            "jet_stream_ms":    None,
-        }
+            return {
+                "observatory_name": observatory["name"],
+                "country":          observatory.get("country", "Unknown"),
+                "latitude":         observatory["latitude"],
+                "longitude":        observatory["longitude"],
+                "altitude_m":       observatory.get("altitude_m", 0),
+                "mpc_code":         observatory.get("code", ""),
+                "cloud_cover_pct":  current.get("cloudcover"),
+                "humidity_pct":     current.get("relativehumidity_2m"),
+                "wind_speed_ms":    current.get("windspeed_10m"),
+                "temperature_c":    current.get("temperature_2m"),
+                "precipitation_mm": current.get("precipitation"),
+                "surface_pressure": current.get("surface_pressure"),
+                "dewpoint_c":       current.get("dewpoint_2m"),
+                "wind_speed_80m":   current.get("windspeed_80m"),
+                "wind_speed_120m":  current.get("windspeed_120m"),
+                "jet_stream_ms":    None,
+            }
 
-    except requests.exceptions.Timeout:
-        print(f"  [TIMEOUT] {observatory['name']}")
-        return None
-    except requests.exceptions.RequestException as e:
-        print(f"  [ERROR]   {observatory['name']} — {e}")
-        return None
+        except requests.exceptions.Timeout:
+            time.sleep(2 ** attempt)
+            continue
+        except requests.exceptions.RequestException as e:
+            print(f"  [ERROR]   {observatory['name']} — {e}")
+            return None
+
+    print(f"  [RATELIMIT] {observatory['name']} — gave up after retries")
+    return None
 
 def fetch_all_parallel(observatories, max_workers=20):
     results = []
@@ -103,8 +113,10 @@ def main():
         return
 
     print(f"  Loaded {len(observatories)} observatories\n")
+    # 12 threads keeps us under Open-Meteo's free-tier rate limit;
+    # per-request 429 retries handle the occasional burst.
     results, failed = fetch_all_parallel(
-        observatories, max_workers=50)
+        observatories, max_workers=12)
     print(
         f"\n  Fetch complete — "
         f"{len(results)} succeeded, {failed} failed\n"
