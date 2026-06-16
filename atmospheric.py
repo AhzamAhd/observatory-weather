@@ -1,42 +1,106 @@
 import math
 
-def calculate_seeing(temperature_c, wind_speed_ms,
-                     humidity_pct, altitude_m=0):
+# Wavelength seeing is referenced to (V band, 500 nm).
+_SEEING_WAVELENGTH_M = 500e-9
+
+
+def turbulence_integral(wind_speed_ms, humidity_pct, altitude_m):
     """
-    Estimate atmospheric seeing in arcseconds.
-    Based on simplified Fried parameter model.
-    Lower = better. Excellent < 1.0, Good 1.0-2.0,
-    Poor > 2.0 arcsec.
+    Estimate the integrated refractive-index structure constant
+    ∫ Cn²(h) dh  (units m^(1/3)) for a site.
+
+    Uses a Hufnagel–Valley-style decomposition into a high-altitude
+    (free-atmosphere) term driven by upper-level wind and a
+    boundary-layer/surface term driven by ground wind and humidity.
+    The site's own elevation removes the part of the atmospheric
+    column that lies below it, so high sites integrate less
+    turbulence.
+
+    Calibrated so that a high, dry, calm site (~4200 m, ~3 m/s,
+    ~20% RH) yields r0 ≈ 15–20 cm (seeing ≈ 0.6–0.8″) and a low,
+    windy, humid site yields seeing ≈ 2–3″.
+    """
+    if wind_speed_ms is None:
+        wind_speed_ms = 5.0
+    if humidity_pct is None:
+        humidity_pct = 50.0
+    if altitude_m is None:
+        altitude_m = 0.0
+
+    # Free-atmosphere (high-altitude) floor — the irreducible
+    # turbulence above any site, driven by upper-level wind. ~1e-13
+    # m^(1/3) corresponds to the best ground-layer-free seeing.
+    v_wind = 5.0 + wind_speed_ms
+    high = 1.2e-13 * (v_wind / 12.0) ** 2
+
+    # Boundary-layer / surface term. Ground turbulence dominates
+    # real seeing; grows with wind shear and humidity (moist,
+    # unstable surface layer), and is suppressed at high, thin sites
+    # which sit above much of the surface layer.
+    surface_strength = 9.0e-13
+    wind_term   = 1.0 + (wind_speed_ms / 8.0) ** 2
+    humid_term  = 1.0 + max(0.0, humidity_pct - 40.0) / 60.0
+    column_term = math.exp(-altitude_m / 2500.0)
+    surface = surface_strength * wind_term * humid_term * column_term
+
+    cn2_integral = high + surface
+    return max(1e-14, cn2_integral)
+
+
+def fried_parameter(cn2_integral, wavelength_m=_SEEING_WAVELENGTH_M,
+                    airmass=1.0):
+    """
+    Fried parameter r0 (metres) from the turbulence integral:
+
+        r0 = (0.423 * k² * X * ∫Cn² dh) ^ (-3/5)
+
+    where k = 2π/λ is the wavenumber and X the airmass (sec ζ).
+    Larger r0 = better seeing.
+    """
+    k = 2.0 * math.pi / wavelength_m
+    r0 = (0.423 * k ** 2 * airmass * cn2_integral) ** (-3.0 / 5.0)
+    return r0
+
+
+def calculate_seeing(temperature_c, wind_speed_ms,
+                     humidity_pct, altitude_m=0,
+                     airmass=1.0,
+                     wavelength_nm=500.0):
+    """
+    Estimate atmospheric seeing (FWHM, arcsec) from the Fried
+    parameter:
+
+        θ = 0.98 * λ / r0      (radians)  →  × 206265 → arcsec
+
+    r0 is derived from a Hufnagel–Valley-style Cn² integral
+    (see turbulence_integral / fried_parameter). Lower θ = better.
+    Exceptional < 0.5, Excellent < 1.0, Good 1.0–1.5,
+    Average 1.5–2.5, Poor > 2.5 arcsec.
+
+    temperature_c is retained for signature compatibility and a
+    small cold-air stability bonus.
     """
     if any(v is None for v in [
         temperature_c, wind_speed_ms, humidity_pct
     ]):
         return None
 
-    # Base seeing from wind (higher wind = worse seeing)
-    wind_factor = 0.5 + (wind_speed_ms / 10) * 0.8
+    wavelength_m = wavelength_nm * 1e-9
+    cn2 = turbulence_integral(wind_speed_ms, humidity_pct, altitude_m)
+    r0  = fried_parameter(cn2, wavelength_m, max(1.0, airmass))
 
-    # Humidity penalty (above 70% degrades seeing)
-    if humidity_pct > 70:
-        humidity_factor = 1 + (humidity_pct - 70) / 100
-    else:
-        humidity_factor = 1.0
+    # Seeing FWHM in arcseconds.
+    theta_rad    = 0.98 * wavelength_m / r0
+    seeing_arcsec = theta_rad * 206265.0
 
-    # Altitude bonus (higher sites have better seeing)
-    altitude_factor = max(0.5, 1 - (altitude_m / 10000))
-
-    # Temperature stability bonus
-    # Very cold sites tend to have more stable air
+    # Small stability bonus: very cold, stable air tends to give
+    # marginally tighter seeing (well-documented at polar/high sites).
     if temperature_c < -5:
-        temp_factor = 0.85
+        seeing_arcsec *= 0.95
     elif temperature_c < 5:
-        temp_factor = 0.95
-    else:
-        temp_factor = 1.0
+        seeing_arcsec *= 0.98
 
-    seeing = (wind_factor * humidity_factor *
-              altitude_factor * temp_factor)
-    return round(max(0.3, min(5.0, seeing)), 2)
+    return round(max(0.3, min(5.0, seeing_arcsec)), 2)
 
 def seeing_quality(seeing_arcsec):
     if seeing_arcsec is None:

@@ -1272,6 +1272,27 @@ $$X = \frac{1}{\sin\!\left(h + \dfrac{244}{165 + 47\,h^{1.1}}\right)}$$
 where $h$ is the apparent altitude in degrees.
 """)
 
+    st.subheader("Astronomical Seeing")
+    st.markdown(r"""
+Seeing — the blurring of point sources by atmospheric turbulence — is computed from
+the **Fried parameter** $r_0$, not a heuristic. The turbulence strength $\int C_n^2\,dh$
+is modelled with a Hufnagel–Valley-style decomposition into a free-atmosphere term
+(driven by upper-level wind) and a boundary-layer term (driven by ground wind shear
+and humidity, suppressed at high sites that sit above the surface layer). Then:
+
+$$r_0 = \left(0.423\,k^2\,X \int C_n^2\,dh\right)^{-3/5}, \qquad
+\theta_{\mathrm{FWHM}} = 0.98\,\frac{\lambda}{r_0}$$
+
+where $k = 2\pi/\lambda$ and $X$ is the airmass. The model is calibrated so the best
+sites reproduce their published median seeing:
+
+| Site | Altitude | $r_0$ | Seeing |
+|---|---|---|---|
+| Mauna Kea | 4205 m | ~20 cm | ~0.5″ |
+| Paranal | 2635 m | ~13 cm | ~0.8″ |
+| ORM, La Palma | 2326 m | ~11 cm | ~0.9″ |
+""")
+
     st.subheader("Atmospheric Extinction")
     st.markdown(r"""
 Light is dimmed by the atmosphere by an amount that grows with airmass and depends
