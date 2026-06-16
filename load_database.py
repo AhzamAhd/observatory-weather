@@ -2,7 +2,7 @@ import os
 import json
 import glob
 from datetime import datetime, timezone
-from db import execute, fetch_one, query_df
+from db import execute_many, fetch_one, query_df
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -95,72 +95,64 @@ def upsert_weather_readings(data, now):
     fetch_date     = now.strftime("%Y-%m-%d")
     fetch_time     = now.strftime("%H:%M UTC")
     fetch_datetime = now.strftime("%Y-%m-%d %H:%M UTC")
-    upserted       = 0
     not_found      = 0
 
+    # Build all rows first, then insert in a single batched round-trip.
+    rows = []
     for record in data:
-        try:
-            lat = record.get("latitude")
-            lon = record.get("longitude")
-            if lat is None or lon is None:
-                continue
-
-            obs = get_obs_by_coords(lat, lon)
-            if not obs:
-                not_found += 1
-                continue
-
-            obs_id = obs["id"]
-            cloud  = record.get("cloud_cover_pct") or 0
-            humid  = record.get("humidity_pct")    or 0
-            wind   = record.get("wind_speed_ms")   or 0
-            score  = calculate_score(cloud, humid, wind)
-
-            execute("""
-                INSERT INTO weather_readings (
-                    observatory_id,   fetch_date,
-                    fetch_time,       fetch_datetime,
-                    cloud_cover_pct,  humidity_pct,
-                    wind_speed_ms,    temperature_c,
-                    precipitation_mm, surface_pressure,
-                    jet_stream_ms,    dewpoint_c,
-                    observation_score
-                ) VALUES (
-                    %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s
-                )
-                ON CONFLICT (observatory_id, fetch_date)
-                DO UPDATE SET
-                    fetch_time        = EXCLUDED.fetch_time,
-                    fetch_datetime    = EXCLUDED.fetch_datetime,
-                    cloud_cover_pct   = EXCLUDED.cloud_cover_pct,
-                    humidity_pct      = EXCLUDED.humidity_pct,
-                    wind_speed_ms     = EXCLUDED.wind_speed_ms,
-                    temperature_c     = EXCLUDED.temperature_c,
-                    precipitation_mm  = EXCLUDED.precipitation_mm,
-                    surface_pressure  = EXCLUDED.surface_pressure,
-                    jet_stream_ms     = EXCLUDED.jet_stream_ms,
-                    dewpoint_c        = EXCLUDED.dewpoint_c,
-                    observation_score = EXCLUDED.observation_score
-            """, [
-                obs_id,        fetch_date,
-                fetch_time,    fetch_datetime,
-                cloud,         humid,
-                wind,          record.get("temperature_c"),
-                record.get("precipitation_mm"),
-                record.get("surface_pressure"),
-                record.get("jet_stream_ms"),
-                record.get("dewpoint_c"),
-                score
-            ])
-            upserted += 1
-
-        except Exception as e:
-            print(f"  [WARN] weather_readings: {e}")
+        lat = record.get("latitude")
+        lon = record.get("longitude")
+        if lat is None or lon is None:
             continue
 
+        obs = get_obs_by_coords(lat, lon)
+        if not obs:
+            not_found += 1
+            continue
+
+        cloud = record.get("cloud_cover_pct") or 0
+        humid = record.get("humidity_pct")    or 0
+        wind  = record.get("wind_speed_ms")   or 0
+        rows.append((
+            obs["id"],     fetch_date,
+            fetch_time,    fetch_datetime,
+            cloud,         humid,
+            wind,          record.get("temperature_c"),
+            record.get("precipitation_mm"),
+            record.get("surface_pressure"),
+            record.get("jet_stream_ms"),
+            record.get("dewpoint_c"),
+            calculate_score(cloud, humid, wind),
+        ))
+
+    if rows:
+        execute_many("""
+            INSERT INTO weather_readings (
+                observatory_id,   fetch_date,
+                fetch_time,       fetch_datetime,
+                cloud_cover_pct,  humidity_pct,
+                wind_speed_ms,    temperature_c,
+                precipitation_mm, surface_pressure,
+                jet_stream_ms,    dewpoint_c,
+                observation_score
+            ) VALUES %s
+            ON CONFLICT (observatory_id, fetch_date)
+            DO UPDATE SET
+                fetch_time        = EXCLUDED.fetch_time,
+                fetch_datetime    = EXCLUDED.fetch_datetime,
+                cloud_cover_pct   = EXCLUDED.cloud_cover_pct,
+                humidity_pct      = EXCLUDED.humidity_pct,
+                wind_speed_ms     = EXCLUDED.wind_speed_ms,
+                temperature_c     = EXCLUDED.temperature_c,
+                precipitation_mm  = EXCLUDED.precipitation_mm,
+                surface_pressure  = EXCLUDED.surface_pressure,
+                jet_stream_ms     = EXCLUDED.jet_stream_ms,
+                dewpoint_c        = EXCLUDED.dewpoint_c,
+                observation_score = EXCLUDED.observation_score
+        """, rows)
+
     print(f"  weather_readings — "
-          f"{upserted} upserted, "
+          f"{len(rows)} upserted, "
           f"{not_found} not found in DB")
 
 def insert_weather_history(data, now):
@@ -169,61 +161,50 @@ def insert_weather_history(data, now):
     One row per observatory per day — never overwrites.
     """
     fetch_date = now.strftime("%Y-%m-%d")
-    inserted   = 0
-    skipped    = 0
     not_found  = 0
 
+    rows = []
     for record in data:
-        try:
-            lat = record.get("latitude")
-            lon = record.get("longitude")
-            if lat is None or lon is None:
-                continue
-
-            obs = get_obs_by_coords(lat, lon)
-            if not obs:
-                not_found += 1
-                continue
-
-            obs_id = obs["id"]
-            cloud  = record.get("cloud_cover_pct") or 0
-            humid  = record.get("humidity_pct")    or 0
-            wind   = record.get("wind_speed_ms")   or 0
-            score  = calculate_score(cloud, humid, wind)
-
-            execute("""
-                INSERT INTO weather_history (
-                    observatory_id,   fetch_date,
-                    cloud_cover_pct,  humidity_pct,
-                    wind_speed_ms,    temperature_c,
-                    precipitation_mm, surface_pressure,
-                    jet_stream_ms,    dewpoint_c,
-                    observation_score
-                ) VALUES (
-                    %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s
-                )
-                ON CONFLICT (observatory_id, fetch_date)
-                DO NOTHING
-            """, [
-                obs_id,       fetch_date,
-                cloud,        humid,
-                wind,         record.get("temperature_c"),
-                record.get("precipitation_mm"),
-                record.get("surface_pressure"),
-                record.get("jet_stream_ms"),
-                record.get("dewpoint_c"),
-                score
-            ])
-            inserted += 1
-
-        except Exception as e:
-            print(f"  [WARN] weather_history: {e}")
+        lat = record.get("latitude")
+        lon = record.get("longitude")
+        if lat is None or lon is None:
             continue
 
+        obs = get_obs_by_coords(lat, lon)
+        if not obs:
+            not_found += 1
+            continue
+
+        cloud = record.get("cloud_cover_pct") or 0
+        humid = record.get("humidity_pct")    or 0
+        wind  = record.get("wind_speed_ms")   or 0
+        rows.append((
+            obs["id"],    fetch_date,
+            cloud,        humid,
+            wind,         record.get("temperature_c"),
+            record.get("precipitation_mm"),
+            record.get("surface_pressure"),
+            record.get("jet_stream_ms"),
+            record.get("dewpoint_c"),
+            calculate_score(cloud, humid, wind),
+        ))
+
+    if rows:
+        execute_many("""
+            INSERT INTO weather_history (
+                observatory_id,   fetch_date,
+                cloud_cover_pct,  humidity_pct,
+                wind_speed_ms,    temperature_c,
+                precipitation_mm, surface_pressure,
+                jet_stream_ms,    dewpoint_c,
+                observation_score
+            ) VALUES %s
+            ON CONFLICT (observatory_id, fetch_date)
+            DO NOTHING
+        """, rows)
+
     print(f"  weather_history  — "
-          f"{inserted} inserted, "
-          f"{skipped} skipped, "
+          f"{len(rows)} inserted, "
           f"{not_found} not found")
 
 def print_summary():
