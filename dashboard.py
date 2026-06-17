@@ -1325,36 +1325,29 @@ is modelled with a Hufnagel–Valley-style decomposition into a free-atmosphere 
 (driven by upper-level wind) and a boundary-layer term (driven by ground wind shear
 and humidity, suppressed at high sites that sit above the surface layer). Then:
 
-$$r_0 = \left(0.423\,k^2\,X \int C_n^2\,dh\right)^{-3/5}, \qquad
-\theta_{\mathrm{FWHM}} = 0.98\,\frac{\lambda}{r_0}$$
+$$r_0 = \left(0.423\,k^2\,X \int C_n^2\,dh\right)^{-3/5} \qquad \theta_{\mathrm{FWHM}} = 0.98\,\lambda / r_0$$
 
 where $k = 2\pi/\lambda$ and $X$ is the airmass. The model is calibrated so the best
-sites reproduce their published median seeing:
-
-| Site | Altitude | $r_0$ | Seeing |
-|---|---|---|---|
-| Mauna Kea | 4205 m | ~20 cm | ~0.5″ |
-| Paranal | 2635 m | ~13 cm | ~0.8″ |
-| ORM, La Palma | 2326 m | ~11 cm | ~0.9″ |
+sites reproduce their published median seeing — for example a high, dry 4200 m peak
+yields $r_0 \approx 20$ cm (seeing ≈ 0.5″), a 2600 m site ≈ 0.8″, and a 2300 m site
+≈ 0.9″ — with each observatory's value driven by its own altitude and live weather.
 """)
 
     st.subheader("Atmospheric Extinction")
     st.markdown(r"""
 Light is dimmed by the atmosphere by an amount that grows with airmass and depends
 on the observing band and the **site's altitude** — higher, drier sites sit above
-more of the atmosphere. GOWC scales per-filter extinction coefficients by elevation
-using an exponential atmospheric-column model (scale height ≈ 8 km), calibrated to
-published values:
+more of the atmosphere, so they lose less light. GOWC gives **every observatory its
+own per-filter extinction coefficient $k$**, scaling it by the site's elevation with
+an exponential atmospheric-column model (scale height ≈ 8 km). The reference
+coefficients are calibrated against published professional-site measurements, so a
+high dry peak transmits noticeably more than a low coastal site at the same airmass.
 
-| Site | Altitude | k (V) | k (R) |
-|---|---|---|---|
-| ORM, La Palma | 2326 m | ~0.12 | ~0.09 |
-| Paranal (ESO) | 2635 m | ~0.12 | ~0.09 |
-| Mauna Kea | 4205 m | ~0.10 | ~0.07 |
+The atmospheric transmission is then:
 
-Transmission is then $T = 10^{-k\,X/2.5}$, where $k$ is the extinction coefficient
-and $X$ the airmass. These match published ORM (King 1985) and ESO Paranal site
-monitoring.
+$$T = 10^{-k\,X/2.5}$$
+
+where $k$ is the site/band extinction coefficient and $X$ the airmass.
 """)
 
     st.subheader("Signal-to-Noise (SNR)")
