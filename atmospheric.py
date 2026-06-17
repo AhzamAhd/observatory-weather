@@ -200,6 +200,77 @@ def jet_stream_color(impact):
         "Unknown":    "#888780"
     }.get(impact, "#888780")
 
+def observing_quality_score(cloud_cover_pct, humidity_pct,
+                            wind_speed_ms, precipitation_mm,
+                            seeing_arcsec, jet_impact):
+    """
+    Genuine observing-quality index (0–100), blending the factors that
+    actually limit ground-based observing into a single number — in the
+    spirit of ClearDarkSky / Meteoblue "astronomy seeing" indices.
+
+    Modelled MULTIPLICATIVELY: any one bad factor drags the whole score
+    down, because in real observing a single show-stopper (thick cloud,
+    rain, terrible seeing) makes the night unusable regardless of the
+    rest. Each sub-factor is a 0–1 transmission-like fraction.
+
+    Factors:
+      • clarity      — cloud cover, non-linear (first cloud hurts most)
+      • dryness      — humidity (gradual; condensation risk when high)
+      • wind_stab    — wind (gradual; vibration/tracking above ~8 m/s)
+      • seeing_fac   — atmospheric turbulence (Fried-based seeing)
+      • jet_fac      — jet-stream turbulence aloft
+      • precip_gate  — hard stop: any real precipitation ⇒ dome closed
+    """
+    cloud = (cloud_cover_pct if cloud_cover_pct is not None else 0) / 100.0
+    rh    = humidity_pct     if humidity_pct     is not None else 50.0
+    wind  = wind_speed_ms    if wind_speed_ms    is not None else 0.0
+    precip = precipitation_mm if precipitation_mm is not None else 0.0
+
+    # Clarity — non-linear: even light cloud bites hard, heavy cloud
+    # asymptotes to unusable. (1-cloud)^1.5 gives a steep early drop.
+    clarity = max(0.0, (1.0 - cloud)) ** 1.5
+
+    # Dryness — gentle below 70% RH, falls off toward saturation.
+    if rh <= 70:
+        dryness = 1.0
+    else:
+        dryness = max(0.3, 1.0 - (rh - 70) / 60.0)   # 70%→1.0, 100%→0.5
+
+    # Wind stability — fine below ~8 m/s, degrades, poor by ~25 m/s.
+    if wind <= 8:
+        wind_stab = 1.0
+    else:
+        wind_stab = max(0.2, 1.0 - (wind - 8) / 25.0)
+
+    # Seeing factor — map arcsec to 0–1 (≤0.7"≈1.0, ~3"≈0.3).
+    if seeing_arcsec is None:
+        seeing_fac = 0.85           # neutral if unknown
+    elif seeing_arcsec <= 0.7:
+        seeing_fac = 1.0
+    else:
+        seeing_fac = max(0.25, 1.0 - (seeing_arcsec - 0.7) / 3.0)
+
+    # Jet-stream factor — turbulence aloft.
+    jet_fac = {
+        "Negligible": 1.0, "Low": 0.95, "Moderate": 0.85,
+        "High": 0.7, "Severe": 0.5, "Unknown": 0.9,
+    }.get(jet_impact, 0.9)
+
+    # Precipitation hard gate — any measurable precip closes the dome.
+    precip_gate = 1.0 if precip < 0.1 else 0.05
+
+    quality = (clarity * dryness * wind_stab *
+               seeing_fac * jet_fac * precip_gate)
+    return round(max(0.0, min(1.0, quality)) * 100, 1)
+
+
+def observing_condition(score):
+    if score >= 80:   return "Excellent"
+    elif score >= 60: return "Good"
+    elif score >= 40: return "Marginal"
+    else:             return "Poor"
+
+
 def get_full_atmospheric_analysis(record):
     """
     Run all three calculations for one observatory record.

@@ -711,7 +711,7 @@ def load_data():
     from db import query_df
     # DISTINCT ON keeps only the latest reading per observatory,
     # reducing result set from 1163 to ~300 rows (22x faster).
-    return query_df("""
+    _df = query_df("""
         SELECT DISTINCT ON (o.id)
             o.name         AS observatory,
             o.country,
@@ -767,6 +767,33 @@ def load_data():
         )
         ORDER BY o.id, w.fetch_datetime DESC, observation_score DESC
     """)
+
+    if _df.empty:
+        return _df
+
+    # The SQL observation_score is the WEATHER component only. Replace
+    # the headline observation_score/condition with a genuine
+    # observing-quality index that blends weather with the physics GOWC
+    # already computes (seeing, jet stream, precipitation gate).
+    from atmospheric import (calculate_seeing, calculate_jet_stream_impact,
+                             observing_quality_score, observing_condition)
+
+    _df = _df.rename(columns={"observation_score": "weather_score"})
+
+    def _quality_row(r):
+        seeing = calculate_seeing(
+            r.get("temperature_c"), r.get("wind_speed_ms"),
+            r.get("humidity_pct"), r.get("altitude_m", 0))
+        _, jet_impact = calculate_jet_stream_impact(
+            r.get("jet_stream_ms"), r.get("latitude", 0))
+        return observing_quality_score(
+            r.get("cloud_cover_pct"), r.get("humidity_pct"),
+            r.get("wind_speed_ms"), r.get("precipitation_mm"),
+            seeing, jet_impact)
+
+    _df["observation_score"] = _df.apply(_quality_row, axis=1)
+    _df["condition"] = _df["observation_score"].apply(observing_condition)
+    return _df.sort_values("observation_score", ascending=False)
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_windows():
