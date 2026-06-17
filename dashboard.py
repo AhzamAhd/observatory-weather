@@ -454,9 +454,23 @@ st.markdown(f"""
     #MainMenu, footer {{
         display: none !important;
     }}
+    /* Sidebar open button — make it big and obvious, especially on
+       mobile where the sidebar auto-collapses and users can't find nav. */
     [data-testid="stSidebarCollapsedControl"],
     [data-testid="collapsedControl"] {{
         display: flex !important;
+        background: {ACCENT} !important;
+        border-radius: 8px !important;
+        padding: 6px !important;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.4) !important;
+        z-index: 999999 !important;
+    }}
+    [data-testid="stSidebarCollapsedControl"] svg,
+    [data-testid="collapsedControl"] svg {{
+        color: #ffffff !important;
+        fill: #ffffff !important;
+        width: 1.6rem !important;
+        height: 1.6rem !important;
     }}
 
     /* ── Metric cards ── */
@@ -953,6 +967,22 @@ st.caption(
     f"· {len(df)} observatories monitored "
     f"· {len(OBJECTS)} astronomical objects"
 )
+
+# Mobile-only hint: the sidebar auto-collapses on phones, so tell users
+# where the navigation is. Hidden on desktop via a media query.
+st.markdown(f"""
+<style>
+.gowc-mobile-nav-hint {{ display: none; }}
+@media (max-width: 640px) {{
+  .gowc-mobile-nav-hint {{
+    display: block; background: {ACCENT}1a; border: 1px solid {ACCENT};
+    border-radius: 8px; padding: 8px 12px; margin: 4px 0 10px;
+    font-size: 0.8rem; color: {TEXT};
+  }}
+}}
+</style>
+<div class="gowc-mobile-nav-hint">☰ &nbsp;Tap the arrow at the top-left to open <b>Navigation</b> and switch pages.</div>
+""", unsafe_allow_html=True)
 
 # ── Sidebar navigation ────────────────────────────────
 st.sidebar.image("assets/gowc_banner.png", width=220)
