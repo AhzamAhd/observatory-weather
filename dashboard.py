@@ -987,6 +987,7 @@ PAGE_CATEGORIES = {
         "Learn Astronomy",
         "Alert Subscriptions",
         "Observatory Reviews",
+        "Feedback & Suggestions",
     ],
 }
 
@@ -5795,6 +5796,63 @@ if selected_page == "Observatory Reviews":
                           f".csv",
                 mime="text/csv"
             )
+
+
+# ═══════════════════════════════════════════════════════
+# Feedback & Suggestions
+# ═══════════════════════════════════════════════════════
+if selected_page == "Feedback & Suggestions":
+    page_header("💬", "Feedback & Suggestions",
+        "Found a bug, want a feature, or have an idea? Tell us — this "
+        "platform is shaped by what observers actually need.")
+
+    # ── Recently added changelog ───────────────────────
+    st.subheader("Recently added")
+    st.markdown("""
+- **Observing Proposal Planner** — build a full proposal with SNR-solved exposures
+- **Genuine observing-quality score** — multiplicative index (cloud, seeing, moon, precip)
+- **Fried-parameter seeing** & altitude-calibrated extinction (matches published values)
+- **SNR-driven Peak Observing Time** and airmass-enriched Object Visibility
+- **Filter/band selector** (V/B/R/I/Hα/OIII) in the SNR calculator
+- Consolidated navigation into 16 focused tabs
+""")
+
+    st.markdown("---")
+
+    # ── Feedback form ──────────────────────────────────
+    st.subheader("Send feedback")
+    from feedback import add_feedback, get_feedback
+    with st.form("feedback_form"):
+        fb_category = st.selectbox("Type",
+            ["Feature request", "Bug report", "General feedback",
+             "Data / accuracy issue"], key="fb_cat")
+        fb_message = st.text_area("Your message",
+            placeholder="Describe the idea, problem, or feedback…",
+            height=140, key="fb_msg")
+        fb_contact = st.text_input("Email (optional, for follow-up)",
+            placeholder="you@example.com", key="fb_contact")
+        fb_submit = st.form_submit_button("Submit feedback", type="primary")
+
+        if fb_submit:
+            if not fb_message or len(fb_message.strip()) < 5:
+                st.error("Please enter a bit more detail.")
+            else:
+                ok, msg = add_feedback(fb_category, fb_message.strip(),
+                                       fb_contact.strip())
+                if ok:
+                    st.success(msg)
+                else:
+                    st.warning(msg)
+
+    # ── Owner-only recent feedback (via ?admin=1) ──────
+    if st.query_params.get("admin") == "1":
+        st.markdown("---")
+        st.subheader("Recent feedback (admin)")
+        _fb_df = get_feedback(100)
+        if _fb_df.empty:
+            st.caption("No feedback yet.")
+        else:
+            st.dataframe(_fb_df, hide_index=True, use_container_width=True)
 
 
 # ═══════════════════════════════════════════════════════
