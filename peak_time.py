@@ -2,7 +2,6 @@ import ephem
 import math
 from datetime import datetime, timedelta
 import pandas as pd
-import sqlite3
 from object_visibility import get_ephem_object, OBJECTS
 
 def get_observer(lat, lon):
@@ -55,13 +54,33 @@ def calculate_object_score(object_alt, min_alt=15):
     else:                  return 40
 
 def calculate_hourly_scores(lat, lon, weather_score,
-                             date=None, object_name=None):
+                             date=None, object_name=None,
+                             object_magnitude=None,
+                             altitude_m=0, filter_band="V",
+                             wavelength_nm=550.0, bandwidth_nm=100.0,
+                             moon_phase_pct=None, moon_alt_for_sky=None):
+    """
+    Hourly scoring over the night.
+
+    When an object AND its magnitude are supplied, signal-to-noise (SNR)
+    is computed for each dark hour — object altitude → airmass →
+    band extinction → CCD equation — and the SNR becomes the driver of
+    the peak hour. Otherwise the older altitude/darkness/moon/weather
+    blend is used.
+    """
     if date is None:
         date = datetime.utcnow()
 
     obs   = get_observer(lat, lon)
     start = date.replace(hour=0, minute=0, second=0, microsecond=0)
     hours = []
+
+    snr_mode = object_name is not None and object_magnitude is not None
+    if snr_mode:
+        from snr_calculator import (calculate_snr, get_telescope_specs,
+                                     get_sky_brightness)
+        from atmospheric import calculate_seeing
+        specs = get_telescope_specs(None, altitude_m)
 
     for h in range(24):
         dt = start + timedelta(hours=h)
@@ -73,11 +92,39 @@ def calculate_hourly_scores(lat, lon, weather_score,
 
         obj_alt   = None
         obj_score = None
+        snr_val   = None
 
         if object_name:
             obj_alt   = get_object_altitude(obs, dt, object_name)
             obj_score = calculate_object_score(obj_alt)
 
+        if snr_mode and darkness_score > 0 and obj_alt is not None and obj_alt >= 10:
+            # Real SNR for this hour: detectability, not just altitude.
+            sky_mag = get_sky_brightness(moon_phase, moon_alt)
+            # Nominal seeing from site altitude (full weather not known
+            # per-hour here); ~1.2" fallback if it can't be computed.
+            try:
+                seeing = calculate_seeing(10, 5, 50, altitude_m) or 1.2
+            except Exception:
+                seeing = 1.2
+            res = calculate_snr(
+                object_magnitude   = object_magnitude,
+                exposure_time_s    = 300,
+                telescope_specs    = specs,
+                sky_brightness_mag = sky_mag,
+                seeing_arcsec      = seeing,
+                object_name        = object_name,
+                object_altitude_deg= obj_alt,
+                site_altitude_m    = altitude_m,
+                filter_band        = filter_band,
+                wavelength_nm      = wavelength_nm,
+                bandwidth_nm       = bandwidth_nm,
+            )
+            snr_val  = res["snr"]
+            # Combined score = SNR mapped to 0-100 (SNR 100 → 100),
+            # gated by darkness so daytime never wins.
+            combined = round(min(100, snr_val), 1) if darkness_score >= 80 else 0
+        elif object_name:
             if darkness_score == 0 or obj_score == 0:
                 combined = 0
             else:
@@ -105,6 +152,7 @@ def calculate_hourly_scores(lat, lon, weather_score,
             "moon_phase_pct":  round(moon_phase, 1),
             "object_altitude": round(obj_alt, 1) if obj_alt is not None else None,
             "object_score":    obj_score,
+            "snr":             snr_val,
             "darkness_score":  darkness_score,
             "moon_score":      moon_score,
             "weather_score":   weather_score,
@@ -116,9 +164,15 @@ def calculate_hourly_scores(lat, lon, weather_score,
     return hours
 
 def get_peak_time(lat, lon, weather_score,
-                  date=None, object_name=None):
+                  date=None, object_name=None,
+                  object_magnitude=None, altitude_m=0,
+                  filter_band="V", wavelength_nm=550.0,
+                  bandwidth_nm=100.0):
     hours   = calculate_hourly_scores(
-        lat, lon, weather_score, date, object_name)
+        lat, lon, weather_score, date, object_name,
+        object_magnitude=object_magnitude, altitude_m=altitude_m,
+        filter_band=filter_band, wavelength_nm=wavelength_nm,
+        bandwidth_nm=bandwidth_nm)
     df      = pd.DataFrame(hours)
     dark_df = df[df["is_dark"]]
 
@@ -135,6 +189,7 @@ def get_peak_time(lat, lon, weather_score,
     return {
         "peak_hour":        peak["hour"],
         "peak_score":       peak["combined_score"],
+        "peak_snr":         peak.get("snr"),
         "peak_darkness":    peak["darkness_score"],
         "peak_moon_score":  peak["moon_score"],
         "peak_obj_alt":     peak.get("object_altitude"),
@@ -145,26 +200,30 @@ def get_peak_time(lat, lon, weather_score,
         "hourly_data":      hours
     }
 
-def get_all_peak_times(object_name=None):
-    conn = sqlite3.connect("data/silver/observatory_weather.db")
-    df   = pd.read_sql("""
-        SELECT
+def get_all_peak_times(object_name=None, object_magnitude=None,
+                       filter_band="V", wavelength_nm=550.0,
+                       bandwidth_nm=100.0):
+    from db import query_df
+    df = query_df("""
+        SELECT DISTINCT ON (o.id)
             o.name       AS observatory,
             o.country,
             o.latitude,
             o.longitude,
-            ROUND(MAX(0,
+            o.altitude_m,
+            ROUND(GREATEST(0,
                 100
                 - (w.cloud_cover_pct * 0.50)
                 - (CASE WHEN w.humidity_pct > 85
                    THEN (w.humidity_pct - 85) * 2.0 ELSE 0 END)
                 - (CASE WHEN w.wind_speed_ms > 15
                    THEN (w.wind_speed_ms - 15) * 2.0 ELSE 0 END)
-            ), 1) AS weather_score
+            )::numeric, 1) AS weather_score
         FROM weather_readings w
         JOIN observatories o ON w.observatory_id = o.id
-    """, conn)
-    conn.close()
+        WHERE w.fetch_date = (SELECT MAX(fetch_date) FROM weather_readings)
+        ORDER BY o.id, w.fetch_datetime DESC
+    """)
 
     results = []
     for _, row in df.iterrows():
@@ -172,16 +231,22 @@ def get_all_peak_times(object_name=None):
             peak = get_peak_time(
                 row["latitude"],
                 row["longitude"],
-                row["weather_score"],
-                object_name=object_name
+                float(row["weather_score"]),
+                object_name=object_name,
+                object_magnitude=object_magnitude,
+                altitude_m=row.get("altitude_m", 0) or 0,
+                filter_band=filter_band,
+                wavelength_nm=wavelength_nm,
+                bandwidth_nm=bandwidth_nm,
             )
             if peak:
                 results.append({
                     "observatory":      row["observatory"],
                     "country":          row["country"],
-                    "weather_score":    row["weather_score"],
+                    "weather_score":    float(row["weather_score"]),
                     "peak_hour":        peak["peak_hour"],
                     "peak_score":       peak["peak_score"],
+                    "peak_snr":         peak.get("peak_snr"),
                     "peak_obj_alt":     peak["peak_obj_alt"],
                     "window_start":     peak["window_start"],
                     "window_end":       peak["window_end"],
@@ -193,6 +258,8 @@ def get_all_peak_times(object_name=None):
             print(f"  [SKIP] {row['observatory']} — {e}")
             continue
 
+    if not results:
+        return pd.DataFrame()
     return pd.DataFrame(results).sort_values(
         "peak_score", ascending=False
     )

@@ -807,10 +807,15 @@ def load_windows():
     return load_precomputed("observing_windows")
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def load_peak_times_cached(object_name=None):
+def load_peak_times_cached(object_name=None, object_magnitude=None,
+                           filter_band="V", wavelength_nm=550.0,
+                           bandwidth_nm=100.0):
     if object_name:
         from peak_time import get_all_peak_times
-        return get_all_peak_times(object_name)
+        return get_all_peak_times(
+            object_name, object_magnitude=object_magnitude,
+            filter_band=filter_band, wavelength_nm=wavelength_nm,
+            bandwidth_nm=bandwidth_nm)
     data = get_all_precomputed().get(
         "peak_times", pd.DataFrame())
     if not data.empty:
@@ -1968,14 +1973,43 @@ if selected_page == "Observing Windows":
                 key="peak_object"
             )
 
+        # Band + magnitude → drives a real hourly SNR calculation.
+        pk_bcol1, pk_bcol2 = st.columns(2)
+        with pk_bcol1:
+            _pk_filter_name = st.selectbox(
+                "Filter / band",
+                list(PHOTOMETRIC_FILTERS.keys()),
+                index=2, key="peak_filter",
+                help="SNR is computed in this band; narrowband (Hα, "
+                     "OIII) collects far fewer photons."
+            )
+        _pk_filt = PHOTOMETRIC_FILTERS[_pk_filter_name]
+        with pk_bcol2:
+            _pk_default_mag = float(OBJECT_MAGNITUDES.get(selected_peak_object, 8.0))
+            _pk_mag = st.number_input(
+                "Object magnitude", min_value=-5.0, max_value=25.0,
+                value=_pk_default_mag, step=0.1, key="peak_mag",
+                help="Catalog magnitude (editable). Drives SNR."
+            )
+
     with st.spinner("Calculating peak observing times..."):
-        peak = load_peak_times_cached(
-            object_name=selected_peak_object)
+        if selected_peak_object:
+            peak = load_peak_times_cached(
+                object_name=selected_peak_object,
+                object_magnitude=_pk_mag,
+                filter_band=_pk_filt["band"],
+                wavelength_nm=_pk_filt["wavelength_nm"],
+                bandwidth_nm=_pk_filt["bandwidth_nm"],
+            )
+        else:
+            peak = load_peak_times_cached()
 
     if selected_peak_object:
         st.success(
-            f"Peak times calculated with "
-            f"**{selected_peak_object}** altitude factored in."
+            f"Peak hour chosen by **signal-to-noise** for "
+            f"**{selected_peak_object}** in the {_pk_filt['band']} band "
+            f"(mag {_pk_mag}) — accounts for altitude, airmass "
+            f"extinction, sky brightness and seeing."
         )
 
     if not peak.empty:
@@ -1985,8 +2019,12 @@ if selected_page == "Observing Windows":
                       " Observatory", "").replace(
                       " Telescope", ""))
         p2.metric("Peak Hour",    peak.iloc[0]["peak_hour"])
-        p3.metric("Peak Score",
-                  f"{peak.iloc[0]['peak_score']} / 100")
+        _peak_snr = peak.iloc[0].get("peak_snr") if selected_peak_object else None
+        if _peak_snr is not None:
+            p3.metric("Peak SNR", f"{_peak_snr}")
+        else:
+            p3.metric("Peak Score",
+                      f"{peak.iloc[0]['peak_score']} / 100")
         p4.metric("Good Hours Tonight",
                   f"{peak.iloc[0]['total_good_hours']}h")
 
