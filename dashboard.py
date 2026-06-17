@@ -1402,6 +1402,12 @@ $$\mathrm{SNR} = \frac{N_{\star}}{\sqrt{N_{\star} + N_{\mathrm{sky}} + N_{\mathr
 where $N_\star$ is source counts, $N_{\mathrm{sky}}$ sky-background counts,
 $N_{\mathrm{dark}}$ dark current, $N_{\mathrm{read}}$ read noise, and
 $N_{\mathrm{scint}}$ scintillation noise.
+
+The same SNR and airmass/extinction physics feed several pages: **Object Visibility**
+ranks sites by atmospheric transmission $10^{-kX/2.5}$, **Peak Observing Time** picks
+the hour of maximum SNR for a target, and the **Observing Proposal Planner** solves the
+exposure time needed to reach a target SNR (organised around a professional 11-section
+proposal).
 """)
 
     st.subheader("Data Sources & References")

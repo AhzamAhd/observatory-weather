@@ -79,25 +79,40 @@ hour and an hourly breakdown chart.
   >85% illum → −40  |  >60% → −25  |  >35% → −15  |  >10% → −5
   final_score = weather_score − moon_penalty
   ```
-- **Hourly combined score** (peak section):
+- **Hourly combined score** (peak section, no target):
   ```
   combined = weather·0.35 + darkness·0.25 + moon·0.20 + object·0.20
   ```
+- **SNR-driven peak (when a target + magnitude + band are chosen):** each dark hour
+  gets a real SNR — object altitude → airmass → band extinction → moon sky brightness
+  → CCD equation — and the **peak hour is the hour of maximum SNR**, i.e. genuine
+  detectability rather than just "highest in the sky".
 **Physics:** Astronomical twilight (−18°) marks a fully dark sky; a bright Moon above
-the horizon raises sky background and washes out faint targets.
+the horizon raises sky background and washes out faint targets; detectability also
+depends on the object's brightness, the filter bandwidth and airmass.
 
 ### 🔭 Object Visibility
 **Does:** For a chosen object, ranks observatories by how well they can see it right now.
-**Maths:** `ephem` computes the object's **altitude** from each site's lat/lon at the
-current time; combined with the site's weather score.
-**Physics:** An object must be above the horizon (ideally high) — higher altitude means
-less atmosphere in the line of sight.
+**Maths:** `ephem` gives the object's **altitude/azimuth** from each site; that altitude
+is converted to **airmass** (Pickering 2002) and **V-band extinction** scaled by site
+altitude. Sites are ranked by `weather·0.6 + transmission·100·0.4`, where
+`transmission = 10^(−extinction/2.5)`.
+**Physics:** An object must be above the horizon (ideally high). Higher altitude → lower
+airmass → less extinction → more light reaches the telescope. Two sites at the same
+altitude no longer tie — a high, dry site transmits more than a low one.
 
-### 📅 Semester Planning
-**Does:** Best months and sites for a target object across an observing semester.
-**Maths:** Aggregates seasonal weather scores by month and the object's monthly altitude;
-counts excellent/good nights.
-**Physics:** Both target visibility and weather are seasonal — this finds the overlap.
+### 📝 Observing Proposal Planner
+**Does:** Assembles the computable core of a professional observing proposal (modelled on
+the La Palma PHY430 11-section brief): target list, observing time, moon phase, preferred
+date, SNR-solved exposure times, and an exportable draft. Includes a best-months calendar.
+**Maths:**
+- **Exposure per target (§9)** — solved by bisection to reach a chosen SNR via the full
+  CCD equation in the selected band, with airmass extinction and moon sky brightness.
+- **Observing time (§3)** — Σ exposures × 1.4 (≈40% slew/readout/acquisition overhead).
+- **Preferred time (§5)** — best dark hour tonight from the peak-time engine.
+- **Target list (§6)** — RA/Dec (J2000), V-mag, B−V (where catalogued), altitude, airmass.
+**Physics:** Same airmass/extinction/SNR physics as the SNR Calculator, organised around
+the structure of a real telescope-time proposal. Sections 1, 2, 8, 10, 11 are user input.
 
 ### 📅 7-Day Forecast
 **Does:** 7-day predicted observation-quality scores per observatory.
