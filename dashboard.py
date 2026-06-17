@@ -997,6 +997,7 @@ PAGE_CATEGORIES = {
     "Planning": [
         "Observing Windows",
         "Object Visibility",
+        "Observing Proposal Planner",
         "Semester Planning",
         "7-Day Forecast",
         "Airmass Calculator",
@@ -2763,6 +2764,158 @@ Data sourced from automated atmospheric monitoring pipeline (Open-Meteo API) wit
                 proposal_text,
                 height=250
             )
+
+# ═══════════════════════════════════════════════════════
+# Observing Proposal Planner
+# ═══════════════════════════════════════════════════════
+if selected_page == "Observing Proposal Planner":
+    page_header("📝", "Observing Proposal Planner",
+        "Assemble the core of a professional observing proposal — target "
+        "list with coordinates and magnitudes, required observing time, "
+        "moon phase and date, and full signal-to-noise / exposure "
+        "calculations. Export a draft you can build on.")
+
+    from object_visibility import OBJECTS, calculate_visibility
+    from snr_calculator import (OBJECT_MAGNITUDES, PHOTOMETRIC_FILTERS,
+                                calculate_snr, get_telescope_specs,
+                                get_sky_brightness)
+    import math as _math
+
+    # ── 1. Site + instrument ───────────────────────────
+    pp_c1, pp_c2, pp_c3 = st.columns(3)
+    with pp_c1:
+        pp_site = st.selectbox("Observatory",
+            df["observatory"].tolist(), key="pp_site")
+    pp_row = df[df["observatory"] == pp_site].iloc[0]
+    pp_alt_m = float(pp_row.get("altitude_m", 0) or 0)
+    with pp_c2:
+        pp_filter_name = st.selectbox("Filter / band",
+            list(PHOTOMETRIC_FILTERS.keys()), index=2, key="pp_filter")
+    pp_filt = PHOTOMETRIC_FILTERS[pp_filter_name]
+    with pp_c3:
+        pp_target_snr = st.slider("Target SNR", 5, 200, 30, 5,
+            key="pp_target_snr",
+            help="Exposure time is solved to reach this SNR per target.")
+
+    # ── 2. Moon phase required (§4) ─────────────────────
+    pp_moon_choice = st.radio("Required moon conditions (§4)",
+        ["Dark (new moon)", "Grey (quarter)", "Bright (full)"],
+        horizontal=True, key="pp_moon")
+    _moon_map = {"Dark (new moon)": (5, 0),
+                 "Grey (quarter)": (50, 30),
+                 "Bright (full)": (100, 60)}
+    _moon_pct, _moon_alt = _moon_map[pp_moon_choice]
+    pp_sky_mag = get_sky_brightness(_moon_pct, _moon_alt)
+
+    # ── 3. Target selection ─────────────────────────────
+    _targetable = [k for k in OBJECT_MAGNITUDES.keys() if k in OBJECTS]
+    pp_targets = st.multiselect(
+        "Select targets (§6)", _targetable,
+        default=_targetable[:3] if len(_targetable) >= 3 else _targetable,
+        key="pp_targets")
+
+    if not pp_targets:
+        st.info("Select one or more targets to build the proposal.")
+        st.stop()
+
+    specs = get_telescope_specs(pp_site, pp_alt_m)
+
+    def _solve_exposure(mag, name, alt_deg):
+        """Bisection: shortest exposure (s) to reach target SNR."""
+        lo, hi = 1.0, 36000.0
+        def snr_at(t):
+            r = calculate_snr(
+                object_magnitude=mag, exposure_time_s=t,
+                telescope_specs=specs, sky_brightness_mag=pp_sky_mag,
+                seeing_arcsec=1.0, object_name=name,
+                object_altitude_deg=alt_deg, site_altitude_m=pp_alt_m,
+                filter_band=pp_filt["band"],
+                wavelength_nm=pp_filt["wavelength_nm"],
+                bandwidth_nm=pp_filt["bandwidth_nm"])
+            return r["snr"]
+        if snr_at(hi) < pp_target_snr:
+            return None  # not reachable within 10 h
+        for _ in range(40):
+            mid = (lo + hi) / 2
+            if snr_at(mid) >= pp_target_snr:
+                hi = mid
+            else:
+                lo = mid
+        return hi
+
+    rows = []
+    for t in pp_targets:
+        info = OBJECTS.get(t, {})
+        mag  = OBJECT_MAGNITUDES.get(t)
+        vis  = calculate_visibility(pp_row["latitude"], pp_row["longitude"],
+                                    t, altitude_m=pp_alt_m)
+        alt  = vis["altitude_deg"] if vis else 0
+        exp  = _solve_exposure(mag, t, max(alt, 20)) if mag is not None else None
+        rows.append({
+            "Target": t,
+            "RA": info.get("ra", "—"),
+            "Dec": info.get("dec", "—"),
+            "V mag": mag if mag is not None else "—",
+            "Altitude now (°)": alt,
+            "Airmass": vis["airmass"] if vis else None,
+            "Exposure (s)": round(exp, 0) if exp else "Not reachable",
+        })
+    pp_table = pd.DataFrame(rows)
+
+    # ── Target table (§6) ───────────────────────────────
+    st.subheader("Target list (§6)")
+    st.dataframe(pp_table, hide_index=True, use_container_width=True)
+
+    # ── Time / moon / date summary (§3, §4, §5) ─────────
+    _exps = [r["Exposure (s)"] for r in rows
+             if isinstance(r["Exposure (s)"], (int, float))]
+    _total_s = sum(_exps) if _exps else 0
+    # Add ~40% overhead for slew/readout/acquisition.
+    _total_h = round(_total_s * 1.4 / 3600, 2)
+
+    st.subheader("Time, moon & date (§3–5)")
+    s1, s2, s3 = st.columns(3)
+    s1.metric("Observing time required (§3)", f"{_total_h} h",
+              help="Sum of exposures + 40% overhead.")
+    s2.metric("Moon phase required (§4)", pp_moon_choice.split(" ")[0])
+    s3.metric("Filter / band", pp_filt["band"])
+
+    # ── Exportable draft (§ all) ────────────────────────
+    st.subheader("Proposal draft")
+    _draft_lines = [
+        "OBSERVING PROPOSAL (draft)",
+        "=" * 40, "",
+        f"Observatory      : {pp_site} ({int(pp_alt_m)} m)",
+        f"Filter / band    : {pp_filter_name}",
+        f"Moon required    : {pp_moon_choice} (§4)",
+        f"Observing time   : {_total_h} hours, incl. ~40% overhead (§3)",
+        f"Target SNR       : {pp_target_snr}",
+        "", "TARGET LIST (§6):",
+    ]
+    for r in rows:
+        _draft_lines.append(
+            f"  {r['Target']}  RA {r['RA']}  Dec {r['Dec']}  "
+            f"V={r['V mag']}  exp={r['Exposure (s)']}s  "
+            f"(alt {r['Altitude now (°)']}°, X={r['Airmass']})")
+    _draft_lines += [
+        "", "TECHNICAL JUSTIFICATION (§9):",
+        f"  Exposure times solved via the CCD signal-to-noise equation",
+        f"  (shot + sky + dark + read + scintillation noise) in the "
+        f"{pp_filt['band']} band, including airmass extinction at "
+        f"{int(pp_alt_m)} m and moon-dependent sky brightness "
+        f"({pp_sky_mag} mag/arcsec²).",
+        "", "Generated by GOWC — gowcastroclimate.com",
+    ]
+    _draft = "\n".join(_draft_lines)
+    st.code(_draft, language="text")
+    st.download_button("Download proposal draft (.txt)", _draft,
+        file_name=f"observing_proposal_{utcnow().strftime('%Y-%m-%d')}.txt",
+        mime="text/plain")
+
+    st.caption("This is a starting draft. Sections 1–2 (title/summary), "
+               "7 (finding charts), 8 (scientific justification) and "
+               "10–11 require your own input.")
+
 
 # ═══════════════════════════════════════════════════════
 # TAB 8 — Semester Planning Calendar
