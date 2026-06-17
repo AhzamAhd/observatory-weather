@@ -390,11 +390,15 @@ def calculate_snr(
         airmass              = 1.5
         ext_transmission     = 0.85
 
-    # Surface brightness for extended objects
+    # Surface brightness for extended objects. If an object is extended
+    # but has no catalogued size, fall back to a nominal 10' diameter so
+    # its light is spread (not treated as a point source, which would
+    # massively overstate SNR).
     angular_size_arcmin = None
     if object_name:
-        angular_size_arcmin = OBJECT_ANGULAR_SIZES.get(
-            object_name, 0)
+        angular_size_arcmin = OBJECT_ANGULAR_SIZES.get(object_name, 0)
+        if (not angular_size_arcmin) and is_extended_object(object_name):
+            angular_size_arcmin = 10.0
 
     if (angular_size_arcmin and
             angular_size_arcmin > 0 and
