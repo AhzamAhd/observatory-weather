@@ -965,7 +965,6 @@ PAGE_CATEGORIES = {
     "Overview": [
         "Home",
         "Live Weather Map",
-        "About & Methodology",
     ],
     "Planning": [
         "Observing Windows",
@@ -1112,8 +1111,8 @@ st.sidebar.caption(
 # ── Global empty-data guard ───────────────────────────
 # If the core weather dataset failed to load (DB unreachable
 # or no data yet), show a friendly message instead of letting
-# every page crash on df.iloc[0]. The About page needs no data.
-if df.empty and selected_page != "About & Methodology":
+# every page crash on df.iloc[0].
+if df.empty:
     st.warning(
         "Live weather data is currently unavailable. This can happen "
         "if the data source is being refreshed or temporarily "
@@ -1255,18 +1254,14 @@ if selected_page == "Home":
 
 
 # ═══════════════════════════════════════════════════════
-# ABOUT & METHODOLOGY
+# METHODOLOGY — appended to Home inside an expander
 # ═══════════════════════════════════════════════════════
-if selected_page == "About & Methodology":
-    page_header("📖", "About & Methodology",
-        "How GOWC works, the physics behind the numbers, "
-        "and where the data comes from.")
-
+if selected_page == "Home":
+  with st.expander("📖 Methodology & physics — how the numbers are calculated"):
     st.markdown("""
-GOWC (Global Observatory Weather Tracker) is a real-time observing-conditions
-platform covering **1,163 professional observatories** worldwide. It combines live
-weather data with established astronomy physics to estimate how good observing
-conditions are at each site — right now, tonight, and over the coming week.
+GOWC combines live weather data with established astronomy physics to estimate how
+good observing conditions are at each site — right now, tonight, and over the coming
+week.
 """)
 
     st.info(
