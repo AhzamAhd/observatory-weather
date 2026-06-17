@@ -14,7 +14,7 @@ actual implementation in the codebase.
 
 | Concept | Formula | Module |
 |---|---|---|
-| Observation score | `100 − cloud%·0.5 − humidity_penalty − wind_penalty` | SQL / `score_quality.py` |
+| Observing-quality index | `clarity × dryness × wind × seeing × jet × precip_gate` (multiplicative) | `atmospheric.py` |
 | Airmass | `X = 1 / sin(h + 244/(165 + 47·h^1.1))` — Pickering (2002) | `airmass_calculator.py` |
 | Atmospheric extinction | `T = 10^(−k·X/2.5)`, with `k` scaled by site altitude | `airmass_calculator.py` |
 | Seeing (Fried) | `r₀ = (0.423·k²·X·∫Cₙ²dh)^(−3/5)`, `seeing = 0.98·λ/r₀` | `atmospheric.py` |
@@ -22,11 +22,22 @@ actual implementation in the codebase.
 | SNR (CCD eq.) | `SNR = N⋆ / √(N⋆ + N_sky + N_dark + N_read² + N_scint²)` | `snr_calculator.py` |
 | Astronomical darkness | Sun altitude `< −18°` | `ephem` |
 
-**Observation score penalties:**
+**Observing-quality index (the headline 0–100 score).** Each factor is a
+0–1 fraction; they multiply, so any single show-stopper (thick cloud, rain,
+terrible seeing) correctly tanks the whole night — as in real observing.
+This is the model used by ClearDarkSky / Meteoblue astronomy indices.
 ```
-humidity_penalty = (humidity − 85) × 2.0   (only if humidity > 85%)
-wind_penalty     = (wind − 15)     × 2.0   (only if wind > 15 m/s)
+clarity     = (1 − cloud)^1.5         # non-linear: first cloud hurts most
+dryness     = 1 → 0.5 as RH 70→100%   # condensation risk
+wind_stab   = 1 → 0.2 as wind 8→33 m/s
+seeing_fac  = 1 at ≤0.7", → 0.25 by ~3"   (Fried-based seeing)
+jet_fac     = 1.0 (Negligible) … 0.5 (Severe)
+precip_gate = 1.0 if dry, else 0.05   # any rain ⇒ dome closed
+score       = clarity·dryness·wind_stab·seeing_fac·jet_fac·precip_gate × 100
 ```
+A simpler **weather-only** score (`100 − cloud·0.5 − humidity/wind penalties`)
+is still computed in SQL and kept as `weather_score` for reference, but the
+headline `observation_score` is the multiplicative index above.
 
 **Calibration anchors** (validated against published data):
 - Extinction: La Palma ORM `k(V)≈0.12`, `k(R)≈0.09` (King 1985); Paranal `k(V)≈0.11`.
@@ -42,11 +53,14 @@ score, best site tonight), feature grid, and a getting-started guide.
 **Maths:** Aggregation only — counts and the mean of observation scores.
 
 ### 🗺️ Live Weather Map
-**Does:** Interactive world map; every observatory coloured by its observation-quality
+**Does:** Interactive world map; every observatory coloured by its observing-quality
 score. Search, marker clustering, satellite/street tiles.
-**Maths:** The **Observation Quality Score (0–100)** (see core formulas).
-**Physics:** Clouds block optical light (heaviest weight, ×0.5); humidity above ~85%
-risks condensation on optics; wind above 15 m/s causes vibration and tracking errors.
+**Maths:** The **Observing-Quality Index (0–100)** — the multiplicative blend of
+clarity, dryness, wind, seeing, jet stream and a precipitation gate (see core formulas).
+**Physics:** Clouds block optical light (non-linear — even light cloud bites);
+high humidity risks condensation; strong wind causes vibration/tracking errors; poor
+seeing blurs images; any precipitation closes the dome. A single bad factor tanks the
+score, which is why most sites most of the time score modestly — that is realistic.
 
 ### 📖 About & Methodology
 **Does:** In-app documentation of the physics with formulas and citations.
@@ -111,13 +125,14 @@ and poor seeing.
 
 ### 📊 Historical Reliability
 **Does:** Long-term reliability grade (A+ to D) per site from accumulated daily data.
-**Maths:**
+**Maths:** Each day's score is the same genuine observing-quality index (computed from
+that day's averaged conditions), then:
 ```
 reliability = avg_score·0.50 + consistency·0.25 + %excellent·0.25
 consistency = 100 − 2·std(daily_scores)
 trend       = mean(second half) − mean(first half)
 ```
-**Physics:** None — statistics on the historical score distribution.
+**Physics:** Statistics on the historical observing-quality distribution.
 
 ### 🔬 Site Comparison
 **Does:** Compare 2–5 observatories side-by-side across all metrics.

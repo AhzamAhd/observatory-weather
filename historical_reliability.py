@@ -7,7 +7,7 @@ def get_historical_data(days=30):
     Fetch daily average weather readings from the past N days from Supabase.
     """
     cutoff = (datetime.now(tz=None) - timedelta(days=days)).strftime("%Y-%m-%d")
-    return query_df("""
+    df = query_df("""
         SELECT
             o.name        AS observatory,
             o.country,
@@ -19,20 +19,36 @@ def get_historical_data(days=30):
             AVG(w.humidity_pct)     AS humidity_pct,
             AVG(w.wind_speed_ms)    AS wind_speed_ms,
             AVG(w.temperature_c)    AS temperature_c,
-            ROUND(GREATEST(0,
-                100
-                - (AVG(w.cloud_cover_pct) * 0.50)
-                - (CASE WHEN AVG(w.humidity_pct) > 85
-                   THEN (AVG(w.humidity_pct) - 85) * 2.0 ELSE 0 END)
-                - (CASE WHEN AVG(w.wind_speed_ms) > 15
-                   THEN (AVG(w.wind_speed_ms) - 15) * 2.0 ELSE 0 END)
-            )::numeric, 1) AS daily_score
+            AVG(w.precipitation_mm) AS precipitation_mm,
+            AVG(w.jet_stream_ms)    AS jet_stream_ms
         FROM weather_readings w
         JOIN observatories o ON w.observatory_id = o.id
         WHERE w.fetch_date >= %(cutoff)s
         GROUP BY o.name, o.country, o.altitude_m, o.latitude, o.longitude, w.fetch_date
         ORDER BY o.name, w.fetch_date
     """, {"cutoff": cutoff})
+
+    if df.empty:
+        return df
+
+    # Compute the genuine observing-quality index per day (matches the
+    # dashboard headline score) instead of the old linear weather formula.
+    from atmospheric import (calculate_seeing, calculate_jet_stream_impact,
+                             observing_quality_score)
+
+    def _daily(r):
+        seeing = calculate_seeing(
+            r.get("temperature_c"), r.get("wind_speed_ms"),
+            r.get("humidity_pct"), r.get("altitude_m", 0))
+        _, jet_impact = calculate_jet_stream_impact(
+            r.get("jet_stream_ms"), r.get("latitude", 0))
+        return observing_quality_score(
+            r.get("cloud_cover_pct"), r.get("humidity_pct"),
+            r.get("wind_speed_ms"), r.get("precipitation_mm"),
+            seeing, jet_impact)
+
+    df["daily_score"] = df.apply(_daily, axis=1)
+    return df
 
 def calculate_reliability_scores(days=30):
     """

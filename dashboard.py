@@ -1306,16 +1306,23 @@ conditions are at each site — right now, tonight, and over the coming week.
         icon="⚠️"
     )
 
-    st.subheader("Observation Quality Score")
-    st.markdown("""
-Each observatory gets a **0–100 score** from current conditions. The weighting
-reflects how each variable actually affects telescope performance:
+    st.subheader("Observing-Quality Index")
+    st.markdown(r"""
+Each observatory's headline **0–100 score** is a *multiplicative* observing-quality
+index — the same approach used by ClearDarkSky and Meteoblue astronomy indices. Each
+factor is a 0–1 fraction and they multiply, so a single show-stopper (thick cloud,
+rain, terrible seeing) correctly drags the whole night down regardless of the rest:
 
-| Variable | Effect | Penalty |
-|---|---|---|
-| **Cloud cover** | Blocks optical observation entirely | −0.50 per % cloud |
-| **Humidity** | Condensation on optics above ~85% | −2.0 per % above 85% |
-| **Wind speed** | Vibration / tracking errors above 15 m/s | −2.0 per m/s above 15 |
+$$Q = \text{clarity}\times\text{dryness}\times\text{wind}\times\text{seeing}\times\text{jet}\times\text{precip gate}$$
+
+| Factor | Behaviour |
+|---|---|
+| **Clarity** | $(1-\text{cloud})^{1.5}$ — non-linear; even light cloud bites |
+| **Dryness** | 1.0 below 70% RH, falling toward 0.5 near saturation |
+| **Wind stability** | 1.0 below ~8 m/s, degrading toward 0.2 in gales |
+| **Seeing** | 1.0 at ≤0.7″, falling to ~0.25 by ~3″ (Fried-based) |
+| **Jet stream** | 1.0 (negligible) down to 0.5 (severe turbulence aloft) |
+| **Precip gate** | any measurable rain ⇒ ×0.05 (dome closed) |
 
 | Score | Condition |
 |---|---|
@@ -1323,6 +1330,9 @@ reflects how each variable actually affects telescope performance:
 | 60–79 | Good |
 | 40–59 | Marginal |
 | 0–39 | Poor |
+
+Because the index is harsh by design, most sites score modestly most of the time —
+which is realistic. A simpler weather-only score is kept internally as `weather_score`.
 """)
 
     st.subheader("Airmass")

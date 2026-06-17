@@ -64,7 +64,8 @@ def precompute_all():
                o.altitude_m, o.latitude, o.longitude,
                w.temperature_c, w.wind_speed_ms,
                w.humidity_pct, w.surface_pressure,
-               w.jet_stream_ms,
+               w.jet_stream_ms, w.cloud_cover_pct,
+               w.precipitation_mm,
                ROUND(GREATEST(0,
                    100 - (w.cloud_cover_pct * 0.50)
                    - (CASE WHEN w.humidity_pct > 85
@@ -78,6 +79,8 @@ def precompute_all():
         ORDER BY o.id, w.fetch_datetime DESC
     """)
 
+    from atmospheric import observing_quality_score, observing_condition
+
     atm_results = []
     for _, row in df.iterrows():
         atm = get_full_atmospheric_analysis({
@@ -89,6 +92,11 @@ def precompute_all():
             "jet_stream_ms":    row.get("jet_stream_ms"),
             "latitude":         row["latitude"],
         })
+        # Genuine observing-quality index (matches dashboard load_data).
+        obs_score = observing_quality_score(
+            row.get("cloud_cover_pct"), row.get("humidity_pct"),
+            row.get("wind_speed_ms"), row.get("precipitation_mm"),
+            atm["seeing_arcsec"], atm["jet_impact"])
         atm_results.append({
             "observatory":    row["observatory"],
             "country":        row["country"],
@@ -96,6 +104,8 @@ def precompute_all():
             "latitude":       float(row["latitude"]),
             "longitude":      float(row["longitude"]),
             "weather_score":  float(row["weather_score"]),
+            "observation_score": obs_score,
+            "condition":      observing_condition(obs_score),
             "seeing_arcsec":  atm["seeing_arcsec"],
             "seeing_quality": atm["seeing_quality"],
             "seeing_color":   atm["seeing_color"],
