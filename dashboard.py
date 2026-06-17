@@ -974,25 +974,8 @@ st.caption(
     f"· {len(OBJECTS)} astronomical objects"
 )
 
-# Mobile-only hint: the sidebar auto-collapses on phones, so tell users
-# where the navigation is. Hidden on desktop via a media query.
-st.markdown(f"""
-<style>
-.gowc-mobile-nav-hint {{ display: none; }}
-@media (max-width: 640px) {{
-  .gowc-mobile-nav-hint {{
-    display: block; background: {ACCENT}1a; border: 1px solid {ACCENT};
-    border-radius: 8px; padding: 8px 12px; margin: 4px 0 10px;
-    font-size: 0.8rem; color: {TEXT};
-  }}
-}}
-</style>
-<div class="gowc-mobile-nav-hint">☰ &nbsp;Tap the arrow at the top-left to open <b>Navigation</b> and switch pages.</div>
-""", unsafe_allow_html=True)
-
-# ── Sidebar navigation ────────────────────────────────
+# ── Sidebar branding (navigation itself is in the main area) ──
 st.sidebar.image("assets/gowc_banner.png", width=220)
-st.sidebar.markdown(f"<p style='font-size:0.7rem;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:{TEXT2};padding:4px 12px 2px;margin:0'>Navigation</p>", unsafe_allow_html=True)
 
 # Group pages into categories for a two-level sidebar nav.
 # The page names inside must match the keys used by every
@@ -1037,11 +1020,18 @@ for _cat, _pages in PAGE_CATEGORIES.items():
     _nav_headers.add(_header)
     _nav_options.extend(_pages)
 
-_picked = st.sidebar.selectbox(
-    "Navigation",
+# Primary navigation lives in the MAIN area (top of page) so it's always
+# reachable regardless of sidebar state — the Streamlit sidebar collapses
+# on mobile and its open-button can vanish. A mirror also sits in the
+# sidebar for desktop users who expect it there.
+_nav_default = st.session_state.get("nav_page", "Home")
+if _nav_default not in _nav_options:
+    _nav_default = "Home"
+
+_picked = st.selectbox(
+    "Navigate to page",
     _nav_options,
-    index=_nav_options.index("Home"),
-    label_visibility="collapsed",
+    index=_nav_options.index(_nav_default),
     key="nav_page",
 )
 
