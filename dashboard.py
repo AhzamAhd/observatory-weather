@@ -447,18 +447,24 @@ st.markdown(f"""
         font-size: 0.82rem !important;
     }}
 
-    /* ── Hide Streamlit chrome ── */
-    [data-testid="stHeader"],
+    /* ── Hide Streamlit chrome ── but keep the header BAR so the
+       sidebar open-button (which lives inside it) survives on mobile. */
     [data-testid="stToolbar"],
     [data-testid="stDecoration"],
     #MainMenu, footer {{
         display: none !important;
+    }}
+    [data-testid="stHeader"] {{
+        background: transparent !important;
+        height: auto !important;
     }}
     /* Sidebar open button — make it big and obvious, especially on
        mobile where the sidebar auto-collapses and users can't find nav. */
     [data-testid="stSidebarCollapsedControl"],
     [data-testid="collapsedControl"] {{
         display: flex !important;
+        visibility: visible !important;
+        opacity: 1 !important;
         background: {ACCENT} !important;
         border-radius: 8px !important;
         padding: 6px !important;
