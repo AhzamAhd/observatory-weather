@@ -1,8 +1,6 @@
 import ephem
-import sqlite3
 import pandas as pd
 from datetime import datetime, timedelta
-import math
 
 from functools import lru_cache
 
@@ -106,9 +104,9 @@ def get_observing_windows(lat, lon, obs_score, date=None):
     }
 
 def get_all_windows():
-    conn = sqlite3.connect("data/silver/observatory_weather.db")
-    df   = pd.read_sql("""
-        SELECT
+    from db import query_df
+    df = query_df("""
+        SELECT DISTINCT ON (o.id)
             o.name        AS observatory,
             o.country,
             o.latitude,
@@ -120,19 +118,21 @@ def get_all_windows():
             w.humidity_pct,
             w.wind_speed_ms,
             w.temperature_c,
-            ROUND(MAX(0,
+            ROUND(GREATEST(0,
                 100
                 - (w.cloud_cover_pct * 0.50)
                 - (CASE WHEN w.humidity_pct > 85
                    THEN (w.humidity_pct - 85) * 2.0 ELSE 0 END)
                 - (CASE WHEN w.wind_speed_ms > 15
                    THEN (w.wind_speed_ms - 15) * 2.0 ELSE 0 END)
-            ), 1) AS observation_score
+            )::numeric, 1) AS observation_score
         FROM weather_readings w
         JOIN observatories o ON w.observatory_id = o.id
-        ORDER BY observation_score DESC
-    """, conn)
-    conn.close()
+        WHERE w.fetch_date = (SELECT MAX(fetch_date) FROM weather_readings)
+        ORDER BY o.id, w.fetch_datetime DESC
+    """)
+    if df.empty:
+        return pd.DataFrame()
 
     results = []
     for _, row in df.iterrows():
