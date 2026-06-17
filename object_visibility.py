@@ -273,7 +273,8 @@ def get_ephem_object(name, obj_info):
     fixed._epoch = ephem.J2000
     return fixed
 
-def calculate_visibility(lat, lon, object_name, date=None):
+def calculate_visibility(lat, lon, object_name, date=None,
+                         altitude_m=0):
     if date is None:
         date = datetime.utcnow()
 
@@ -295,6 +296,14 @@ def calculate_visibility(lat, lon, object_name, date=None):
     obj_type     = obj_info.get("type", "deep_sky")
     min_alt      = MIN_ALTITUDE.get(obj_type, 15)
     is_visible   = altitude_deg >= min_alt
+
+    # Airmass (Pickering 2002) and V-band atmospheric extinction at this
+    # site altitude — how much the atmosphere dims the object right now.
+    from airmass_calculator import (altitude_to_airmass,
+                                     extinction_magnitudes)
+    airmass = altitude_to_airmass(altitude_deg) if altitude_deg > 0 else None
+    extinction_mag = (extinction_magnitudes(airmass, "V", altitude_m)
+                      if airmass is not None else None)
 
     try:
         obs.horizon = str(min_alt)
@@ -329,7 +338,9 @@ def calculate_visibility(lat, lon, object_name, date=None):
         "rise_time":          rise_time.strftime("%H:%M UTC") if rise_time else "N/A",
         "set_time":           set_time.strftime("%H:%M UTC")  if set_time  else "N/A",
         "hours_visible":      round(max(0, hours_up), 1),
-        "min_altitude":       min_alt
+        "min_altitude":       min_alt,
+        "airmass":            airmass,
+        "extinction_mag":     extinction_mag,
     }
 
 def get_best_observatories_for_object(object_name, observatories_df):
@@ -339,7 +350,8 @@ def get_best_observatories_for_object(object_name, observatories_df):
             vis = calculate_visibility(
                 row["latitude"],
                 row["longitude"],
-                object_name
+                object_name,
+                altitude_m=row.get("altitude_m", 0) or 0,
             )
             if vis:
                 results.append({
@@ -353,6 +365,8 @@ def get_best_observatories_for_object(object_name, observatories_df):
                     "rise_time":          vis["rise_time"],
                     "set_time":           vis["set_time"],
                     "hours_visible":      vis["hours_visible"],
+                    "airmass":            vis["airmass"],
+                    "extinction_mag":     vis["extinction_mag"],
                 })
         except Exception:
             continue
@@ -361,9 +375,15 @@ def get_best_observatories_for_object(object_name, observatories_df):
     if df.empty:
         return df
 
+    # Atmospheric transmission from extinction: T = 10^(-ext/2.5).
+    # This is the physically correct "how much object light gets through"
+    # term — replaces the old raw-altitude proxy.
+    transmission = df["extinction_mag"].apply(
+        lambda e: (10 ** (-e / 2.5)) if e is not None else 0.0)
+
     df["combined_score"] = (
         df["weather_score"] * 0.6 +
-        df["altitude_deg"].clip(0, 90) / 90 * 100 * 0.4
+        transmission * 100 * 0.4
     ).round(1)
 
     return df[df["is_visible"]].sort_values(

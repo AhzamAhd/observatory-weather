@@ -1873,9 +1873,12 @@ if selected_page == "Object Visibility":
                     c1, c2, c3, c4, c5 = st.columns(5)
                     c1.metric("Altitude",
                               f"{row['altitude_deg']}°")
-                    c2.metric("Direction",    row["direction"])
-                    c3.metric("Weather Score",
-                              f"{row['weather_score']}/100")
+                    _am = row.get("airmass")
+                    c2.metric("Airmass",
+                              f"{_am:.2f}" if _am else "—")
+                    c3.metric("Extinction",
+                              f"{row['extinction_mag']:.2f} mag"
+                              if row.get("extinction_mag") is not None else "—")
                     c4.metric("Hours Visible",
                               f"{row['hours_visible']}h")
                     c5.metric("Combined Score",
@@ -1890,13 +1893,16 @@ if selected_page == "Object Visibility":
             st.subheader("All observatories with visibility")
             display = best_obs[[
                 "observatory", "country", "altitude_deg",
-                "direction", "hours_visible", "rise_time",
+                "airmass", "extinction_mag", "direction",
+                "hours_visible", "rise_time",
                 "set_time", "weather_score", "combined_score",
                 "visibility_quality"
             ]].rename(columns={
                 "observatory":        "Observatory",
                 "country":            "Country",
                 "altitude_deg":       "Altitude (°)",
+                "airmass":            "Airmass",
+                "extinction_mag":     "Extinction (mag)",
                 "direction":          "Direction",
                 "hours_visible":      "Hours Visible",
                 "rise_time":          "Rises",
