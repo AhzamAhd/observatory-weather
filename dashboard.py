@@ -2459,7 +2459,7 @@ if selected_page == "Historical Reliability":
         st.subheader(
             f"Reliability rankings — last {days_option} days")
 
-        for _, row in hist_df.iterrows():
+        for _hist_i, (_, row) in enumerate(hist_df.iterrows()):
             grade_color = get_grade_color(row["grade"])
             trend_emoji = get_trend_emoji(row["trend"])
 
@@ -2513,7 +2513,8 @@ if selected_page == "Historical Reliability":
                         height=180, margin=dict(l=40, r=10, t=10, b=60),
                         showlegend=False
                     )
-                    st.plotly_chart(_mfig, use_container_width=True)
+                    st.plotly_chart(_mfig, use_container_width=True,
+                                    key=f"reliab_chart_{_hist_i}")
 
                 st.caption(
                     f"{row['country']} · "
@@ -5046,7 +5047,7 @@ if _detail_sub == "7-day forecast":
 
         # ── Day by day detail ──────────────────────────────
         st.subheader("Day by day detail")
-        for _, row in daily_df.iterrows():
+        for _fc_i, (_, row) in enumerate(daily_df.iterrows()):
             score = row["night_score"]
             if score >= 80:   dot = "🟢"
             elif score >= 60: dot = "🔵"
@@ -5080,7 +5081,8 @@ if _detail_sub == "7-day forecast":
                         yaxis=dict(range=[0,105], title="Score"),
                         showlegend=False,
                     )
-                    st.plotly_chart(_hfig, use_container_width=True)
+                    st.plotly_chart(_hfig, use_container_width=True,
+                                    key=f"fc_hourly_{_fc_i}")
 
         st.markdown("---")
 
