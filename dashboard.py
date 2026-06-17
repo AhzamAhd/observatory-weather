@@ -958,33 +958,6 @@ st.caption(
 st.sidebar.image("assets/gowc_banner.png", width=220)
 st.sidebar.markdown(f"<p style='font-size:0.7rem;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:{TEXT2};padding:4px 12px 2px;margin:0'>Navigation</p>", unsafe_allow_html=True)
 
-PAGES = {
-    "Home":                   "home",
-    "Live Weather Map":       "live_map",
-    "Observing Windows":      "windows",
-    "Object Visibility":      "visibility",
-    "Peak Observing Time":    "peak",
-    "Atmospheric Analysis":   "atmospheric",
-    "Historical Reliability": "reliability",
-    "Site Comparison":        "comparison",
-    "Semester Planning":      "semester",
-    "Learn Astronomy":        "education",
-    "Alert Subscriptions":    "alerts",
-    "Telescope Efficiency":   "efficiency",
-    "SNR Calculator":         "snr",
-    "Live Sky Chart":         "sky_chart",
-    "7-Day Forecast":         "forecast",
-    "Comet Tracker":          "comets",
-    "Observatory Reviews":    "reviews",
-    "Satellite Passes":       "satellites",
-    "Airmass Calculator":     "airmass",
-    "Meteor Showers":         "meteors",
-    "Asteroid Tracker":       "asteroids",
-    "Eclipses & Transits":    "eclipses",
-    "Observatory Detail":     "detail",
-    "About & Methodology":    "about",
-}
-
 # Group pages into categories for a two-level sidebar nav.
 # The page names inside must match the keys used by every
 # downstream `if selected_page == ...` block.
@@ -1013,7 +986,7 @@ PAGE_CATEGORIES = {
     "More": [
         "Learn Astronomy",
         "Alert Subscriptions",
-        # "Observatory Reviews",  # hidden until we have real reviews
+        "Observatory Reviews",
     ],
 }
 
@@ -4105,6 +4078,10 @@ if selected_page == "SNR Calculator":
         "breakdown — shot noise, sky background, dark current, "
         "read noise and scintillation. "
         "Accuracy: ~75% for point sources.")
+
+    st.caption("Planning a full observing run? The **Observing Proposal "
+               "Planner** solves exposure times for multiple targets and "
+               "exports a proposal draft.")
 
     st.markdown("---")
 
