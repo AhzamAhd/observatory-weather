@@ -998,8 +998,6 @@ PAGE_CATEGORIES = {
         "Observing Windows",
         "Object Visibility",
         "Observing Proposal Planner",
-        "7-Day Forecast",
-        "Airmass Calculator",
     ],
     "Analysis": [
         "Atmospheric Analysis",
@@ -1010,14 +1008,9 @@ PAGE_CATEGORIES = {
         "Observatory Detail",
     ],
     "Sky Events": [
-        "Comet Tracker",
-        "Asteroid Tracker",
-        "Satellite Passes",
-        "Meteor Showers",
-        "Eclipses & Transits",
+        "Sky Events",
     ],
     "More": [
-        "Live Sky Chart",
         "Learn Astronomy",
         "Alert Subscriptions",
         # "Observatory Reviews",  # hidden until we have real reviews
@@ -1236,9 +1229,7 @@ if selected_page == "Home":
         ("🔬", "#EF9F27", "Site Comparison",        "Compare up to 5 observatories side-by-side across all weather and atmospheric metrics."),
         ("📝", "#e74c3c", "Observing Proposal Planner", "Build a real observing proposal: targets, time, moon, SNR-solved exposures, and a best-months calendar."),
         ("🛰️", "#378ADD", "Telescope Efficiency",  "Efficiency ratings for optical, infrared and radio telescopes based on live conditions."),
-        ("☄️", "#EF9F27", "Comet Tracker",          "Track active comets and find which observatories have the best view tonight."),
-        ("🌑", "#9b59b6", "Eclipses & Transits",    "Upcoming solar and lunar eclipses with the best observatories to view them from."),
-        ("🌠", "#00d4ff", "Meteor Showers",         "Active and upcoming showers with ZHR, moon phase impact and best viewing sites."),
+        ("🌠", "#00d4ff", "Sky Events",             "Comets, asteroids, satellite passes, meteor showers and eclipses — with the best sites to view them."),
     ]
 
     _feat_html = "<div style='display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:28px;'>"
@@ -1746,11 +1737,17 @@ if selected_page == "Observing Windows":
 # TAB 3 — Object Visibility
 # ═══════════════════════════════════════════════════════
 if selected_page == "Object Visibility":
-    page_header("🔭", "Object Visibility Calculator",
-        "Find which observatories worldwide have the best view "
-        "of your target object right now. Combines weather score "
-        "with object altitude for a combined ranking.")
+    page_header("🔭", "Object Visibility",
+        "Where and how well a target can be seen — site ranking, airmass "
+        "curve, or a live sky chart.")
+    _vis_sub = st.radio(
+        "View", ["Site ranking", "Airmass curve", "Live sky chart"],
+        horizontal=True, key="vis_sub", label_visibility="collapsed")
+    st.markdown("---")
+else:
+    _vis_sub = None
 
+if _vis_sub == "Site ranking":
     col_filter, col_select = st.columns([1, 2])
     with col_filter:
         obj_type = st.selectbox(
@@ -4481,7 +4478,7 @@ if selected_page == "SNR Calculator":
 # ═══════════════════════════════════════════════════════
 # TAB 13 — Live Sky Chart
 # ═══════════════════════════════════════════════════════
-if selected_page == "Live Sky Chart":
+if _vis_sub == "Live sky chart":
     page_header("🌌", "Live Sky Chart",
         "Real-time sky view for any observatory. "
         "Shows stars, planets, Moon and your target "
@@ -4866,8 +4863,22 @@ if selected_page == "Live Sky Chart":
 # ═══════════════════════════════════════════════════════
 # TAB 14 — 7-Day Forecast
 # ═══════════════════════════════════════════════════════
-if selected_page == "7-Day Forecast":
-    page_header("📅", "7-Day Observation Forecast",
+# Observatory Detail sub-view selector (rendered here because this
+# block precedes the Detail block; choice drives both via the radio).
+if selected_page == "Observatory Detail":
+    page_header("🔬", "Observatory Detail",
+        "Pick an observatory for a complete live analysis, or switch to "
+        "its 7-day forecast.")
+    _detail_sub = st.radio(
+        "View", ["Live detail", "7-day forecast"],
+        horizontal=True, key="detail_sub", label_visibility="collapsed")
+    st.markdown("---")
+else:
+    _detail_sub = None
+
+if _detail_sub == "7-day forecast":
+    st.subheader("📅 7-Day Observation Forecast")
+    st.caption(
         "7-day weather forecast for any observatory. "
         "Shows predicted observation quality scores, "
         "best observing hour each night, cloud cover, "
@@ -5116,9 +5127,25 @@ if selected_page == "7-Day Forecast":
         )
 
 # ═══════════════════════════════════════════════════════
-# TAB 15 — Comet Tracker
+# SKY EVENTS — one tab, internal selector for the 5 trackers
 # ═══════════════════════════════════════════════════════
-if selected_page == "Comet Tracker":
+if selected_page == "Sky Events":
+    page_header("🌠", "Sky Events",
+        "Live trackers for comets, asteroids, satellites, meteor showers "
+        "and eclipses — and which observatories have the best view.")
+    _sky_sub = st.radio(
+        "Event type",
+        ["Comet Tracker", "Asteroid Tracker", "Satellite Passes",
+         "Meteor Showers", "Eclipses & Transits"],
+        horizontal=True, key="sky_sub", label_visibility="collapsed")
+    st.markdown("---")
+else:
+    _sky_sub = None
+
+# ═══════════════════════════════════════════════════════
+# Comet Tracker (within Sky Events)
+# ═══════════════════════════════════════════════════════
+if _sky_sub == "Comet Tracker":
     page_header("☄️", "Comet Tracker",
         "Track currently observable comets worldwide. "
         "Shows real-time visibility from your selected "
@@ -5794,7 +5821,7 @@ if selected_page == "Observatory Reviews":
 # ═══════════════════════════════════════════════════════
 # TAB 17 — Satellite Pass Predictor
 # ═══════════════════════════════════════════════════════
-if selected_page == "Satellite Passes":
+if _sky_sub == "Satellite Passes":
     page_header("🛸", "Satellite Pass Predictor",
         "Predict when the ISS and other spacecraft pass "
         "over your selected observatory. Shows visible "
@@ -6113,7 +6140,7 @@ from horizon to horizon.
 # ═══════════════════════════════════════════════════════
 # TAB 18 — Airmass Calculator
 # ═══════════════════════════════════════════════════════
-if selected_page == "Airmass Calculator":
+if _vis_sub == "Airmass curve":
     page_header("📐", "Airmass Calculator",
         "Calculate how much atmosphere your telescope "
         "looks through for any target object. "
@@ -6432,7 +6459,7 @@ near the horizon where the simple formula breaks down.
 # ═══════════════════════════════════════════════════════
 # TAB 19 — Meteor Shower Calendar
 # ═══════════════════════════════════════════════════════
-if selected_page == "Meteor Showers":
+if _sky_sub == "Meteor Showers":
     page_header("🌠", "Meteor Shower Calendar",
         "Complete calendar of annual meteor showers. "
         "Shows ZHR, moon phase at peak, best viewing "
@@ -6643,7 +6670,7 @@ contribute to science.
 # ═══════════════════════════════════════════════════════
 # TAB 20 — Asteroid Tracker
 # ═══════════════════════════════════════════════════════
-if selected_page == "Asteroid Tracker":
+if _sky_sub == "Asteroid Tracker":
     page_header("🪨", "Asteroid Tracker",
         "Real-time near-Earth asteroid data from "
         "NASA's NeoWs API. Shows asteroids passing "
@@ -7085,7 +7112,7 @@ are rated 0.
 # ═══════════════════════════════════════════════════════
 # TAB 21 — Eclipses & Transits
 # ═══════════════════════════════════════════════════════
-if selected_page == "Eclipses & Transits":
+if _sky_sub == "Eclipses & Transits":
     page_header("🌑", "Eclipses & Transits",
         "Upcoming solar eclipses, lunar eclipses and "
         f"planetary transits. Shows which of your {len(df):,} "
@@ -7350,12 +7377,11 @@ Lunar eclipses are completely safe to observe.
 # ═══════════════════════════════════════════════════════
 # TAB 22 — Meteor Showers   
 # ═══════════════════════════════════════════════════════
-if selected_page == "Observatory Detail":
-    page_header("🔬", "Observatory Detail — Live View",
-        "Select any observatory for a complete live "
-        "analysis calculated in real time. Weather data "
-        "is updated hourly. Astronomical calculations "
-        "are computed fresh when you select a site.")
+if _detail_sub == "Live detail":
+    st.caption(
+        "Complete live analysis calculated in real time. Weather data "
+        "is updated hourly; astronomical calculations are computed "
+        "fresh when you select a site.")
 
     selected = st.selectbox(
         "Select an observatory",
