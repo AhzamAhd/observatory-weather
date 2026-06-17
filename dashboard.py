@@ -998,7 +998,6 @@ PAGE_CATEGORIES = {
         "Observing Windows",
         "Object Visibility",
         "Observing Proposal Planner",
-        "Semester Planning",
         "7-Day Forecast",
         "Airmass Calculator",
     ],
@@ -1235,7 +1234,7 @@ if selected_page == "Home":
         ("🌬️", "#00b4d8", "Atmospheric Analysis",  "Seeing quality, precipitable water vapour, jet stream impact and turbulence indices."),
         ("📈", "#1D9E75", "Historical Reliability", "Long-term reliability scores, trend direction and percentage of excellent nights."),
         ("🔬", "#EF9F27", "Site Comparison",        "Compare up to 5 observatories side-by-side across all weather and atmospheric metrics."),
-        ("📅", "#e74c3c", "Semester Planning",      "Find the best months and sites for your target objects across a full semester."),
+        ("📝", "#e74c3c", "Observing Proposal Planner", "Build a real observing proposal: targets, time, moon, SNR-solved exposures, and a best-months calendar."),
         ("🛰️", "#378ADD", "Telescope Efficiency",  "Efficiency ratings for optical, infrared and radio telescopes based on live conditions."),
         ("☄️", "#EF9F27", "Comet Tracker",          "Track active comets and find which observatories have the best view tonight."),
         ("🌑", "#9b59b6", "Eclipses & Transits",    "Upcoming solar and lunar eclipses with the best observatories to view them from."),
@@ -1263,7 +1262,7 @@ if selected_page == "Home":
         ("02", "#1D9E75", "Search or Browse",         "Use the search bar to filter by observatory name or country, or zoom into any region on the map."),
         ("03", "#378ADD", "Explore Observatory Detail","Click any marker or ranking entry to open a detailed page with mini-map, nearby sites, and history."),
         ("04", "#EF9F27", "Refresh Live Data",        "Hit 'Fetch Live Data' in the sidebar to pull fresh weather readings from all observatories on demand."),
-        ("05", "#9b59b6", "Plan & Compare",           "Use Semester Planning, Site Comparison, and Atmospheric Analysis to make informed observing decisions."),
+        ("05", "#9b59b6", "Plan & Compare",           "Use the Observing Proposal Planner, Site Comparison, and Atmospheric Analysis to make informed observing decisions."),
     ]
 
     _steps_html = "<div style='display:flex;flex-direction:column;gap:10px;margin-bottom:28px;'>"
@@ -2779,7 +2778,24 @@ if selected_page == "Observing Proposal Planner":
     from snr_calculator import (OBJECT_MAGNITUDES, PHOTOMETRIC_FILTERS,
                                 calculate_snr, get_telescope_specs,
                                 get_sky_brightness)
-    import math as _math
+
+    # B−V colours for the brighter, well-characterised stars (§6).
+    # "—" elsewhere — we don't fabricate values we don't have.
+    _BV_COLOURS = {
+        "Sirius": 0.00, "Canopus": 0.15, "Arcturus": 1.23, "Vega": 0.00,
+        "Capella": 0.80, "Rigel": -0.03, "Betelgeuse": 1.85,
+        "Polaris": 0.60, "Antares": 1.83, "Aldebaran": 1.54,
+        "Spica": -0.23, "Fomalhaut": 0.09, "Deneb": 0.09,
+    }
+
+    # ── §1–2 Title & summary (user input) ──────────────
+    pp_title = st.text_input("Title of observing programme (§1, ≤12 words)",
+        key="pp_title", placeholder="e.g. Photometric monitoring of bright variable stars")
+    pp_summary = st.text_area("Summary of proposed observations (§2, ≤150 words)",
+        key="pp_summary", height=80,
+        placeholder="Briefly describe what you will observe and why.")
+
+    st.markdown("---")
 
     # ── 1. Site + instrument ───────────────────────────
     pp_c1, pp_c2, pp_c3 = st.columns(3)
@@ -2851,11 +2867,13 @@ if selected_page == "Observing Proposal Planner":
                                     t, altitude_m=pp_alt_m)
         alt  = vis["altitude_deg"] if vis else 0
         exp  = _solve_exposure(mag, t, max(alt, 20)) if mag is not None else None
+        _bv  = _BV_COLOURS.get(t)
         rows.append({
             "Target": t,
-            "RA": info.get("ra", "—"),
-            "Dec": info.get("dec", "—"),
+            "RA (J2000)": info.get("ra", "—"),
+            "Dec (J2000)": info.get("dec", "—"),
             "V mag": mag if mag is not None else "—",
+            "B−V": _bv if _bv is not None else "—",
             "Altitude now (°)": alt,
             "Airmass": vis["airmass"] if vis else None,
             "Exposure (s)": round(exp, 0) if exp else "Not reachable",
@@ -2864,7 +2882,25 @@ if selected_page == "Observing Proposal Planner":
 
     # ── Target table (§6) ───────────────────────────────
     st.subheader("Target list (§6)")
+    st.caption("Coordinates are J2000 equinox/epoch. B−V shown where "
+               "catalogued; exposures solved to your target SNR.")
     st.dataframe(pp_table, hide_index=True, use_container_width=True)
+
+    # ── §5 Preferred date/time ─────────────────────────
+    # Best dark hour tonight for the targets, from the peak-time engine.
+    from peak_time import get_peak_time
+    _best_hours = []
+    for t in pp_targets:
+        try:
+            pk = get_peak_time(pp_row["latitude"], pp_row["longitude"],
+                float(pp_row.get("observation_score", 50) or 50),
+                object_name=t, altitude_m=pp_alt_m)
+            if pk and pk.get("peak_hour"):
+                _best_hours.append(pk["peak_hour"])
+        except Exception:
+            continue
+    _pref_time = (max(set(_best_hours), key=_best_hours.count)
+                  if _best_hours else "Any dark hour")
 
     # ── Time / moon / date summary (§3, §4, §5) ─────────
     _exps = [r["Exposure (s)"] for r in rows
@@ -2874,37 +2910,75 @@ if selected_page == "Observing Proposal Planner":
     _total_h = round(_total_s * 1.4 / 3600, 2)
 
     st.subheader("Time, moon & date (§3–5)")
-    s1, s2, s3 = st.columns(3)
+    s1, s2, s3, s4 = st.columns(4)
     s1.metric("Observing time required (§3)", f"{_total_h} h",
               help="Sum of exposures + 40% overhead.")
     s2.metric("Moon phase required (§4)", pp_moon_choice.split(" ")[0])
-    s3.metric("Filter / band", pp_filt["band"])
+    s3.metric("Preferred time (§5)", _pref_time,
+              help="Dark hour tonight when the targets are best placed.")
+    s4.metric("Filter / band", pp_filt["band"])
 
-    # ── Exportable draft (§ all) ────────────────────────
+    # ── §7 Finding charts note ─────────────────────────
+    st.info("**Finding charts (§7)** must be made externally — generate "
+            "~5′ fields (N up, E left) from Aladin Lite, the STScI DSS, or "
+            "SkyView using each target's J2000 coordinates above. GOWC has "
+            "no image-survey access.", icon="🗺️")
+
+    # ── §10–11 user input ──────────────────────────────
+    pp_b1, pp_b2 = st.columns(2)
+    with pp_b1:
+        pp_backup = st.text_area("Backup programme (§10, ≤50 words)",
+            key="pp_backup", height=80,
+            placeholder="What you'd do in poor seeing/cirrus — e.g. observe "
+                        "only the brightest targets.")
+    with pp_b2:
+        pp_experience = st.text_area("Previous experience (§11, ≤50 words)",
+            key="pp_experience", height=80,
+            placeholder="Your prior observing experience.")
+
+    # ── Exportable draft (all sections) ────────────────
     st.subheader("Proposal draft")
     _draft_lines = [
         "OBSERVING PROPOSAL (draft)",
-        "=" * 40, "",
-        f"Observatory      : {pp_site} ({int(pp_alt_m)} m)",
-        f"Filter / band    : {pp_filter_name}",
-        f"Moon required    : {pp_moon_choice} (§4)",
-        f"Observing time   : {_total_h} hours, incl. ~40% overhead (§3)",
-        f"Target SNR       : {pp_target_snr}",
-        "", "TARGET LIST (§6):",
+        "=" * 50, "",
+        f"§1 TITLE: {pp_title or '[to complete]'}",
+        "",
+        f"§2 SUMMARY:",
+        f"  {pp_summary or '[to complete — max 150 words]'}",
+        "",
+        f"§3 OBSERVING TIME REQUIRED : {_total_h} hours (incl. ~40% overhead)",
+        f"§4 MOON PHASE REQUIRED     : {pp_moon_choice}",
+        f"§5 PREFERRED DATE/TIME     : tonight around {_pref_time} (dark, targets well placed)",
+        "",
+        f"Observatory                : {pp_site} ({int(pp_alt_m)} m)",
+        f"Filter / band              : {pp_filter_name}",
+        f"Target SNR                 : {pp_target_snr}",
+        "",
+        "§6 TARGET LIST (J2000):",
     ]
     for r in rows:
         _draft_lines.append(
-            f"  {r['Target']}  RA {r['RA']}  Dec {r['Dec']}  "
-            f"V={r['V mag']}  exp={r['Exposure (s)']}s  "
+            f"  {r['Target']}  RA {r['RA (J2000)']}  Dec {r['Dec (J2000)']}  "
+            f"V={r['V mag']}  B-V={r['B−V']}  exp={r['Exposure (s)']}s  "
             f"(alt {r['Altitude now (°)']}°, X={r['Airmass']})")
     _draft_lines += [
-        "", "TECHNICAL JUSTIFICATION (§9):",
+        "",
+        "§7 FINDING CHARTS: produce externally (Aladin/DSS), ~5' N-up E-left.",
+        "",
+        "§8 SCIENTIFIC JUSTIFICATION: [~2000 words — your own work]",
+        "",
+        "§9 TECHNICAL JUSTIFICATION:",
         f"  Exposure times solved via the CCD signal-to-noise equation",
         f"  (shot + sky + dark + read + scintillation noise) in the "
         f"{pp_filt['band']} band, including airmass extinction at "
         f"{int(pp_alt_m)} m and moon-dependent sky brightness "
         f"({pp_sky_mag} mag/arcsec²).",
-        "", "Generated by GOWC — gowcastroclimate.com",
+        "",
+        f"§10 BACKUP PROGRAMME: {pp_backup or '[to complete — max 50 words]'}",
+        "",
+        f"§11 PREVIOUS EXPERIENCE: {pp_experience or '[to complete — max 50 words]'}",
+        "",
+        "Generated by GOWC — gowcastroclimate.com",
     ]
     _draft = "\n".join(_draft_lines)
     st.code(_draft, language="text")
@@ -2912,21 +2986,22 @@ if selected_page == "Observing Proposal Planner":
         file_name=f"observing_proposal_{utcnow().strftime('%Y-%m-%d')}.txt",
         mime="text/plain")
 
-    st.caption("This is a starting draft. Sections 1–2 (title/summary), "
-               "7 (finding charts), 8 (scientific justification) and "
-               "10–11 require your own input.")
+    st.caption("Sections 3–7, 9 are computed/structured for you. "
+               "Sections 1, 2, 8, 10, 11 are your own input (the science "
+               "case especially must be your own work).")
 
 
 # ═══════════════════════════════════════════════════════
-# TAB 8 — Semester Planning Calendar
+# Semester Planning Calendar — now a section of the planner,
+# aids the §5 "preferred date/time" decision across months.
 # ═══════════════════════════════════════════════════════
-if selected_page == "Semester Planning":
-    st.subheader("📅 Semester Planning Calendar")
+if selected_page == "Observing Proposal Planner":
+    st.markdown("---")
+    st.subheader("📅 Best months / semester calendar (§5 aid)")
     st.caption(
-        "Plan your observing semester months in advance. "
-        "Shows predicted observation quality for every day "
-        "based on moon phase and dark hours. "
-        "Actual recorded scores shown where available."
+        "Plan months in advance. Shows predicted observation quality for "
+        "every day based on moon phase and dark hours — use it to pick the "
+        "best date for §5. Actual recorded scores shown where available."
     )
 
     # Controls
