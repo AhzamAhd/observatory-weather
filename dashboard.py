@@ -4099,6 +4099,28 @@ if selected_page == "SNR Calculator":
 
     st.markdown("---")
 
+    # Observatory chosen first — moon conditions depend on the site.
+    snr_obs = st.selectbox(
+        "Select observatory",
+        df["observatory"].tolist(),
+        key="snr_obs"
+    )
+    _snr_obs_row = df[df["observatory"] == snr_obs].iloc[0]
+
+    # Real moon altitude + illumination for THIS site, right now.
+    def _site_moon(lat, lon):
+        try:
+            import ephem
+            _ob = ephem.Observer()
+            _ob.lat = str(lat); _ob.long = str(lon)
+            _ob.date = utcnow().strftime("%Y/%m/%d %H:%M:%S")
+            _moon = ephem.Moon(_ob)
+            return round(math.degrees(float(_moon.alt)), 1), round(_moon.phase, 0)
+        except Exception:
+            return 20.0, 27.0
+    _auto_moon_alt, _auto_moon_pct = _site_moon(
+        _snr_obs_row["latitude"], _snr_obs_row["longitude"])
+
     # ── Controls ──────────────────────────────────────────
     snr_col1, snr_col2, snr_col3 = st.columns(3)
 
@@ -4212,39 +4234,30 @@ if selected_page == "SNR Calculator":
             exposure_s = preset_map[exposure_preset]
 
     with snr_col3:
-        # Moon conditions
-        st.markdown("**Moon conditions**")
-        moon_phase_input = st.slider(
-            "Moon illumination %",
-            0, 100, 27,
-            key="snr_moon_phase"
-        )
-        moon_alt_input = st.slider(
-            "Moon altitude °",
-            -90, 90, 20,
-            key="snr_moon_alt"
-        )
+        # Moon conditions — computed for the selected observatory.
+        st.markdown(f"**Moon conditions** at {snr_obs[:24]}")
+        moon_phase_input = _auto_moon_pct
+        moon_alt_input   = _auto_moon_alt
+        _mm1, _mm2 = st.columns(2)
+        _mm1.metric("Moon illumination", f"{int(_auto_moon_pct)}%")
+        _mm2.metric("Moon altitude",
+                    f"{_auto_moon_alt}°" if _auto_moon_alt > 0 else "Below horizon")
 
         sky_brightness = get_sky_brightness(
             moon_phase_input, moon_alt_input)
         st.metric(
             "Sky brightness",
             f"{sky_brightness} mag/arcsec²",
-            help="Higher = darker sky = better"
+            help="Higher = darker sky = better. Computed from the "
+                 "Moon's real position at this observatory right now."
         )
 
     st.markdown("---")
 
-    # ── Single observatory deep dive ──────────────────────
-    st.subheader("Single observatory analysis")
+    # ── Single observatory deep dive (uses the site chosen above) ──
+    st.subheader(f"Analysis for {snr_obs}")
 
-    snr_obs = st.selectbox(
-        "Select observatory",
-        df["observatory"].tolist(),
-        key="snr_obs"
-    )
-
-    obs_row   = df[df["observatory"] == snr_obs].iloc[0]
+    obs_row   = _snr_obs_row
     tel_specs = TELESCOPE_SPECS.get(
         snr_obs, TELESCOPE_SPECS["default"])
 
