@@ -1247,11 +1247,11 @@ if selected_page == "Home":
     st.markdown("<div style='font-size:1.2rem;font-weight:700;color:#e8f4fd;margin-bottom:16px;'>Getting Started</div>", unsafe_allow_html=True)
 
     _steps = [
-        ("01", "#00d4ff", "Open Live Weather Map",    "Click 'Live Weather Map' in the sidebar to see tonight's conditions for all 1,163 observatories on the globe."),
+        ("01", "#00d4ff", "Open Live Weather Map",    f"Use the navigation dropdown at the top to open 'Live Weather Map' and see tonight's conditions for all {len(df):,} observatories on the globe."),
         ("02", "#1D9E75", "Search or Browse",         "Use the search bar to filter by observatory name or country, or zoom into any region on the map."),
-        ("03", "#378ADD", "Explore Observatory Detail","Click any marker or ranking entry to open a detailed page with mini-map, nearby sites, and history."),
-        ("04", "#EF9F27", "Refresh Live Data",        "Hit 'Fetch Live Data' in the sidebar to pull fresh weather readings from all observatories on demand."),
-        ("05", "#9b59b6", "Plan & Compare",           "Use the Observing Proposal Planner, Site Comparison, and Atmospheric Analysis to make informed observing decisions."),
+        ("03", "#378ADD", "Explore Observatory Detail","Open 'Observatory Detail' and pick any site for a deep dive — mini-map, nearby sites, reliability history and a 7-day forecast."),
+        ("04", "#EF9F27", "Plan your targets",         "Use the Observing Proposal Planner to choose targets and get observing time, moon phase and SNR-solved exposures."),
+        ("05", "#9b59b6", "Compare & analyse",         "Use Site Comparison, Atmospheric Analysis and Telescope Efficiency to make informed observing decisions."),
     ]
 
     _steps_html = "<div style='display:flex;flex-direction:column;gap:10px;margin-bottom:28px;'>"
@@ -1436,124 +1436,69 @@ if selected_page == "Live Weather Map":
     else:
         _df_map = df.copy()
 
-    import plotly.graph_objects as go
-    import numpy as np
+    import folium
+    from folium.plugins import MarkerCluster
+    from streamlit_folium import st_folium
 
     _color_map = {"Excellent": "#1D9E75", "Good": "#00b4d8",
                   "Marginal": "#EF9F27", "Poor": "#E24B4A"}
 
-    # Cluster toggle — off when searching (already filtered)
-    _cluster_on = st.checkbox("Cluster markers", value=not bool(_obs_search), key="map_cluster")
+    st.caption("Zoom out to see telescope counts grouped by region/country; "
+               "zoom in to split clusters into individual observatories. "
+               "Click any marker for live conditions.")
 
-    _map_fig = go.Figure()
-
-    if _cluster_on and len(_df_map) > 20:
-        # Grid-bin markers: cell size ~15° at world view
-        _grid = 15.0
-        _df_map["_clat"] = (_df_map["latitude"]  // _grid) * _grid + _grid / 2
-        _df_map["_clon"] = (_df_map["longitude"] // _grid) * _grid + _grid / 2
-        _cond_order = ["Excellent", "Good", "Marginal", "Poor"]
-
-        for (_clat, _clon), _grp in _df_map.groupby(["_clat", "_clon"]):
-            _n      = len(_grp)
-            _avg    = _grp["observation_score"].mean()
-            # dominant condition = most common
-            _dom    = _grp["condition"].value_counts().idxmax()
-            _cc     = _color_map.get(_dom, "#888")
-            _size   = min(18 + _n * 0.35, 52)
-            _names  = _grp["observatory"].tolist()
-            _preview = "<br>".join(_names[:5]) + (f"<br>…+{_n-5} more" if _n > 5 else "")
-            _map_fig.add_trace(go.Scattermapbox(
-                lat=[_clat], lon=[_clon],
-                mode="markers+text",
-                marker=dict(size=_size, color=_cc, opacity=0.85),
-                text=[str(_n)],
-                textfont=dict(color="white", size=11),
-                hovertemplate=(
-                    f"<b>{_n} observatories</b><br>"
-                    f"Avg score: {_avg:.0f}/100<br>"
-                    f"Best condition: {_dom}<br>"
-                    f"{_preview}<extra></extra>"
-                ),
-                showlegend=False,
-            ))
-
-        # Legend as a separate dummy trace per condition present
-        for _cond in _cond_order:
-            if _cond in _df_map["condition"].values:
-                _map_fig.add_trace(go.Scattermapbox(
-                    lat=[None], lon=[None], mode="markers",
-                    marker=dict(size=10, color=_color_map[_cond]),
-                    name=_cond, showlegend=True,
-                ))
-    else:
-        _size_map = {"Excellent": 10, "Good": 8, "Marginal": 7, "Poor": 6}
-        for condition, grp in _df_map.groupby("condition"):
-            _c = _color_map.get(condition, "#888888")
-            _s = _size_map.get(condition, 7)
-            _map_fig.add_trace(go.Scattermapbox(
-                lat=grp["latitude"],
-                lon=grp["longitude"],
-                mode="markers",
-                marker=dict(size=_s, color=_c, opacity=0.9),
-                text=grp.apply(lambda r: (
-                    f"<b>{r['observatory']}</b><br>"
-                    f"{r['country']} · {r['altitude_m']}m<br>"
-                    f"Score: <b>{int(r['observation_score'])}/100</b> [{r['condition']}]<br>"
-                    f"Cloud: {r['cloud_cover_pct']}% · Humidity: {r['humidity_pct']}%<br>"
-                    f"Wind: {r['wind_speed_ms']} m/s · Temp: {r['temperature_c']}°C"
-                ), axis=1),
-                hovertemplate="%{text}<extra></extra>",
-                name=condition,
-            ))
-
+    # Map centre/zoom — focus on search results if searching.
     if _obs_search and not _df_map.empty:
         _map_clat = _df_map["latitude"].mean()
         _map_clon = _df_map["longitude"].mean()
-        _map_zoom = 3 if len(_df_map) > 5 else 5
+        _map_zoom = 4 if len(_df_map) > 5 else 6
     else:
-        _map_clat, _map_clon, _map_zoom = 20, 0, 1.4
+        _map_clat, _map_clon, _map_zoom = 20, 0, 2
 
     if _map_style == "Satellite":
-        _mapbox_cfg = dict(
-            style="white-bg",
-            layers=[dict(
-                sourcetype="raster",
-                source=["https://mt0.google.com/vt/lyrs=s&hl=en&x={x}&y={y}&z={z}"],
-                below="traces",
-            )],
-            center=dict(lat=_map_clat, lon=_map_clon),
-            zoom=_map_zoom,
-        )
+        _fmap = folium.Map(
+            location=[_map_clat, _map_clon], zoom_start=_map_zoom,
+            tiles="https://mt0.google.com/vt/lyrs=s&hl=en&x={x}&y={y}&z={z}",
+            attr="Google")
     else:
-        _mapbox_cfg = dict(
-            style="open-street-map",
-            center=dict(lat=_map_clat, lon=_map_clon),
-            zoom=_map_zoom,
-        )
+        _fmap = folium.Map(
+            location=[_map_clat, _map_clon], zoom_start=_map_zoom,
+            tiles="CartoDB dark_matter")
 
-    _map_fig.update_layout(
-        mapbox=_mapbox_cfg,
-        margin=dict(l=0, r=0, t=0, b=0),
-        height=560,
-        paper_bgcolor="rgba(0,0,0,0)",
-        legend=dict(
-            orientation="h",
-            yanchor="bottom", y=0.01,
-            xanchor="left",   x=0.01,
-            bgcolor="rgba(10,10,20,0.7)",
-            bordercolor="#1e2d40",
-            borderwidth=1,
-            font=dict(color="#cdd9e5", size=12),
-        ),
-        uirevision="map",
-    )
-    st.plotly_chart(_map_fig, use_container_width=True, config={
-        "scrollZoom": True,
-        "displayModeBar": True,
-        "modeBarButtonsToRemove": ["select2d", "lasso2d"],
-        "displaylogo": False,
-    })
+    # Auto-clustering: counts when zoomed out, individual markers zoomed in.
+    _cluster = MarkerCluster(name="Observatories").add_to(_fmap)
+
+    for _, r in _df_map.iterrows():
+        if r["latitude"] is None or r["longitude"] is None:
+            continue
+        _cc = _color_map.get(r["condition"], "#888888")
+        _popup = folium.Popup(
+            f"<b>{r['observatory']}</b><br>"
+            f"{r['country']} · {int(r['altitude_m'])}m<br>"
+            f"Score: <b>{int(r['observation_score'])}/100</b> "
+            f"[{r['condition']}]<br>"
+            f"Cloud {r['cloud_cover_pct']}% · Humidity {r['humidity_pct']}%<br>"
+            f"Wind {r['wind_speed_ms']} m/s · Temp {r['temperature_c']}°C",
+            max_width=260)
+        folium.CircleMarker(
+            location=[r["latitude"], r["longitude"]],
+            radius=6, color=_cc, weight=1,
+            fill=True, fill_color=_cc, fill_opacity=0.85,
+            popup=_popup,
+            tooltip=f"{r['observatory']} ({int(r['observation_score'])}/100)",
+        ).add_to(_cluster)
+
+    st_folium(_fmap, width=None, height=560,
+              returned_objects=[], key="main_folium_map")
+
+    # Condition legend.
+    st.markdown(
+        "<div style='display:flex;gap:18px;flex-wrap:wrap;font-size:0.8rem;"
+        "color:#cdd9e5;margin-top:6px;'>"
+        "<span>🟢 Excellent</span><span>🔵 Good</span>"
+        "<span>🟠 Marginal</span><span>🔴 Poor</span>"
+        "<span style='color:#7dafc8;'>· Numbered circles = telescope count in that region</span>"
+        "</div>", unsafe_allow_html=True)
 
     st.markdown("---")
     st.subheader("Tonight's Best Observatories")
