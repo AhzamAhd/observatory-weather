@@ -21,7 +21,6 @@ import streamlit as st
 import streamlit.components.v1 as components
 import json
 import math
-import sqlite3
 import pandas as pd
 import folium
 import matplotlib.pyplot as plt

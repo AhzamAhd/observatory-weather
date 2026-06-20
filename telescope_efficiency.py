@@ -1,4 +1,3 @@
-import sqlite3
 import pandas as pd
 import ephem
 import math
@@ -231,10 +230,9 @@ def get_all_efficiency_scores(telescope_type="optical"):
     """
     Calculate efficiency scores for all observatories.
     """
-    conn = sqlite3.connect(
-        "data/silver/observatory_weather.db")
-    df   = pd.read_sql("""
-        SELECT
+    from db import query_df
+    df = query_df("""
+        SELECT DISTINCT ON (o.id)
             o.name       AS observatory,
             o.country,
             o.altitude_m,
@@ -247,19 +245,21 @@ def get_all_efficiency_scores(telescope_type="optical"):
             w.surface_pressure,
             w.jet_stream_ms,
             w.fetch_datetime,
-            ROUND(MAX(0,
+            ROUND(GREATEST(0,
                 100
                 - (w.cloud_cover_pct * 0.50)
                 - (CASE WHEN w.humidity_pct > 85
                    THEN (w.humidity_pct-85)*2 ELSE 0 END)
                 - (CASE WHEN w.wind_speed_ms > 15
                    THEN (w.wind_speed_ms-15)*2 ELSE 0 END)
-            ), 1) AS weather_score
+            )::numeric, 1) AS weather_score
         FROM weather_readings w
         JOIN observatories o ON w.observatory_id = o.id
-        ORDER BY o.name
-    """, conn)
-    conn.close()
+        WHERE w.fetch_date = (SELECT MAX(fetch_date) FROM weather_readings)
+        ORDER BY o.id, w.fetch_datetime DESC
+    """)
+    if df.empty:
+        return pd.DataFrame()
 
     results = []
 
