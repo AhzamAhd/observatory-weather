@@ -1865,7 +1865,7 @@ if _vis_sub == "Site ranking":
 # ═══════════════════════════════════════════════════════
 if selected_page == "Observing Windows":
     st.markdown("---")
-    st.subheader("⏰ Peak observing hour & hourly breakdown")
+    st.subheader("⏰ Peak Observing Hour")
     st.caption(
         "The single best hour to observe tonight at each observatory. "
         "Toggle on a target object to factor in its altitude "
@@ -1972,9 +1972,14 @@ if selected_page == "Observing Windows":
                   f"{peak.iloc[0]['total_good_hours']}h")
 
         st.markdown("---")
+        st.subheader("📊 Hourly Breakdown")
+        st.caption(
+            "Hour-by-hour observing score through the night for a chosen "
+            "site, with the full darkness / moon / weather breakdown."
+        )
 
         selected_obs = st.selectbox(
-            "Select observatory to see hourly breakdown",
+            "Select observatory",
             peak["observatory"].tolist(),
             key="peak_selector"
         )
@@ -2025,8 +2030,7 @@ if selected_page == "Observing Windows":
         )
         st.plotly_chart(_pfig, use_container_width=True)
 
-        st.markdown("---")
-        st.subheader("Hourly breakdown table")
+        st.markdown("#### Breakdown table")
         hourly = pd.DataFrame(selected_row["hourly_data"])
         cols   = ["hour", "sun_altitude", "moon_altitude",
                   "darkness_score", "moon_score",
