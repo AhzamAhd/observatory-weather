@@ -1,7 +1,22 @@
 import pandas as pd
 from datetime import datetime, timedelta
-from atmospheric import get_full_atmospheric_analysis
+from atmospheric import (get_full_atmospheric_analysis, calculate_seeing,
+                         calculate_jet_stream_impact,
+                         observing_quality_score)
 from db import query_df, fetch_one
+
+
+def _genuine_score(row):
+    """Multiplicative observing-quality index — matches the rest of GOWC."""
+    seeing = calculate_seeing(
+        row.get("temperature_c"), row.get("wind_speed_ms"),
+        row.get("humidity_pct"), row.get("altitude_m", 0))
+    _, jet_impact = calculate_jet_stream_impact(
+        row.get("jet_stream_ms"), row.get("latitude", 0))
+    return observing_quality_score(
+        row.get("cloud_cover_pct"), row.get("humidity_pct"),
+        row.get("wind_speed_ms"), row.get("precipitation_mm"),
+        seeing, jet_impact)
 
 def get_site_data(observatory_names, days=30):
     placeholders = ",".join(["%s"] * len(observatory_names))
@@ -23,6 +38,7 @@ def get_site_data(observatory_names, days=30):
             w.surface_pressure,
             w.jet_stream_ms,
             w.dewpoint_c,
+            w.precipitation_mm,
             ROUND(GREATEST(0,
                 100
                 - (w.cloud_cover_pct * 0.50)
@@ -58,6 +74,7 @@ def get_current_data(observatory_names):
             w.surface_pressure,
             w.jet_stream_ms,
             w.dewpoint_c,
+            w.precipitation_mm,
             ROUND(GREATEST(0,
                 100
                 - (w.cloud_cover_pct * 0.50)
@@ -110,7 +127,12 @@ def compare_sites(observatory_names, days=30):
             "latitude":         cur.get("latitude", 0)
         })
 
+        # Genuine multiplicative observing-quality score for today.
+        today_score = _genuine_score(cur)
+
         if not hist_row.empty:
+            hist_row = hist_row.copy()
+            hist_row["daily_score"] = hist_row.apply(_genuine_score, axis=1)
             avg_score     = round(
                 float(hist_row["daily_score"].mean()), 1)
             pct_excellent = round(
@@ -129,8 +151,7 @@ def compare_sites(observatory_names, days=30):
                 "fetch_date", "daily_score"]
             ].to_dict("records")
         else:
-            avg_score     = float(
-                cur["observation_score"])
+            avg_score     = today_score
             pct_excellent = 0
             pct_poor      = 0
             consistency   = 0
@@ -142,8 +163,7 @@ def compare_sites(observatory_names, days=30):
             "altitude_m":       cur["altitude_m"],
             "latitude":         cur["latitude"],
             "longitude":        cur["longitude"],
-            "today_score":      float(
-                cur["observation_score"]),
+            "today_score":      today_score,
             "cloud_cover_pct":  cur["cloud_cover_pct"],
             "humidity_pct":     cur["humidity_pct"],
             "wind_speed_ms":    cur["wind_speed_ms"],
