@@ -1156,9 +1156,7 @@ if df.empty:
 # HOME — Landing page
 # ═══════════════════════════════════════════════════════
 if selected_page == "Home":
-    _bn_l, _bn_c, _bn_r = st.columns([1, 2, 1])
-    with _bn_c:
-        st.image("assets/gowc_banner_cropped.png", use_container_width=True)
+    st.image("assets/gowc_banner_cropped.png", width=760)
 
     _n_excellent  = len(df[df["condition"] == "Excellent"])
     _n_good       = len(df[df["condition"] == "Good"])
@@ -1414,9 +1412,7 @@ if selected_page == "Live Weather Map":
     _n_excellent = len(df[df["condition"] == "Excellent"])
     _avg_score = round(df["observation_score"].mean(), 1)
 
-    _lm_l, _lm_c, _lm_r = st.columns([1, 2, 1])
-    with _lm_c:
-        st.image("assets/gowc_banner_cropped.png", use_container_width=True)
+    st.image("assets/gowc_banner_cropped.png", width=760)
 
     _hc1, _hc2, _hc3, _hc4 = st.columns(4)
     _hc1.metric("Total Sites", f"{len(df):,}")
