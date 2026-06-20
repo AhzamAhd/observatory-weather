@@ -390,7 +390,9 @@ st.markdown(f"""
     .block-container {{
         padding-top: 1.5rem !important;
         padding-bottom: 2rem !important;
-        max-width: 1400px;
+        max-width: 1800px;
+        padding-left: 3rem !important;
+        padding-right: 3rem !important;
     }}
 
     /* ── Sidebar ── */
