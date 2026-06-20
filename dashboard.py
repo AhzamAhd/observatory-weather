@@ -2535,13 +2535,32 @@ if selected_page == "Site Comparison":
         "Combines current conditions, historical reliability, "
         "atmospheric seeing, PWV, and jet stream impact.")
 
-    # Observatory selector
-    all_obs = df["observatory"].tolist()
+    # Filter the picker by country so the 1,200+ list is manageable.
+    _countries = sorted(df["country"].dropna().unique().tolist())
+    _comp_country = st.selectbox(
+        "Filter by country",
+        ["All countries"] + _countries,
+        key="comp_country_filter",
+    )
+    if _comp_country == "All countries":
+        all_obs = df["observatory"].tolist()
+    else:
+        all_obs = df[df["country"] == _comp_country]["observatory"].tolist()
+
+    # Seed an initial selection once; thereafter the widget owns its state.
+    if "comp_sites" not in st.session_state:
+        st.session_state["comp_sites"] = all_obs[:3] if len(all_obs) >= 2 else all_obs
+
+    # Keep any already-selected sites in the options so changing the
+    # country filter never invalidates a cross-country selection.
+    _already = st.session_state.get("comp_sites", [])
+    _options = list(dict.fromkeys(all_obs + list(_already)))
+
     selected_sites = st.multiselect(
         "Select observatories to compare (2–5)",
-        all_obs,
-        default=all_obs[:3],
-        max_selections=5
+        _options,
+        max_selections=5,
+        key="comp_sites",
     )
 
     comp_days = st.selectbox(
