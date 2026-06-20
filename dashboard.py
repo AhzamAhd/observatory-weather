@@ -2208,6 +2208,20 @@ if selected_page == "Atmospheric Analysis":
     st.markdown("---")
 
     with st.expander("Atmospheric rankings", expanded=False):
+        _atm_q = st.text_input(
+            "Search observatory or country",
+            placeholder="e.g. Mauna Kea, Chile, Spain…",
+            label_visibility="collapsed", key="atm_search")
+        atm_view = atm_df
+        if _atm_q:
+            _q = _atm_q.lower()
+            _cols = [c for c in ["observatory", "country"] if c in atm_df.columns]
+            _mask = False
+            for _c in _cols:
+                _mask = _mask | atm_df[_c].astype(str).str.lower().str.contains(_q)
+            atm_view = atm_df[_mask]
+            st.caption(f"{len(atm_view)} result(s) for '{_atm_q}'")
+
         # Three sub-tabs for each metric
         seeing_tab, pwv_tab, jet_tab = st.tabs([
             "👁️ Seeing Index",
@@ -2223,7 +2237,7 @@ if selected_page == "Atmospheric Analysis":
                 "Professional telescopes need < 1.5\" to operate "
                 "at full resolution."
             )
-            for _, row in atm_df.iterrows():
+            for _, row in atm_view.iterrows():
                 bar_val = max(0, min(1,
                     1 - (row["seeing_arcsec"] - 0.3) / 4.7))
                 st.markdown(
@@ -2248,7 +2262,7 @@ if selected_page == "Atmospheric Analysis":
                 "< 2mm is excellent for IR work. "
                 "Sites like ALMA require < 1mm."
             )
-            pwv_sorted = atm_df.sort_values(
+            pwv_sorted = atm_view.sort_values(
                 "pwv_mm", ascending=True)
             for _, row in pwv_sorted.iterrows():
                 bar_val = max(0, min(1,
@@ -2273,7 +2287,7 @@ if selected_page == "Atmospheric Analysis":
                 "Below 20 m/s is ideal. Above 60 m/s degrades "
                 "image quality severely."
             )
-            jet_sorted = atm_df.sort_values(
+            jet_sorted = atm_view.sort_values(
                 "jet_stream_ms", ascending=True)
             for _, row in jet_sorted.iterrows():
                 js  = row["jet_stream_ms"] or 0
@@ -2397,7 +2411,23 @@ if selected_page == "Historical Reliability":
         st.subheader(
             f"Reliability rankings — last {days_option} days")
 
-        for _hist_i, (_, row) in enumerate(hist_df.iterrows()):
+        _rel_q = st.text_input(
+            "Search observatory or country",
+            placeholder="e.g. Mauna Kea, Chile, Spain…",
+            label_visibility="collapsed", key="rel_search")
+        _rel_view = hist_df
+        if _rel_q:
+            _q = _rel_q.lower()
+            _cols = [c for c in ["observatory", "country"] if c in hist_df.columns]
+            _mask = False
+            for _c in _cols:
+                _mask = _mask | hist_df[_c].astype(str).str.lower().str.contains(_q)
+            _rel_view = hist_df[_mask]
+            st.caption(f"{len(_rel_view)} result(s) for '{_rel_q}'")
+            if _rel_view.empty:
+                st.info("No observatories match your search.")
+
+        for _hist_i, (_, row) in enumerate(_rel_view.iterrows()):
             grade_color = get_grade_color(row["grade"])
             trend_emoji = get_trend_emoji(row["trend"])
 
