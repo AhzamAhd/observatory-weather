@@ -2804,6 +2804,18 @@ if selected_page == "Observing Proposal Planner":
             key="pp_target_snr",
             help="Exposure time is solved to reach this SNR per target.")
 
+    # ── Preferred observing date (§5) ───────────────────
+    _pp_when_mode = st.radio(
+        "Preferred date (§5)", ["Tonight", "Pick date"],
+        horizontal=True, key="pp_when_mode")
+    if _pp_when_mode == "Pick date":
+        import datetime as _dt
+        _pp_date = st.date_input("Date (UTC)",
+            value=utcnow().date(), key="pp_date")
+        pp_when = _dt.datetime.combine(_pp_date, _dt.time(23, 0))
+    else:
+        pp_when = utcnow().replace(tzinfo=None)
+
     # ── 2. Moon phase required (§4) ─────────────────────
     pp_moon_choice = st.radio("Required moon conditions (§4)",
         ["Dark (new moon)", "Grey (quarter)", "Bright (full)"],
@@ -2855,7 +2867,7 @@ if selected_page == "Observing Proposal Planner":
         info = OBJECTS.get(t, {})
         mag  = OBJECT_MAGNITUDES.get(t)
         vis  = calculate_visibility(pp_row["latitude"], pp_row["longitude"],
-                                    t, altitude_m=pp_alt_m)
+                                    t, date=pp_when, altitude_m=pp_alt_m)
         alt  = vis["altitude_deg"] if vis else 0
         exp  = _solve_exposure(mag, t, max(alt, 20)) if mag is not None else None
         _bv  = _BV_COLOURS.get(t)
@@ -2885,7 +2897,7 @@ if selected_page == "Observing Proposal Planner":
         try:
             pk = get_peak_time(pp_row["latitude"], pp_row["longitude"],
                 float(pp_row.get("observation_score", 50) or 50),
-                object_name=t, altitude_m=pp_alt_m)
+                date=pp_when, object_name=t, altitude_m=pp_alt_m)
             if pk and pk.get("peak_hour"):
                 _best_hours.append(pk["peak_hour"])
         except Exception:
@@ -2939,7 +2951,7 @@ if selected_page == "Observing Proposal Planner":
         "",
         f"§3 OBSERVING TIME REQUIRED : {_total_h} hours (incl. ~40% overhead)",
         f"§4 MOON PHASE REQUIRED     : {pp_moon_choice}",
-        f"§5 PREFERRED DATE/TIME     : tonight around {_pref_time} (dark, targets well placed)",
+        f"§5 PREFERRED DATE/TIME     : {pp_when.strftime('%Y-%m-%d')} around {_pref_time} UTC (dark, targets well placed)",
         "",
         f"Observatory                : {pp_site} ({int(pp_alt_m)} m)",
         f"Filter / band              : {pp_filter_name}",
