@@ -5957,11 +5957,20 @@ if _sky_sub == "Satellite Passes":
         "All times in UTC.")
 
     # ── Controls ──────────────────────────────────────────
-    sat_obs = st.selectbox(
-        "Select observatory",
-        df["observatory"].tolist(),
-        key="sat_obs"
-    )
+    _sc1, _sc2 = st.columns(2)
+    with _sc1:
+        sat_obs = st.selectbox(
+            "Select observatory",
+            df["observatory"].tolist(),
+            key="sat_obs"
+        )
+    with _sc2:
+        sat_group = st.selectbox(
+            "Satellite group",
+            ["ISS + space stations", "Bright satellites"],
+            key="sat_group",
+            help="Which set of satellites to track and predict passes for."
+        )
     sat_row = df[df["observatory"] == sat_obs].iloc[0]
     sat_lat = float(sat_row["latitude"])
     sat_lon = float(sat_row["longitude"])
@@ -5983,9 +5992,10 @@ if _sky_sub == "Satellite Passes":
             f"Fetching TLE data and calculating "
             f"passes for {sat_obs}..."
         ):
+            _grp = "visual" if sat_group == "Bright satellites" else "stations"
             sat_results = get_all_passes(
                 sat_lat, sat_lon, sat_alt,
-                hours_ahead=hours_ahead
+                hours_ahead=hours_ahead, group=_grp
             )
         st.session_state["sat_results"]     = sat_results
         st.session_state["sat_results_obs"] = sat_obs
@@ -6224,6 +6234,101 @@ from horizon to horizon.
                 "back later — the ISS completes an "
                 "orbit every 92 minutes."
             )
+
+        # ── Ground track + local sky path for a chosen satellite ──
+        st.markdown("---")
+        st.subheader("🗺️ Where does it pass over? — ground track & sky path")
+
+        _sat_pick = st.selectbox(
+            "Satellite",
+            list(sat_results.keys()),
+            format_func=lambda k: sat_results[k]["name"],
+            key="sat_track_pick")
+        _sat_d = sat_results[_sat_pick]
+        _tle_name, _tle_l1, _tle_l2 = _sat_d["tle"]
+
+        from satellite_tracker import ground_track, sky_path
+        import plotly.graph_objects as go
+
+        # Ground track (next ~100 min ≈ one orbit) on a world map.
+        _track = ground_track(_tle_name, _tle_l1, _tle_l2, minutes=100)
+        if _track:
+            _gt = go.Figure()
+            # Break the track where it wraps across the date line.
+            _seg_lat, _seg_lon, _seg_t = [], [], []
+            _prev_lon = None
+            for p in _track:
+                if _prev_lon is not None and abs(p["lon"] - _prev_lon) > 180:
+                    _gt.add_trace(go.Scattergeo(
+                        lat=_seg_lat, lon=_seg_lon, mode="lines",
+                        line=dict(width=2, color=_sat_d.get("color", "#FFD700")),
+                        showlegend=False, hoverinfo="skip"))
+                    _seg_lat, _seg_lon, _seg_t = [], [], []
+                _seg_lat.append(p["lat"]); _seg_lon.append(p["lon"]); _seg_t.append(p["time"])
+                _prev_lon = p["lon"]
+            if _seg_lat:
+                _gt.add_trace(go.Scattergeo(
+                    lat=_seg_lat, lon=_seg_lon, mode="lines",
+                    line=dict(width=2, color=_sat_d.get("color", "#FFD700")),
+                    showlegend=False, hoverinfo="skip"))
+            # Current sub-satellite point + observatory marker.
+            _gt.add_trace(go.Scattergeo(
+                lat=[_track[0]["lat"]], lon=[_track[0]["lon"]],
+                mode="markers", marker=dict(size=10, color=_sat_d.get("color", "#FFD700")),
+                name=_sat_d["name"], hovertemplate="Now<extra></extra>"))
+            _gt.add_trace(go.Scattergeo(
+                lat=[sat_lat], lon=[sat_lon], mode="markers",
+                marker=dict(size=9, color="#00d4ff", symbol="star"),
+                name=sat_obs, hovertemplate=f"{sat_obs}<extra></extra>"))
+            _gt.update_layout(
+                title=f"Ground track — {_sat_d['name']} (next ~100 min)",
+                geo=dict(projection_type="natural earth",
+                         bgcolor="rgba(0,0,0,0)",
+                         landcolor="#16202e", oceancolor="#0a1320",
+                         showocean=True, lakecolor="#0a1320",
+                         coastlinecolor="#33445c", countrycolor="#22303f"),
+                paper_bgcolor="rgba(0,0,0,0)", font=dict(color=TEXT),
+                height=420, margin=dict(l=0, r=0, t=40, b=0),
+                legend=dict(bgcolor="rgba(10,10,20,0.6)", font=dict(size=10)))
+            st.plotly_chart(_gt, use_container_width=True)
+            st.caption("Line = the path the satellite flies over Earth; "
+                       "★ = your observatory; ● = satellite position now.")
+        else:
+            st.info("Ground track unavailable for this satellite.")
+
+        # Local sky path for the next visible pass (rise → peak → set).
+        _vis_passes = [p for p in _sat_d["passes"] if p.get("is_visible")]
+        _next_pass = _vis_passes[0] if _vis_passes else (
+            _sat_d["passes"][0] if _sat_d["passes"] else None)
+        if _next_pass and _next_pass.get("rise_time_dt") and _next_pass.get("set_time_dt"):
+            _arc = sky_path(_tle_name, _tle_l1, _tle_l2, sat_lat, sat_lon,
+                            sat_alt, _next_pass["rise_time_dt"], _next_pass["set_time_dt"])
+            if _arc:
+                _azs = [a["az"] for a in _arc]
+                _alts = [a["alt"] for a in _arc]
+                _sky = go.Figure(go.Scatterpolar(
+                    r=[90 - x for x in _alts], theta=_azs, mode="lines+markers",
+                    line=dict(color=_sat_d.get("color", "#FFD700"), width=3),
+                    marker=dict(size=4),
+                    hovertemplate="Az %{theta:.0f}° · Alt %{customdata:.0f}°<extra></extra>",
+                    customdata=_alts))
+                _sky.update_layout(
+                    title=f"Local sky path — next pass at {sat_obs} "
+                          f"({_next_pass.get('rise_time','')}→{_next_pass.get('set_time','')})",
+                    polar=dict(
+                        radialaxis=dict(range=[0, 90], showticklabels=False,
+                                        showgrid=True, gridcolor="#22303f"),
+                        angularaxis=dict(direction="clockwise", rotation=90,
+                                         tickmode="array",
+                                         tickvals=[0, 90, 180, 270],
+                                         ticktext=["N", "E", "S", "W"],
+                                         gridcolor="#22303f"),
+                        bgcolor="rgba(0,0,0,0)"),
+                    paper_bgcolor="rgba(0,0,0,0)", font=dict(color=TEXT),
+                    height=380, margin=dict(l=30, r=30, t=50, b=30))
+                st.plotly_chart(_sky, use_container_width=True)
+                st.caption("Arc across your local sky for the next pass. "
+                           "Centre = overhead (zenith); edge = horizon.")
 
         st.markdown("---")
         st.subheader("🎓 About satellite passes")

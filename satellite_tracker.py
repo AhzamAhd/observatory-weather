@@ -202,6 +202,7 @@ def calculate_passes(
                         "rise_time":    rise_dt.strftime(
                             "%H:%M UTC"),
                         "rise_time_dt": rise_dt,
+                        "set_time_dt":  set_dt,
                         "max_time":     max_dt.strftime(
                             "%H:%M UTC"),
                         "set_time":     set_dt.strftime(
@@ -281,11 +282,15 @@ def get_current_position(name, line1, line2,
 
 
 # ── Main function ─────────────────────────────────────────────────
-def get_all_passes(lat, lon, alt_m, hours_ahead=24):
+def get_all_passes(lat, lon, alt_m, hours_ahead=24, group="stations"):
     """
     Get passes for ISS and other key satellites.
     Main function called by dashboard.
+    group='stations' tracks ISS + space stations;
+    group='visual' tracks bright visible satellites instead.
     """
+    if group == "visual":
+        return _get_visual_passes(lat, lon, alt_m, hours_ahead)
     print(f"\n  Calculating satellite passes "
           f"for next {hours_ahead}h...")
     results = {}
@@ -354,6 +359,109 @@ def get_all_passes(lat, lon, alt_m, hours_ahead=24):
     print(f"  Found passes for {len(results)} satellites")
     print(f"  {visible_count} visible passes tonight")
     return results
+
+
+def _get_visual_passes(lat, lon, alt_m, hours_ahead=24, max_sats=8):
+    """Passes for bright (visually observable) satellites."""
+    results = {}
+    sats = get_visual_satellites()
+    added = 0
+    for sat_name, l1, l2 in sats:
+        if added >= max_sats:
+            break
+        passes = calculate_passes(
+            sat_name, l1, l2, lat, lon, alt_m,
+            hours_ahead, min_altitude=10)
+        if passes:
+            pos = get_current_position(sat_name, l1, l2, lat, lon, alt_m)
+            results[sat_name] = {
+                "name":     sat_name,
+                "norad":    None,
+                "passes":   passes,
+                "position": pos,
+                "tle":      (sat_name, l1, l2),
+                "color":    "#AFA9EC",
+                "icon":     "🛰️",
+            }
+            added += 1
+    print(f"  Visual: passes for {len(results)} bright satellites")
+    return results
+
+
+def list_satellites(group="stations"):
+    """
+    Return a list of (name, line1, line2) for a satellite group, so the
+    UI can let the user choose which satellites to track.
+    group: 'stations' (space stations) or 'visual' (bright satellites).
+    """
+    try:
+        if group == "visual":
+            sats = get_visual_satellites()
+        else:
+            sats = get_station_satellites()
+        # De-duplicate by name, keep order.
+        seen, out = set(), []
+        for name, l1, l2 in sats:
+            if name not in seen:
+                seen.add(name)
+                out.append((name, l1, l2))
+        return out
+    except Exception:
+        return []
+
+
+def ground_track(name, line1, line2, minutes=100, step_s=60):
+    """
+    Sub-satellite ground track (lat/lon points the satellite flies over)
+    for the next `minutes` minutes — roughly one orbit for LEO.
+    """
+    try:
+        sat = ephem.readtle(name, line1, line2)
+        start = datetime.utcnow()
+        pts = []
+        for s in range(0, minutes * 60, step_s):
+            t = start + timedelta(seconds=s)
+            sat.compute(ephem.Date(t.strftime("%Y/%m/%d %H:%M:%S")))
+            pts.append({
+                "time": t.strftime("%H:%M"),
+                "lat":  round(math.degrees(float(sat.sublat)), 2),
+                "lon":  round(math.degrees(float(sat.sublong)), 2),
+            })
+        return pts
+    except Exception:
+        return []
+
+
+def sky_path(name, line1, line2, lat, lon, alt_m,
+             rise_dt, set_dt, step_s=20):
+    """
+    Local-sky path (azimuth, altitude) of a single pass from rise to set,
+    so the UI can plot the arc across the observer's sky.
+    """
+    try:
+        observer           = ephem.Observer()
+        observer.lat       = str(lat)
+        observer.long      = str(lon)
+        observer.elevation = float(alt_m)
+        observer.pressure  = 0
+        sat = ephem.readtle(name, line1, line2)
+        pts = []
+        total = max(1, int((set_dt - rise_dt).total_seconds()))
+        for s in range(0, total + step_s, step_s):
+            t = rise_dt + timedelta(seconds=s)
+            observer.date = ephem.Date(t.strftime("%Y/%m/%d %H:%M:%S"))
+            sat.compute(observer)
+            a = math.degrees(float(sat.alt))
+            if a < 0:
+                continue
+            pts.append({
+                "time": t.strftime("%H:%M:%S"),
+                "az":   round(math.degrees(float(sat.az)), 1),
+                "alt":  round(a, 1),
+            })
+        return pts
+    except Exception:
+        return []
 
 
 # ── Test ──────────────────────────────────────────────────────────
