@@ -1010,16 +1010,22 @@ PAGE_CATEGORIES = {
     ],
 }
 
-# Single dropdown listing every page, with non-selectable
-# category headers as visual separators so all 24 pages are
-# visible in one place.
+# Single dropdown listing every page. Category headers are rendered as
+# formal, non-selectable section labels (uppercase, spaced, with a leading
+# bullet) and the real pages are indented beneath them.
 _nav_options = []
 _nav_headers = set()
+_nav_header_for = {}   # header label -> category name
+_nav_label = {}        # option value -> display label
 for _cat, _pages in PAGE_CATEGORIES.items():
-    _header = f"— {_cat} —"
+    _header = f"__cat__{_cat}"
     _nav_options.append(_header)
     _nav_headers.add(_header)
-    _nav_options.extend(_pages)
+    _nav_header_for[_header] = _cat
+    _nav_label[_header] = f"●  {_cat.upper()}"
+    for _p in _pages:
+        _nav_options.append(_p)
+        _nav_label[_p] = f"      {_p}"   # indent real pages
 
 # Primary navigation lives in the MAIN area (top of page) so it's always
 # reachable regardless of sidebar state — the Streamlit sidebar collapses
@@ -1033,13 +1039,13 @@ _picked = st.selectbox(
     "Navigate to page",
     _nav_options,
     index=_nav_options.index(_nav_default),
+    format_func=lambda o: _nav_label.get(o, o),
     key="nav_page",
 )
 
-# If a category header was somehow selected, fall back to its
-# first real page.
+# If a category header was selected, fall back to its first real page.
 if _picked in _nav_headers:
-    _cat_name = _picked.strip("— ").strip()
+    _cat_name = _nav_header_for.get(_picked, "Overview")
     selected_page = PAGE_CATEGORIES.get(_cat_name, ["Home"])[0]
 else:
     selected_page = _picked
