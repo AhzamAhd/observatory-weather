@@ -3516,56 +3516,28 @@ if selected_page == "Alert Subscriptions":
 
     st.markdown("---")
 
-    # ── Current subscriptions ─────────────────────────────
+    # ── Subscription count (emails kept private) ──────────
     st.subheader("Active subscriptions")
     subs = load_subscriptions()
+    active = [s for s in subs if s.get("active", True)]
+    st.metric("Total active subscriptions", len(active))
+    st.caption("Subscriber details are private and never shown here.")
 
-    if not subs:
-        st.info(
-            "No active subscriptions yet. "
-            "Be the first to subscribe above!")
-    else:
-        active = [s for s in subs if s.get("active", True)]
-        st.metric("Total subscriptions", len(active))
-
-        for sub in active:
-            obs_score = df[
-                df["observatory"] == sub["observatory"]
-            ]
-            current_score = (
-                obs_score.iloc[0]["observation_score"]
-                if not obs_score.empty else "N/A"
-            )
-            alert_type = sub.get("alert_type", "above")
-
-            with st.expander(
-                f"📧 {sub['email']} → "
-                f"{sub['observatory']} · "
-                f"{'Above' if alert_type == 'above' else 'Below'} "
-                f"{sub['threshold']}/100 · "
-                f"Current score: {current_score}"
-            ):
-                s1, s2, s3, s4 = st.columns(4)
-                s1.metric(
-                    "Threshold",
-                    f"{sub['threshold']}/100")
-                s2.metric(
-                    "Alert type",
-                    "Above ↑" if alert_type == "above"
-                    else "Below ↓")
-                s3.metric(
-                    "Current score",
-                    f"{current_score}/100")
-                s4.metric(
-                    "Last alerted",
-                    sub.get("last_alerted", "Never"
-                            )[:10] if sub.get(
-                        "last_alerted") else "Never"
-                )
-                st.caption(
-                    f"Subscribed: "
-                    f"{sub.get('created_at', '')[:10]}"
-                )
+    # Owner-only detail view via ?admin=1.
+    if st.query_params.get("admin") == "1" and active:
+        def _fmt(v):
+            return str(v)[:16] if v is not None else "Never"
+        _admin_rows = [{
+            "Email":        s.get("email", ""),
+            "Observatory":  s.get("observatory", ""),
+            "Threshold":    s.get("threshold", ""),
+            "Type":         s.get("alert_type", ""),
+            "Subscribed":   _fmt(s.get("created_at")),
+            "Last alerted": _fmt(s.get("last_alerted")),
+        } for s in active]
+        st.markdown("**Subscriptions (admin)**")
+        st.dataframe(pd.DataFrame(_admin_rows),
+                     hide_index=True, use_container_width=True)
 
     st.markdown("---")
 

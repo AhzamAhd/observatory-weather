@@ -1,4 +1,4 @@
-from db import get_connection, query_df, fetch_one
+from db import get_connection, release_connection, query_df, fetch_one
 from datetime import datetime
 
 def load_subscriptions():
@@ -31,7 +31,7 @@ def add_subscription(email, observatory,
         """, (email, observatory, threshold, alert_type))
         conn.commit()
         cur.close()
-        conn.close()
+        release_connection(conn)
         return True, "Subscribed successfully!"
     except Exception as e:
         return False, f"Error: {e}"
@@ -47,7 +47,7 @@ def remove_subscription(email, observatory):
         deleted = cur.rowcount
         conn.commit()
         cur.close()
-        conn.close()
+        release_connection(conn)
         return deleted > 0
     except Exception as e:
         print(f"  [ERROR] {e}")
@@ -64,7 +64,7 @@ def update_last_alerted(email, observatory):
         """, (email, observatory))
         conn.commit()
         cur.close()
-        conn.close()
+        release_connection(conn)
     except Exception as e:
         print(f"  [ERROR] {e}")
 

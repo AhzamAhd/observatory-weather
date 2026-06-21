@@ -1,7 +1,6 @@
 import smtplib
 import json
 import os
-import sqlite3
 import pandas as pd
 from datetime import datetime
 from email.mime.text import MIMEText
@@ -21,27 +20,22 @@ from sheets_subscriptions import (
 # ── Get current scores ────────────────────────────────────────────
 def get_current_scores():
     from db import query_df
-    return query_df("""
+    from atmospheric import (calculate_seeing, calculate_jet_stream_impact,
+                             observing_quality_score)
+    df = query_df("""
         SELECT
             o.name          AS observatory,
             o.country,
             o.altitude_m,
+            o.latitude,
             w.fetch_date,
             w.fetch_time,
             w.cloud_cover_pct,
             w.humidity_pct,
             w.wind_speed_ms,
             w.temperature_c,
-            ROUND(GREATEST(0,
-                100
-                - (w.cloud_cover_pct * 0.50)
-                - (CASE WHEN w.humidity_pct > 85
-                   THEN (w.humidity_pct - 85) * 2.0
-                   ELSE 0 END)
-                - (CASE WHEN w.wind_speed_ms > 15
-                   THEN (w.wind_speed_ms - 15) * 2.0
-                   ELSE 0 END)
-            )::numeric, 1) AS score
+            w.jet_stream_ms,
+            w.precipitation_mm
         FROM weather_readings w
         JOIN observatories o ON w.observatory_id = o.id
         WHERE w.fetch_date = (
@@ -49,7 +43,21 @@ def get_current_scores():
         )
         ORDER BY o.name
     """)
-    conn.close()
+    if df.empty:
+        return df
+
+    # Genuine multiplicative observing-quality score (matches dashboard).
+    def _score(r):
+        seeing = calculate_seeing(
+            r.get("temperature_c"), r.get("wind_speed_ms"),
+            r.get("humidity_pct"), r.get("altitude_m", 0))
+        _, jet = calculate_jet_stream_impact(
+            r.get("jet_stream_ms"), r.get("latitude", 0))
+        return observing_quality_score(
+            r.get("cloud_cover_pct"), r.get("humidity_pct"),
+            r.get("wind_speed_ms"), r.get("precipitation_mm"), seeing, jet)
+
+    df["score"] = df.apply(_score, axis=1)
     return df
 
 # ── Build email ───────────────────────────────────────────────────
