@@ -4099,27 +4099,68 @@ if selected_page == "SNR Calculator":
 
     st.markdown("---")
 
-    # Observatory chosen first — moon conditions depend on the site.
-    snr_obs = st.selectbox(
-        "Select observatory",
-        df["observatory"].tolist(),
-        key="snr_obs"
-    )
+    # Observatory chosen first — moon/altitude conditions depend on site.
+    _snr_top1, _snr_top2 = st.columns([2, 1])
+    with _snr_top1:
+        snr_obs = st.selectbox(
+            "Select observatory",
+            df["observatory"].tolist(),
+            key="snr_obs"
+        )
     _snr_obs_row = df[df["observatory"] == snr_obs].iloc[0]
 
-    # Real moon altitude + illumination for THIS site, right now.
-    def _site_moon(lat, lon):
+    # Date/time selection — defaults to now; lets users plan a future night.
+    with _snr_top2:
+        _snr_when_mode = st.radio(
+            "When", ["Now", "Pick date/time"],
+            horizontal=True, key="snr_when_mode",
+            label_visibility="collapsed")
+    if _snr_when_mode == "Pick date/time":
+        import datetime as _dt
+        _dc1, _dc2 = st.columns(2)
+        with _dc1:
+            _snr_date = st.date_input("Date (UTC)",
+                value=utcnow().date(), key="snr_date")
+        with _dc2:
+            _snr_time = st.time_input("Time (UTC)",
+                value=_dt.time(23, 0), key="snr_time")
+        _snr_when = _dt.datetime.combine(_snr_date, _snr_time)
+        st.caption("Astronomical values (object altitude, Moon) are exact "
+                   "for this date. Weather/seeing uses the latest reading.")
+    else:
+        _snr_when = utcnow().replace(tzinfo=None)
+
+    # Real moon altitude + illumination for THIS site at the chosen time.
+    def _site_moon(lat, lon, when):
         try:
             import ephem
             _ob = ephem.Observer()
             _ob.lat = str(lat); _ob.long = str(lon)
-            _ob.date = utcnow().strftime("%Y/%m/%d %H:%M:%S")
+            _ob.date = when.strftime("%Y/%m/%d %H:%M:%S")
             _moon = ephem.Moon(_ob)
             return round(math.degrees(float(_moon.alt)), 1), round(_moon.phase, 0)
         except Exception:
             return 20.0, 27.0
     _auto_moon_alt, _auto_moon_pct = _site_moon(
-        _snr_obs_row["latitude"], _snr_obs_row["longitude"])
+        _snr_obs_row["latitude"], _snr_obs_row["longitude"], _snr_when)
+
+    # Object altitude at the chosen time (for airmass/extinction in SNR).
+    def _obj_altitude(lat, lon, obj_name, when):
+        try:
+            import ephem
+            from object_visibility import OBJECTS, get_ephem_object
+            info = OBJECTS.get(obj_name)
+            if not info:
+                return None
+            _ob = ephem.Observer()
+            _ob.lat = str(lat); _ob.long = str(lon)
+            _ob.date = when.strftime("%Y/%m/%d %H:%M:%S")
+            _ob.pressure = 0
+            tgt = get_ephem_object(obj_name, info)
+            tgt.compute(_ob)
+            return round(math.degrees(float(tgt.alt)), 1)
+        except Exception:
+            return None
 
     # ── Controls ──────────────────────────────────────────
     snr_col1, snr_col2, snr_col3 = st.columns(3)
@@ -4299,6 +4340,9 @@ if selected_page == "SNR Calculator":
         seeing = 1.5
         pwv    = None
 
+    _snr_obj_alt = _obj_altitude(
+        obs_row["latitude"], obs_row["longitude"], snr_object, _snr_when)
+
     result = calculate_snr(
         object_magnitude      = float(object_mag),
         exposure_time_s       = int(exposure_s),
@@ -4306,13 +4350,22 @@ if selected_page == "SNR Calculator":
         sky_brightness_mag    = float(sky_brightness),
         seeing_arcsec         = float(seeing),
         object_name           = snr_object,
-        object_altitude_deg   = None,
+        object_altitude_deg   = _snr_obj_alt,
         pwv_mm                = pwv,
         site_altitude_m       = obs_row.get("altitude_m", 2000) or 2000,
         filter_band           = _filt["band"],
         wavelength_nm         = _filt["wavelength_nm"],
         bandwidth_nm          = _filt["bandwidth_nm"],
     )
+
+    if _snr_obj_alt is not None:
+        if _snr_obj_alt < 0:
+            st.warning(f"{snr_object} is **below the horizon** "
+                       f"({_snr_obj_alt}°) at {snr_obs} at the chosen time — "
+                       f"not observable then.")
+        else:
+            st.caption(f"{snr_object} altitude at this time: "
+                       f"**{_snr_obj_alt}°** (airmass {result.get('airmass','—')}).")
 
     # SNR display
     snr_val = result["snr"]
