@@ -28,6 +28,7 @@ def get_current_scores():
             o.country,
             o.altitude_m,
             o.latitude,
+            o.longitude,
             w.fetch_date,
             w.fetch_time,
             w.cloud_cover_pct,
@@ -301,12 +302,41 @@ def run_alert_checker():
             (alert_type == "below" and score < threshold)
         )
 
+        # Optional object condition: only alert if the chosen object is
+        # well-placed (above ~20°) at the site, in dark sky, right now.
+        obj_name = sub.get("object_name")
+        obj_note = ""
+        if should_alert and obj_name:
+            try:
+                import ephem, math as _m
+                from object_visibility import OBJECTS, get_ephem_object
+                _info = OBJECTS.get(obj_name)
+                _obob = ephem.Observer()
+                _obob.lat = str(row["latitude"])
+                _obob.long = str(row["longitude"])
+                _obob.date = datetime.utcnow().strftime("%Y/%m/%d %H:%M:%S")
+                _obob.pressure = 0
+                _sun = ephem.Sun(); _sun.compute(_obob)
+                _dark = _m.degrees(float(_sun.alt)) < -12
+                _tgt = get_ephem_object(obj_name, _info)
+                _tgt.compute(_obob)
+                _obj_alt = _m.degrees(float(_tgt.alt))
+                if not (_obj_alt >= 20 and _dark):
+                    should_alert = False
+                    obj_note = (f" [{obj_name} alt {_obj_alt:.0f}°, "
+                                f"{'dark' if _dark else 'not dark'} — skip]")
+                else:
+                    obj_note = f" [{obj_name} up at {_obj_alt:.0f}°]"
+            except Exception:
+                obj_note = f" [{obj_name}: could not check]"
+
         print(
             f"  {sub['email'][:30]:<32} "
             f"{sub['observatory'][:30]:<32} "
             f"Score: {score:>5} "
             f"Threshold: {threshold:>3} "
             f"Alert: {'YES' if should_alert else 'no'}"
+            f"{obj_note}"
         )
 
         if should_alert:

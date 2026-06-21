@@ -1,9 +1,23 @@
 from db import get_connection, release_connection, query_df, fetch_one
 from datetime import datetime
 
+def _ensure_object_column():
+    """Add the optional object_name column if it doesn't exist yet."""
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("ALTER TABLE subscriptions "
+                    "ADD COLUMN IF NOT EXISTS object_name TEXT")
+        conn.commit()
+        cur.close()
+        release_connection(conn)
+    except Exception:
+        pass
+
 def load_subscriptions():
+    _ensure_object_column()
     df = query_df("""
-        SELECT email, observatory, threshold,
+        SELECT email, observatory, object_name, threshold,
                alert_type, active, created_at, last_alerted
         FROM subscriptions
         WHERE active = TRUE
@@ -13,22 +27,26 @@ def load_subscriptions():
     return df.to_dict("records")
 
 def add_subscription(email, observatory,
-                     threshold=80, alert_type="above"):
+                     threshold=80, alert_type="above",
+                     object_name=None):
     try:
+        _ensure_object_column()
         conn = get_connection()
         cur  = conn.cursor()
         cur.execute("""
             INSERT INTO subscriptions
-                (email, observatory, threshold,
+                (email, observatory, object_name, threshold,
                  alert_type, active, created_at)
-            VALUES (%s, %s, %s, %s, TRUE, NOW())
+            VALUES (%s, %s, %s, %s, %s, TRUE, NOW())
             ON CONFLICT (email, observatory)
             DO UPDATE SET
-                threshold  = EXCLUDED.threshold,
-                alert_type = EXCLUDED.alert_type,
-                active     = TRUE
+                object_name = EXCLUDED.object_name,
+                threshold   = EXCLUDED.threshold,
+                alert_type  = EXCLUDED.alert_type,
+                active      = TRUE
             RETURNING id
-        """, (email, observatory, threshold, alert_type))
+        """, (email, observatory, object_name or None,
+              threshold, alert_type))
         conn.commit()
         cur.close()
         release_connection(conn)

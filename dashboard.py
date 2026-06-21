@@ -3445,6 +3445,13 @@ if selected_page == "Alert Subscriptions":
             df["observatory"].tolist(),
             key="sub_obs"
         )
+        sub_object = st.selectbox(
+            "Specific object (optional)",
+            ["Any — weather only"] + list(OBJECT_MAGNITUDES.keys()),
+            key="sub_object",
+            help="If set, you're only alerted when this object is also "
+                 "well-placed (above 20° in dark sky) at the site."
+        )
         sub_threshold = st.slider(
             "Alert threshold (score)",
             min_value=40,
@@ -3472,16 +3479,21 @@ if selected_page == "Alert Subscriptions":
                     if "Above" in sub_type
                     else "below"
                 )
+                _sub_obj = (None if sub_object == "Any — weather only"
+                            else sub_object)
                 success, msg = add_subscription(
                     sub_email, sub_obs,
-                    sub_threshold, alert_type
+                    sub_threshold, alert_type,
+                    object_name=_sub_obj
                 )
                 if success:
+                    _obj_txt = (f" and **{_sub_obj}** is well-placed"
+                                if _sub_obj else "")
                     st.success(
                         f"✅ Subscribed! You will receive "
                         f"an email when {sub_obs} scores "
                         f"{'above' if alert_type == 'above' else 'below'} "
-                        f"{sub_threshold}/100."
+                        f"{sub_threshold}/100{_obj_txt}."
                     )
                 else:
                     st.warning(msg)
