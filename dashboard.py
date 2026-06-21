@@ -7499,11 +7499,27 @@ if _detail_sub == "Live detail":
         "is updated hourly; astronomical calculations are computed "
         "fresh when you select a site.")
 
-    selected = st.selectbox(
-        "Select an observatory",
-        df["observatory"].tolist(),
-        key="detail_obs"
-    )
+    _det_c1, _det_c2 = st.columns([2, 1])
+    with _det_c1:
+        selected = st.selectbox(
+            "Select an observatory",
+            df["observatory"].tolist(),
+            key="detail_obs"
+        )
+    with _det_c2:
+        _det_when_mode = st.radio(
+            "When", ["Tonight", "Pick date"],
+            horizontal=True, key="detail_when_mode",
+            label_visibility="collapsed")
+    if _det_when_mode == "Pick date":
+        _det_date = st.date_input("Date (UTC)",
+            value=utcnow().date(), key="detail_date")
+        import datetime as _dt
+        _det_when = _dt.datetime.combine(_det_date, _dt.time(23, 0))
+        st.caption("Observing window, Moon and altitudes are exact for "
+                   "this date. Weather uses the latest reading.")
+    else:
+        _det_when = utcnow().replace(tzinfo=None)
 
     row = df[df["observatory"] == selected].iloc[0]
 
@@ -7511,7 +7527,7 @@ if _detail_sub == "Live detail":
         f"Calculating live conditions for {selected}..."
     ):
         from live_calculator import calculate_live_conditions
-        live = calculate_live_conditions(row)
+        live = calculate_live_conditions(row, when=_det_when)
 
     # ── Google Maps / Earth links ──────────────────────────
     gmap_url   = (

@@ -5,12 +5,16 @@ from atmospheric import get_full_atmospheric_analysis
 from observing_window import get_all_windows
 from peak_time import get_peak_time
 
-def calculate_live_conditions(obs_row):
+def calculate_live_conditions(obs_row, when=None):
     """
     Calculate all live conditions for a single observatory.
     Takes a pandas row from the weather dataframe.
+    `when` (datetime, UTC) lets you compute for a chosen night;
+    defaults to now.
     Returns a complete dict of all live calculations.
     """
+    if when is None:
+        when = datetime.utcnow()
     lat     = float(obs_row["latitude"])
     lon     = float(obs_row["longitude"])
     alt     = float(obs_row["altitude_m"])
@@ -27,28 +31,10 @@ def calculate_live_conditions(obs_row):
         "latitude":         lat
     })
 
-    # ── Observing window ──────────────────────────────────
-    # ── Observing window ──────────────────────────────────
+    # ── Observing window (single site, for the chosen date) ──
     try:
-        import pandas as pd
-        single_df = pd.DataFrame([{
-            "observatory":       obs_row["observatory"],
-            "country":           obs_row.get(
-                "country", "Unknown"),
-            "latitude":          lat,
-            "longitude":         lon,
-            "altitude_m":        alt,
-            "mpc_code":          obs_row.get("mpc_code", ""),
-            "observation_score": w_score,
-            "cloud_cover_pct":   obs_row.get(
-                "cloud_cover_pct"),
-            "humidity_pct":      obs_row.get("humidity_pct"),
-            "wind_speed_ms":     obs_row.get("wind_speed_ms"),
-            "temperature_c":     obs_row.get("temperature_c"),
-        }])
-        from observing_window import get_all_windows
-        wins = get_all_windows(single_df)
-        win  = wins.iloc[0].to_dict() if not wins.empty else {}
+        from observing_window import get_observing_windows
+        win = get_observing_windows(lat, lon, w_score, date=when) or {}
     except Exception:
         win = {
             "dark_start":     "N/A",
@@ -62,7 +48,7 @@ def calculate_live_conditions(obs_row):
         }
     # ── Peak time ─────────────────────────────────────────
     try:
-        peak = get_peak_time(lat, lon, w_score)
+        peak = get_peak_time(lat, lon, w_score, date=when)
     except Exception:
         peak = None
 
@@ -70,8 +56,7 @@ def calculate_live_conditions(obs_row):
     observer          = ephem.Observer()
     observer.lat      = str(lat)
     observer.long     = str(lon)
-    observer.date     = datetime.utcnow().strftime(
-        "%Y/%m/%d %H:%M:%S")
+    observer.date     = when.strftime("%Y/%m/%d %H:%M:%S")
     observer.pressure = 0
 
     moon = ephem.Moon()
