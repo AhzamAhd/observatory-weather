@@ -1487,6 +1487,18 @@ if selected_page == "Live Weather Map":
     else:
         _df_map = df.copy()
 
+    # ── Quick-save a site to favourites (logged-in users) ──
+    if is_logged_in():
+        with st.expander("⭐ Save an observatory to your favourites"):
+            from user_saves import render_save_button_by_name
+            _qs_options = _df_map["observatory"].tolist()
+            _qs_pick = st.selectbox(
+                "Choose an observatory to save",
+                _qs_options,
+                key="map_quicksave_pick")
+            render_save_button_by_name(
+                st.session_state.user_id, _qs_pick, key_suffix="map")
+
     import folium
     from folium.plugins import MarkerCluster
     from streamlit_folium import st_folium
@@ -7701,6 +7713,16 @@ if _detail_sub == "Live detail":
         st.markdown(f"[🗺️ Open in Google Maps]({gmap_url})")
     with link3:
         st.markdown(f"[📍 Street View]({street_url})")
+
+    # ── Save to favourites (logged-in users only) ─────────
+    if is_logged_in():
+        _save_c, _ = st.columns([1, 2])
+        with _save_c:
+            from user_saves import render_save_button_by_name
+            render_save_button_by_name(
+                st.session_state.user_id, selected, key_suffix="detail")
+    else:
+        st.caption("🔐 Log in to save this observatory to your favourites.")
 
     # ── Header ────────────────────────────────────────────
     score = live["observation_score"]

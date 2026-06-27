@@ -6,6 +6,40 @@ import json
 def utcnow():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_observatory_id_by_name(name: str):
+    """Resolve an observatory name to its database id (cached). Returns int or None."""
+    row = db.fetch_one(
+        "SELECT id FROM observatories WHERE name = %s",
+        (name,)
+    )
+    return row["id"] if row else None
+
+def render_save_button_by_name(user_id: int, observatory_name: str, key_suffix: str = ""):
+    """
+    Render a save/unsave toggle for an observatory identified by name.
+    The dashboard's precomputed dataframe only carries the name, so we
+    resolve the id here. No-op (with a hint) if the name can't be matched.
+    """
+    obs_id = get_observatory_id_by_name(observatory_name)
+    if obs_id is None:
+        st.caption("⭐ Save unavailable for this site")
+        return
+
+    saved = is_observatory_saved(user_id, obs_id)
+    label = "★ Saved — click to remove" if saved else "⭐ Save Observatory"
+
+    if st.button(label, key=f"save_toggle_{obs_id}_{key_suffix}", use_container_width=True):
+        if saved:
+            result = remove_saved_observatory(user_id, obs_id)
+        else:
+            result = save_observatory(user_id, obs_id, name=observatory_name)
+        if result["success"]:
+            st.toast(result["message"])
+            st.rerun()
+        else:
+            st.error(result["message"])
+
 def save_observatory(user_id: int, observatory_id: int, name: str = None, notes: str = None) -> dict:
     """Save a favorite observatory."""
     try:
@@ -44,7 +78,8 @@ def get_saved_observatories(user_id: int) -> list:
     try:
         rows = db.fetch_all(
             """SELECT so.id, so.observatory_id, so.name, so.notes, so.saved_at,
-                      o.name as observatory_name, o.latitude, o.longitude, o.elevation
+                      o.name as observatory_name, o.latitude, o.longitude,
+                      o.altitude_m as elevation
                FROM saved_observatories so
                JOIN observatories o ON so.observatory_id = o.id
                WHERE so.user_id = %s
