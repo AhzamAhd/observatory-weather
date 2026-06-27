@@ -44,7 +44,7 @@ from educational_mode import (get_all_concepts,
 from sheets_subscriptions import (add_subscription,
                                    remove_subscription,
                                    load_subscriptions)
-from auth import is_logged_in, render_auth_sidebar, get_current_user
+from auth import is_logged_in, render_auth_sidebar, render_auth_main, get_current_user
 from user_saves import render_my_saves_page
 from telescope_efficiency import get_all_efficiency_scores
 from snr_calculator import (calculate_snr, get_snr_for_all_observatories,
@@ -1054,6 +1054,10 @@ for _cat, _pages in PAGE_CATEGORIES.items():
     for _p in _pages:
         _nav_options.append(_p)
         _nav_label[_p] = f"      {_p}"   # indent real pages
+
+# Always-visible login/register control in the MAIN area (the sidebar
+# collapses on mobile, hiding the sidebar auth box).
+render_auth_main()
 
 # Primary navigation lives in the MAIN area (top of page) so it's always
 # reachable regardless of sidebar state — the Streamlit sidebar collapses

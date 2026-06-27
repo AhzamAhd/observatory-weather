@@ -165,3 +165,61 @@ def render_auth_sidebar():
                         st.error(result["message"])
 
         return False
+
+
+def render_auth_main():
+    """
+    Render an always-visible auth control in the MAIN page area (not the
+    sidebar, which collapses on mobile). Uses a right-aligned popover button.
+    Returns True if user is logged in.
+    """
+    # Right-align the auth control so it sits unobtrusively at the top.
+    _spacer, _auth_col = st.columns([4, 1])
+
+    with _auth_col:
+        if is_logged_in():
+            with st.popover(f"👤 {st.session_state.username}", use_container_width=True):
+                st.markdown(f"**Logged in as** `{st.session_state.username}`")
+
+                if st.button("📋 My Saves", use_container_width=True, key="main_my_saves"):
+                    st.session_state.show_my_saves = True
+                    st.rerun()
+
+                if st.button("🚪 Logout", use_container_width=True, key="main_logout"):
+                    logout_user()
+                    st.rerun()
+            return True
+        else:
+            with st.popover("🔐 Login / Register", use_container_width=True):
+                tab_login, tab_register = st.tabs(["Login", "Register"])
+
+                with tab_login:
+                    username = st.text_input("Username", key="main_login_username")
+                    password = st.text_input("Password", type="password", key="main_login_password")
+
+                    if st.button("Login", use_container_width=True, key="main_login_btn"):
+                        result = login_user(username, password)
+                        if result["success"]:
+                            st.session_state.user_id = result["user_id"]
+                            st.session_state.username = result["username"]
+                            st.rerun()
+                        else:
+                            st.error(result["message"])
+
+                with tab_register:
+                    new_username = st.text_input("Username", key="main_reg_username")
+                    new_email = st.text_input("Email (optional)", key="main_reg_email")
+                    new_password = st.text_input("Password", type="password", key="main_reg_password")
+                    confirm_password = st.text_input("Confirm Password", type="password", key="main_reg_confirm")
+
+                    if st.button("Create Account", use_container_width=True, key="main_reg_btn"):
+                        if new_password != confirm_password:
+                            st.error("Passwords don't match")
+                        else:
+                            result = register_user(new_username, new_password, new_email if new_email else None)
+                            if result["success"]:
+                                st.success(result["message"])
+                                st.info("Now log in with your new account.")
+                            else:
+                                st.error(result["message"])
+            return False
