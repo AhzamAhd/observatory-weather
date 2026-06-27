@@ -1,0 +1,102 @@
+═══════════════════════════════════════════════════════════════════════════════
+  GOWC LOGIN SYSTEM — QUICK START
+═══════════════════════════════════════════════════════════════════════════════
+
+👤 USER LOGIN & SAVES SYSTEM ADDED TO GOWC
+
+New files:
+  • auth.py                    — Login/register logic + session management
+  • user_saves.py              — Save observatories & observation logs
+  • run_migrations.py           — Database setup script
+  • migrations/001_add_auth_tables.sql  — Creates users, saves, sessions tables
+
+Modified files:
+  • dashboard.py               — Integrated auth sidebar + My Saves page
+  • requirements.txt           — Added bcrypt for password hashing
+
+═══════════════════════════════════════════════════════════════════════════════
+
+SETUP (One-time):
+
+  1. Install dependencies
+     $ pip install -r requirements.txt
+
+  2. Create database tables
+     $ python run_migrations.py
+
+     This creates 3 tables in your Supabase PostgreSQL database:
+     - users              (username, password_hash, email)
+     - saved_observatories (user's favorite sites)
+     - observation_sessions (user's observation logs)
+
+  3. Run the dashboard
+     $ streamlit run dashboard.py
+
+═══════════════════════════════════════════════════════════════════════════════
+
+WHAT USERS CAN DO:
+
+  ✓ Register with username + password (6+ chars minimum)
+  ✓ Login / Logout
+  ✓ Save favorite observatories with optional notes
+  ✓ Log observation sessions (target, date, site, notes)
+  ✓ View all saves in "My Saves" page in sidebar
+  ✓ Delete saved items
+
+═══════════════════════════════════════════════════════════════════════════════
+
+TESTING:
+
+  1. Go to sidebar → Login / Register tabs
+  2. Create account: username "testuser", password "testpass123"
+  3. Login with same credentials
+  4. Click "📋 My Saves" in sidebar to see empty saves page
+  5. Try logging out and back in
+
+  ✓ Session persists across page navigations
+  ✓ Logout clears the session
+
+═══════════════════════════════════════════════════════════════════════════════
+
+NEXT STEPS (To fully integrate):
+
+  • Add "Save Observatory" button to:
+    - Live Weather Map (on marker click)
+    - Observatory Detail page
+    - Site Comparison results
+
+  • Add "Log Observation" button to start logging sessions
+
+  • Tie into existing Alert System to email saved sites' alerts to users
+
+  Example code to add save button:
+
+    if is_logged_in():
+        if st.button("⭐ Save Observatory"):
+            from user_saves import save_observatory
+            result = save_observatory(
+                st.session_state.user_id,
+                observatory_id,
+                name="Custom Name",
+                notes="My notes here"
+            )
+            if result["success"]:
+                st.success(result["message"])
+
+═══════════════════════════════════════════════════════════════════════════════
+
+SECURITY:
+
+  ✓ Passwords hashed with bcrypt (never stored plaintext)
+  ✓ SQL queries use parameterized statements (no SQL injection)
+  ✓ Session state per browser (Streamlit built-in)
+
+  Future enhancements:
+  - Password reset via email
+  - Two-factor authentication (2FA)
+  - OAuth login (Google, GitHub)
+  - Rate limiting on login attempts
+
+═══════════════════════════════════════════════════════════════════════════════
+
+See AUTH_SETUP.md for full documentation.

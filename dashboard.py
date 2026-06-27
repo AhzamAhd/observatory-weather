@@ -44,6 +44,8 @@ from educational_mode import (get_all_concepts,
 from sheets_subscriptions import (add_subscription,
                                    remove_subscription,
                                    load_subscriptions)
+from auth import is_logged_in, render_auth_sidebar, get_current_user
+from user_saves import render_my_saves_page
 from telescope_efficiency import get_all_efficiency_scores
 from snr_calculator import (calculate_snr, get_snr_for_all_observatories,
                               TELESCOPE_SPECS, OBJECT_MAGNITUDES,
@@ -367,6 +369,16 @@ if "theme" not in st.session_state:
     st.session_state.theme = "dark"
 
 _t = st.session_state.theme
+
+# ── Authentication ─────────────────────────────────────
+if "user_id" not in st.session_state:
+    st.session_state.user_id = None
+if "username" not in st.session_state:
+    st.session_state.username = None
+if "show_my_saves" not in st.session_state:
+    st.session_state.show_my_saves = False
+if "show_account_settings" not in st.session_state:
+    st.session_state.show_account_settings = False
 
 if _t == "dark":
     # Deep-space dark: cosmic void backgrounds, nebula cyan accent, star gold highlight
@@ -1075,6 +1087,9 @@ components.html(
     height=0,
 )
 
+# Authentication sidebar
+render_auth_sidebar()
+
 # Current weather summary in sidebar
 st.sidebar.markdown("---")
 st.sidebar.markdown("**Live conditions**")
@@ -1423,6 +1438,14 @@ proposal).
 
     st.markdown("---")
     st.caption(f"Data last updated: {LAST_UPDATED} · {len(df):,} observatories · {len(OBJECTS)} objects · Built by Ahzam Ahmed")
+
+
+# ═══════════════════════════════════════════════════════
+# MY SAVES — User saved observatories and sessions
+# ═══════════════════════════════════════════════════════
+if st.session_state.show_my_saves and is_logged_in():
+    render_my_saves_page(st.session_state.user_id)
+    st.session_state.show_my_saves = False
 
 
 # ═══════════════════════════════════════════════════════
