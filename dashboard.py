@@ -104,16 +104,14 @@ st.set_page_config(
 )
 import streamlit.components.v1 as components
 
-GA_MEASUREMENT_ID = "G-XXXXXXXXXX"  # ← paste your real ID here
-
 components.html(
-    f"""
-    <script async src="https://www.googletagmanager.com/gtag/js?id={GA_MEASUREMENT_ID}"></script>
+    """
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-79GRMPMPXC"></script>
     <script>
         window.dataLayer = window.dataLayer || [];
-        function gtag(){{dataLayer.push(arguments);}}
+        function gtag(){dataLayer.push(arguments);}
         gtag('js', new Date());
-        gtag('config', '{GA_MEASUREMENT_ID}');
+        gtag('config', 'G-79GRMPMPXC');
     </script>
     """,
     height=0,
@@ -1445,11 +1443,14 @@ proposal).
 
 
 # ═══════════════════════════════════════════════════════
-# MY SAVES — User saved observatories and sessions
+# MY SAVES — User saved observatories, searches and logs
 # ═══════════════════════════════════════════════════════
 if st.session_state.show_my_saves and is_logged_in():
-    render_my_saves_page(st.session_state.user_id)
+    render_my_saves_page(
+        st.session_state.user_id,
+        observatory_names=df["observatory"].tolist())
     st.session_state.show_my_saves = False
+    st.stop()
 
 
 # ═══════════════════════════════════════════════════════
@@ -1487,17 +1488,42 @@ if selected_page == "Live Weather Map":
     else:
         _df_map = df.copy()
 
-    # ── Quick-save a site to favourites (logged-in users) ──
+    # ── Quick-save a site + save-this-search (logged-in users) ──
     if is_logged_in():
-        with st.expander("⭐ Save an observatory to your favourites"):
-            from user_saves import render_save_button_by_name
-            _qs_options = _df_map["observatory"].tolist()
-            _qs_pick = st.selectbox(
-                "Choose an observatory to save",
-                _qs_options,
-                key="map_quicksave_pick")
-            render_save_button_by_name(
-                st.session_state.user_id, _qs_pick, key_suffix="map")
+        _mc1, _mc2 = st.columns(2)
+        with _mc1:
+            with st.expander("⭐ Save an observatory to your favourites"):
+                from user_saves import render_save_button_by_name
+                _qs_options = _df_map["observatory"].tolist()
+                _qs_pick = st.selectbox(
+                    "Choose an observatory to save",
+                    _qs_options,
+                    key="map_quicksave_pick")
+                render_save_button_by_name(
+                    st.session_state.user_id, _qs_pick, key_suffix="map")
+        with _mc2:
+            with st.expander("🔍 Save this search"):
+                from user_saves import save_search
+                st.caption(
+                    "Save the current search text and map style so you can "
+                    "re-run it from **My Saves**.")
+                _search_name = st.text_input(
+                    "Name this search",
+                    placeholder="e.g. Chilean sites",
+                    key="map_savesearch_name")
+                if st.button("Save search", key="map_savesearch_btn",
+                             use_container_width=True):
+                    r = save_search(
+                        st.session_state.user_id,
+                        _search_name,
+                        query_text=_obs_search or None,
+                        map_style=_map_style)
+                    if r["success"]:
+                        st.toast(r["message"])
+                    else:
+                        st.error(r["message"])
+    else:
+        st.caption("🔐 Log in to save observatories and searches.")
 
     import folium
     from folium.plugins import MarkerCluster
