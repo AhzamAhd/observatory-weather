@@ -104,15 +104,28 @@ st.set_page_config(
 )
 import streamlit.components.v1 as components
 
+# Google Analytics (GA4). components.html renders in a sandboxed iframe,
+# so gtag must be injected into the PARENT document head — otherwise it
+# only ever tracks the throwaway iframe and reports zero users. Mirrors
+# the parent-head injection used for the PWA/meta tags below.
 components.html(
     """
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-79GRMPMPXC"></script>
-    <script>
-        window.dataLayer = window.dataLayer || [];
-        function gtag(){dataLayer.push(arguments);}
-        gtag('js', new Date());
-        gtag('config', 'G-79GRMPMPXC');
-    </script>
+<script>
+(function() {
+  var doc = window.parent.document;
+  if (doc.getElementById('ga4-gtag')) return;
+  var s = doc.createElement('script');
+  s.id = 'ga4-gtag';
+  s.async = true;
+  s.src = 'https://www.googletagmanager.com/gtag/js?id=G-79GRMPMPXC';
+  doc.head.appendChild(s);
+  var w = window.parent;
+  w.dataLayer = w.dataLayer || [];
+  function gtag(){ w.dataLayer.push(arguments); }
+  gtag('js', new Date());
+  gtag('config', 'G-79GRMPMPXC');
+})();
+</script>
     """,
     height=0,
 )
@@ -377,6 +390,14 @@ if "show_my_saves" not in st.session_state:
     st.session_state.show_my_saves = False
 if "show_account_settings" not in st.session_state:
     st.session_state.show_account_settings = False
+
+# Self-owned visit tracking — records one row per session in page_visits,
+# independent of Google Analytics. Best-effort; never blocks the page.
+try:
+    from analytics import log_visit
+    log_visit(user_id=st.session_state.get("user_id"))
+except Exception:
+    pass
 
 if _t == "dark":
     # Deep-space dark: cosmic void backgrounds, nebula cyan accent, star gold highlight
@@ -1035,6 +1056,12 @@ PAGE_CATEGORIES = {
         "Feedback & Suggestions",
     ],
 }
+
+# The Site Analytics page is admin-only — added to the nav solely when
+# the owner account is logged in, so ordinary visitors never see it.
+ADMIN_USERNAME = "ahzamahd"
+if st.session_state.get("username") == ADMIN_USERNAME:
+    PAGE_CATEGORIES["More"].append("Site Analytics")
 
 # Single dropdown listing every page. Category headers are rendered as
 # formal, non-selectable section labels (uppercase, spaced, with a leading
@@ -6015,6 +6042,44 @@ if selected_page == "Feedback & Suggestions":
             st.caption("No feedback yet.")
         else:
             st.dataframe(_fb_df, hide_index=True, use_container_width=True)
+
+
+# ═══════════════════════════════════════════════════════
+# Site Analytics (admin-only) — self-owned visit counter
+# ═══════════════════════════════════════════════════════
+if selected_page == "Site Analytics":
+    if st.session_state.get("username") != ADMIN_USERNAME:
+        st.error("This page is not available.")
+    else:
+        page_header("📊", "Site Analytics",
+            "Self-owned visitor counts, recorded directly in the GOWC "
+            "database — independent of Google Analytics.")
+
+        from analytics import get_visit_stats, get_daily_visits
+        _stats = get_visit_stats()
+
+        if not _stats or not _stats.get("total_visits"):
+            st.info("No visits recorded yet. Counts begin from the first "
+                    "page load after this feature was deployed.")
+        else:
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Total visits", f"{int(_stats.get('total_visits', 0)):,}")
+            m2.metric("Unique sessions",
+                      f"{int(_stats.get('unique_sessions', 0)):,}")
+            m3.metric("Last 7 days", f"{int(_stats.get('visits_7d', 0)):,}")
+            m4.metric("Last 24 hours", f"{int(_stats.get('visits_24h', 0)):,}")
+
+            _first = _stats.get("first_visit")
+            if _first:
+                st.caption(f"Tracking since {_first:%Y-%m-%d %H:%M} UTC")
+
+            _daily = get_daily_visits(30)
+            if _daily:
+                _dv = pd.DataFrame(_daily)
+                _dv["day"] = pd.to_datetime(_dv["day"])
+                _dv = _dv.set_index("day")
+                st.subheader("Visits per day (last 30 days)")
+                st.bar_chart(_dv[["visits", "unique_sessions"]])
 
 
 # ═══════════════════════════════════════════════════════
