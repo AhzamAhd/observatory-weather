@@ -1116,10 +1116,18 @@ _picked = st.selectbox(
     key="nav_page",
 )
 
+# If a category header was selected, fall back to its first real page.
+if _picked in _nav_headers:
+    _cat_name = _nav_header_for.get(_picked, "Overview")
+    selected_page = PAGE_CATEGORIES.get(_cat_name, ["Home"])[0]
+else:
+    selected_page = _picked
+
 # ── Prominent, always-visible entry point to the Observing Assistant ──
 # A styled callout in the main area so visitors immediately see the chatbot,
-# regardless of sidebar state. The button flips a flag and reruns; the block
-# above then routes to the assistant page on the next run.
+# regardless of sidebar state. The button flips a flag and reruns; the pre-nav
+# block above then routes to the assistant page on the next run. Placed AFTER
+# selected_page is resolved so it can hide itself on the assistant page.
 if selected_page != "Observing Assistant":
     _ac1, _ac2 = st.columns([4, 1])
     with _ac1:
@@ -1136,13 +1144,6 @@ if selected_page != "Observing Assistant":
                      use_container_width=True, type="primary"):
             st.session_state["_goto_assistant"] = True
             st.rerun()
-
-# If a category header was selected, fall back to its first real page.
-if _picked in _nav_headers:
-    _cat_name = _nav_header_for.get(_picked, "Overview")
-    selected_page = PAGE_CATEGORIES.get(_cat_name, ["Home"])[0]
-else:
-    selected_page = _picked
 
 # Dynamic browser-tab title per page ("Live Weather Map · GOWC").
 _tab_title = ("GOWC · Observatory Weather"
