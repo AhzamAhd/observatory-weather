@@ -79,12 +79,19 @@ MODE_BLURB = {
 #   alert_level, comment, catalog (True for known/curated, False for a
 #   live alert).
 # ══════════════════════════════════════════════════════════════════
-def _xray_binary_source():
-    """Known NS-XRB catalogue enriched with any live MAXI outburst alerts."""
-    targets = list(NS_XRB_CATALOG)
+def _merge_catalog_with_maxi(catalog, extra_alert_keywords=None):
+    """Curated catalogue enriched with live MAXI outburst alerts.
+
+    A MAXI alert is attached to a catalogue target when the alert comment
+    names it (by name or alt_name). Alerts that match no catalogue target
+    are surfaced as their own uncatalogued targets *only* when their
+    comment matches `extra_alert_keywords` — this keeps, e.g., the BH-XRB
+    class from absorbing every unrelated NS alert. Pass None to surface
+    all unmatched alerts (the NS-XRB behaviour).
+    """
+    targets = [dict(t) for t in catalog]   # copy so the module-level catalogue
+                                           # is never mutated across reruns
     alerts = fetch_maxi_xrb_alerts()
-    # Merge live alerts: attach to a catalogue target when the MAXI comment
-    # names it, otherwise surface the alert as its own (uncatalogued) target.
     by_name = {t["name"].lower(): t for t in targets}
     for a in alerts:
         matched = None
@@ -98,9 +105,23 @@ def _xray_binary_source():
             matched["alert_level"] = a.get("alert_level")
             matched["updated"] = a.get("updated")
             matched["comment"] = a.get("comment")
-        else:
+        elif extra_alert_keywords is None or any(
+                k in cl for k in extra_alert_keywords):
             targets.append(a)
     return targets
+
+
+def _ns_xray_binary_source():
+    """NS-XRB catalogue + all live MAXI XRB alerts."""
+    return _merge_catalog_with_maxi(NS_XRB_CATALOG, extra_alert_keywords=None)
+
+
+def _bh_xray_binary_source():
+    """BH-XRB catalogue + only BH-flavoured uncatalogued MAXI alerts."""
+    return _merge_catalog_with_maxi(
+        BH_XRB_CATALOG,
+        extra_alert_keywords=("black hole", "black-hole", "bh ", "grs ",
+                              "gx 339", "cyg x-1", "v404"))
 
 
 TARGET_CLASSES = {
@@ -108,15 +129,20 @@ TARGET_CLASSES = {
     "Neutron-star X-ray binaries (LMXB/HMXB)": {
         "mode": MODE_PERSISTENT,
         "group": "Compact objects",
-        "source": _xray_binary_source,
+        "source": _ns_xray_binary_source,
         "description": (
             "Accreting neutron stars in binaries — Type-I bursts, outbursts "
             "and state transitions. Live outburst alerts from MAXI/RIKEN."
         ),
     },
     "Black-hole X-ray binaries": {
-        "mode": MODE_PERSISTENT, "group": "Compact objects", "source": None,
-        "description": "Accreting stellar black holes; hard/soft state cycles.",
+        "mode": MODE_PERSISTENT,
+        "group": "Compact objects",
+        "source": _bh_xray_binary_source,
+        "description": (
+            "Accreting stellar-mass black holes — hard/soft state cycles and "
+            "outbursts. Curated catalogue plus live BH-flavoured MAXI alerts."
+        ),
     },
     "Cataclysmic variables": {
         "mode": MODE_PERSISTENT, "group": "Compact objects", "source": None,
@@ -257,6 +283,44 @@ NS_XRB_CATALOG = [
     {"name": "SAX J1808.4-3658", "alt_name": "V4580 Sgr", "ra_deg": 272.115, "dec_deg": -36.979,
      "kind": "LMXB (AMXP)", "catalog": True,
      "comment": "First accreting millisecond X-ray pulsar discovered."},
+]
+
+
+# ══════════════════════════════════════════════════════════════════
+# Curated black-hole X-ray binary catalogue (J2000 decimal degrees).
+# Well-known dynamically-confirmed or strong-candidate BH binaries.
+# ══════════════════════════════════════════════════════════════════
+BH_XRB_CATALOG = [
+    {"name": "Cyg X-1", "alt_name": "V1357 Cyg", "ra_deg": 299.590, "dec_deg": 35.202,
+     "kind": "HMXB (persistent BH)", "catalog": True,
+     "comment": "First strong stellar black-hole candidate; ~21 M☉."},
+    {"name": "GRS 1915+105", "alt_name": "V1487 Aql", "ra_deg": 288.798, "dec_deg": 10.946,
+     "kind": "LMXB (microquasar)", "catalog": True,
+     "comment": "Superluminal jets; long-lived outburst."},
+    {"name": "GX 339-4", "alt_name": "V821 Ara", "ra_deg": 255.706, "dec_deg": -48.790,
+     "kind": "LMXB (transient BH)", "catalog": True,
+     "comment": "Recurrent transient; textbook hard/soft state cycles."},
+    {"name": "V404 Cyg", "alt_name": "GS 2023+338", "ra_deg": 306.016, "dec_deg": 33.867,
+     "kind": "LMXB (transient BH)", "catalog": True,
+     "comment": "Nearby (~2.4 kpc); dramatic 2015 outburst."},
+    {"name": "GRO J1655-40", "alt_name": "V1033 Sco", "ra_deg": 253.500, "dec_deg": -39.846,
+     "kind": "LMXB (microquasar)", "catalog": True,
+     "comment": "Superluminal jets; ~6.3 M☉ black hole."},
+    {"name": "MAXI J1820+070", "alt_name": "ASASSN-18ey", "ra_deg": 275.091, "dec_deg": 7.185,
+     "kind": "LMXB (transient BH)", "catalog": True,
+     "comment": "Bright 2018 outburst; well-studied reverberation."},
+    {"name": "GS 1354-64", "alt_name": "BW Cir", "ra_deg": 209.552, "dec_deg": -64.744,
+     "kind": "LMXB (transient BH)", "catalog": True,
+     "comment": "Recurrent transient black-hole binary."},
+    {"name": "4U 1543-47", "alt_name": "IL Lup", "ra_deg": 236.788, "dec_deg": -47.669,
+     "kind": "LMXB (transient BH)", "catalog": True,
+     "comment": "Low-inclination transient; fast-rise outbursts."},
+    {"name": "XTE J1550-564", "alt_name": "V381 Nor", "ra_deg": 237.744, "dec_deg": -56.476,
+     "kind": "LMXB (transient BH)", "catalog": True,
+     "comment": "Relativistic jets seen in 1998 outburst."},
+    {"name": "Cyg X-3", "alt_name": "V1521 Cyg", "ra_deg": 308.107, "dec_deg": 40.958,
+     "kind": "HMXB (jet source)", "catalog": True,
+     "comment": "Compact object debated; strong radio flares."},
 ]
 
 
