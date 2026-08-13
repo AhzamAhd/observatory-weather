@@ -968,6 +968,14 @@ def cached_showers():
         return pre.get("showers", []), pre.get("active", []), pre.get("upcoming", [])
     return get_all_showers_sorted(), get_active_showers(), get_upcoming_showers(30)
 
+# Transient targets = curated catalogue + a live MAXI outburst fetch.
+# 30-min TTL keeps outburst alerts fresh (fast-response matters here) while
+# avoiding a network hit on every rerun. Returns [] gracefully if MAXI is down.
+@st.cache_data(ttl=1800, show_spinner=False)
+def cached_transient_targets(class_name):
+    import transients as T
+    return T.get_targets(class_name)
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def cached_eclipse_events():
     pre = load_precomputed_raw("eclipse_events")
@@ -1045,6 +1053,7 @@ PAGE_CATEGORIES = {
         "Telescope Efficiency",
         "SNR Calculator",
         "Observatory Detail",
+        "Transient Follow-Up",
     ],
     "Sky Events": [
         "Sky Events",
@@ -6042,6 +6051,147 @@ if selected_page == "Feedback & Suggestions":
             st.caption("No feedback yet.")
         else:
             st.dataframe(_fb_df, hide_index=True, use_container_width=True)
+
+
+# ═══════════════════════════════════════════════════════
+# Transient & Target-Class Follow-Up
+# ═══════════════════════════════════════════════════════
+if selected_page == "Transient Follow-Up":
+    import transients as T
+
+    page_header("🛰️", "Transient & Target-Class Follow-Up",
+        "Pick a target class, see active targets and alerts, then layer "
+        "GOWC's observability on top — what's up tonight, at what airmass, "
+        "and which sites can catch it.")
+
+    # ── Class selector, grouped by science group ───────────
+    _groups = T.classes_by_group()
+    _flat = []                 # option value
+    _flat_label = {}           # value -> indented label
+    _flat_headers = set()
+    for _grp, _cls in _groups.items():
+        _h = f"__grp__{_grp}"
+        _flat.append(_h); _flat_headers.add(_h)
+        _flat_label[_h] = f"●  {_grp.upper()}"
+        for _c in _cls:
+            _flat.append(_c)
+            _live = "  🟢" if T.class_has_live_data(_c) else ""
+            _flat_label[_c] = f"      {_c}{_live}"
+
+    _default_cls = "Neutron-star X-ray binaries (LMXB/HMXB)"
+    _picked_cls = st.selectbox(
+        "Target class",
+        _flat,
+        index=_flat.index(_default_cls),
+        format_func=lambda v: _flat_label.get(v, v),
+        help="🟢 = live data available now. Others are coming soon.",
+    )
+    if _picked_cls in _flat_headers:
+        st.info("That's a section label — pick a class listed beneath it.")
+        st.stop()
+
+    _cfg = T.TARGET_CLASSES[_picked_cls]
+    _mode = _cfg["mode"]
+
+    # ── Mode + description context ─────────────────────────
+    c1, c2 = st.columns([1, 2])
+    with c1:
+        st.markdown(f"**Behaviour mode**\n\n`{T.MODE_LABEL[_mode]}`")
+    with c2:
+        st.caption(T.MODE_BLURB[_mode])
+    st.caption(_cfg["description"])
+    st.markdown("---")
+
+    # ── Coming-soon placeholder for classes without live data ──
+    if not T.class_has_live_data(_picked_cls):
+        st.info(
+            f"**{_picked_cls}** — coming soon.\n\n"
+            "The observability engine already works for any target class; "
+            "this class just needs an alert/target feed wired in. "
+            "**Neutron-star X-ray binaries** is fully live today — select it "
+            "to see the complete flow."
+        )
+    else:
+        _targets = cached_transient_targets(_picked_cls)
+        if not _targets:
+            st.warning("No targets available right now (the alert feed may be "
+                       "unreachable). Showing nothing rather than stale data.")
+        else:
+            _n_alerts = sum(1 for t in _targets if not t.get("catalog"))
+            _n_active = sum(1 for t in _targets if t.get("alert_level"))
+            mA, mB, mC = st.columns(3)
+            mA.metric("Targets tracked", len(_targets))
+            mB.metric("Live alerts (MAXI)", _n_alerts)
+            mC.metric("In active outburst", _n_active)
+            st.caption("Live X-ray-binary outburst alerts from the "
+                       "[MAXI/RIKEN nova monitor](http://maxi.riken.jp/alert/novae/). "
+                       "Known targets come from GOWC's curated catalogue.")
+
+            # Target table with an at-a-glance alert flag.
+            _tbl = pd.DataFrame([{
+                "Target": t["name"],
+                "Type": t.get("kind", ""),
+                "RA (deg)": round(t["ra_deg"], 3),
+                "Dec (deg)": round(t["dec_deg"], 3),
+                "Alert": t.get("alert_level") or "",
+                "Updated": t.get("updated") or "",
+                "Source": "Catalogue" if t.get("catalog") else "MAXI alert",
+            } for t in _targets])
+            st.dataframe(_tbl, hide_index=True, use_container_width=True)
+
+            st.markdown("### Observability")
+            _names = [t["name"] for t in _targets]
+            _sel_name = st.selectbox("Inspect a target", _names, key="tr_target")
+            _sel = next(t for t in _targets if t["name"] == _sel_name)
+
+            # Which sites can observe it right now.
+            _ranked = T.sites_that_can_observe(
+                _sel["ra_deg"], _sel["dec_deg"], df, dark_only=True)
+
+            oc1, oc2 = st.columns(2)
+            with oc1:
+                st.markdown(
+                    f"**{_sel['name']}**  \n"
+                    f"RA {_sel['ra_deg']:.3f}°, Dec {_sel['dec_deg']:.3f}°  \n"
+                    f"{_sel.get('comment', '')}")
+                if _sel.get("alert_level"):
+                    st.warning(f"⚠️ Active MAXI **{_sel['alert_level']}** — "
+                               f"updated {_sel.get('updated', 'recently')}")
+            with oc2:
+                if _ranked.empty:
+                    st.info("Not observable from any GOWC site in darkness "
+                            "right now. Check back as Earth rotates.")
+                else:
+                    st.metric("Sites able to observe now (in darkness)",
+                              len(_ranked))
+
+            if not _ranked.empty:
+                _show = _ranked.head(15).rename(columns={
+                    "observatory": "Observatory", "country": "Country",
+                    "altitude_deg": "Alt (°)", "airmass": "Airmass",
+                    "airmass_quality": "Airmass quality",
+                    "weather_score": "Weather", "combined_score": "Score",
+                })
+                st.dataframe(
+                    _show[["Observatory", "Country", "Alt (°)", "Airmass",
+                           "Airmass quality", "Weather", "Score"]],
+                    hide_index=True, use_container_width=True)
+
+                # Airmass curve tonight from the best site — reuse existing engine.
+                _best = _ranked.iloc[0]
+                _best_row = df[df["observatory"] == _best["observatory"]].iloc[0]
+                _curve = T.airmass_curve_radec(
+                    _sel["ra_deg"], _sel["dec_deg"],
+                    _best_row["latitude"], _best_row["longitude"],
+                    _best_row.get("altitude_m", 0) or 0)
+                if _curve:
+                    st.markdown(
+                        f"**Airmass tonight from {_best['observatory']}** "
+                        "(top-ranked site)")
+                    _cdf = pd.DataFrame(_curve)
+                    _cdf = _cdf[_cdf["airmass"].notna()]
+                    if not _cdf.empty:
+                        st.line_chart(_cdf.set_index("time")["airmass"])
 
 
 # ═══════════════════════════════════════════════════════
