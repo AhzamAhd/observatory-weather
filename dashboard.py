@@ -1054,6 +1054,7 @@ PAGE_CATEGORIES = {
         "SNR Calculator",
         "Observatory Detail",
         "Transient Follow-Up",
+        "Observing Assistant",
     ],
     "Sky Events": [
         "Sky Events",
@@ -1097,6 +1098,12 @@ render_auth_main()
 # reachable regardless of sidebar state — the Streamlit sidebar collapses
 # on mobile and its open-button can vanish. A mirror also sits in the
 # sidebar for desktop users who expect it there.
+# A "jump to assistant" request (from the sidebar/main chatbot button) is
+# honoured here, before the selectbox reads its default — the widget owns the
+# nav_page key, so we can't write it after the widget exists.
+if st.session_state.pop("_goto_assistant", False):
+    st.session_state["nav_page"] = "Observing Assistant"
+
 _nav_default = st.session_state.get("nav_page", "Home")
 if _nav_default not in _nav_options:
     _nav_default = "Home"
@@ -1108,6 +1115,27 @@ _picked = st.selectbox(
     format_func=lambda o: _nav_label.get(o, o),
     key="nav_page",
 )
+
+# ── Prominent, always-visible entry point to the Observing Assistant ──
+# A styled callout in the main area so visitors immediately see the chatbot,
+# regardless of sidebar state. The button flips a flag and reruns; the block
+# above then routes to the assistant page on the next run.
+if selected_page != "Observing Assistant":
+    _ac1, _ac2 = st.columns([4, 1])
+    with _ac1:
+        st.markdown(
+            f"<div style='background:linear-gradient(90deg,{ACCENT}22,transparent);"
+            f"border-left:3px solid {ACCENT};border-radius:8px;padding:10px 14px;"
+            f"margin:2px 0 6px;'>"
+            f"<span style='font-size:1.05rem;'>🔭 <strong>Observing Assistant</strong></span>"
+            f"<span style='color:{TEXT2};font-size:0.85rem;'> — ask in plain "
+            f"language where to observe any target tonight.</span></div>",
+            unsafe_allow_html=True)
+    with _ac2:
+        if st.button("🔭 Ask", key="goto_assistant_main",
+                     use_container_width=True, type="primary"):
+            st.session_state["_goto_assistant"] = True
+            st.rerun()
 
 # If a category header was selected, fall back to its first real page.
 if _picked in _nav_headers:
@@ -1127,6 +1155,14 @@ components.html(
 
 # Authentication sidebar
 render_auth_sidebar()
+
+# Prominent chatbot shortcut in the sidebar too (desktop users look here).
+st.sidebar.markdown("---")
+if st.sidebar.button("🔭 Observing Assistant", key="goto_assistant_sidebar",
+                     use_container_width=True):
+    st.session_state["_goto_assistant"] = True
+    st.rerun()
+st.sidebar.caption("Ask where to observe any target tonight.")
 
 # Current weather summary in sidebar
 st.sidebar.markdown("---")
@@ -6056,6 +6092,65 @@ if selected_page == "Feedback & Suggestions":
 # ═══════════════════════════════════════════════════════
 # Transient & Target-Class Follow-Up
 # ═══════════════════════════════════════════════════════
+if selected_page == "Observing Assistant":
+    page_header("🔭", "Intelligent Observing Assistant",
+        "Ask in plain language where or when to observe a target. A "
+        "rules-based engine computes every real number — the assistant only "
+        "phrases the result. It never invents values.")
+
+    st.caption(
+        "The engine ranks 8 well-placed observatories on target altitude, "
+        "airmass, astronomical night, and GOWC live conditions. Times are UTC.")
+
+    _known = ", ".join(sorted(t.title() for t in __import__("observing_engine").KNOWN_TARGETS))
+    st.caption(f"Targets I can resolve by name: {_known}. Or give RA/Dec in degrees.")
+
+    _q = st.text_input(
+        "Your question",
+        placeholder="Where should I observe Sco X-1 tonight?",
+        key="assistant_q")
+    _ask = st.button("Ask", type="primary", key="assistant_ask")
+
+    if _ask and _q.strip():
+        # user_key: logged-in id, else a per-session hash (rate-limit scope)
+        if is_logged_in():
+            _ukey = f"user:{st.session_state.user_id}"
+        else:
+            import hashlib
+            _sid = st.session_state.get("_visit_session_id", "anon")
+            _ukey = "anon:" + hashlib.sha256(_sid.encode()).hexdigest()[:16]
+
+        # live weather rows for the engine's nearest-coordinate match
+        _wx_rows = df[["latitude", "longitude", "observation_score"]].to_dict("records") \
+            if not df.empty else []
+
+        try:
+            from observing_assistant import ask, AssistantError
+            with st.spinner("Computing observability…"):
+                _res = ask(_q.strip(), _ukey, weather_rows=_wx_rows)
+            st.markdown(_res["answer"])
+
+            _er = _res.get("engine_result")
+            if _er and _er.get("ranked"):
+                with st.expander("Engine detail (every number the assistant used)"):
+                    _rows = [{
+                        "Site": r["site"],
+                        "Observable": "✓" if r["observable"] else "—",
+                        "Airmass": r["min_airmass"],
+                        "Best (UTC)": r["best_time_utc"],
+                        "Window (h)": r["window_hours"],
+                        "Weather": r["weather_score"],
+                        "Live wx": "✓" if r["weather_known"] else "default",
+                        "Score": r["score"],
+                    } for r in _er["ranked"]]
+                    st.dataframe(pd.DataFrame(_rows), hide_index=True,
+                                 use_container_width=True)
+        except AssistantError as _e:
+            st.warning(str(_e))
+        except Exception as _e:
+            st.error(f"The assistant hit an unexpected error: {type(_e).__name__}")
+
+
 if selected_page == "Transient Follow-Up":
     import transients as T
 
