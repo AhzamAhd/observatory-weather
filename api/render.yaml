@@ -1,0 +1,32 @@
+# Render deployment config for the GOWC FastAPI backend.
+# This is a SEPARATE service from the Streamlit app — deploying it does not
+# touch the Streamlit service. In the Render dashboard, create a new Web
+# Service, point it at this repo, and set the Root Directory to "api".
+#
+# You can also let Render read this file (Blueprint), but the simplest path
+# is to configure a Web Service manually with the settings below.
+services:
+  - type: web
+    name: gowc-api
+    runtime: python
+    rootDir: api
+    # Install the API deps AND the repo-root deps (the API imports the shared
+    # modules, which need ephem/requests/psycopg2/pandas/etc).
+    buildCommand: pip install -r requirements.txt -r ../requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      # Set these in the Render dashboard (do NOT commit real values):
+      - key: SUPABASE_DB_HOST
+        sync: false
+      - key: SUPABASE_DB_USER
+        sync: false
+      - key: SUPABASE_DB_PASSWORD
+        sync: false
+      - key: SUPABASE_DB_PORT
+        sync: false
+      - key: ADS_API_TOKEN
+        sync: false
+      # Comma-separated allowed browser origins — set to your Vercel URL,
+      # e.g. https://gowc.vercel.app
+      - key: GOWC_CORS_ORIGINS
+        sync: false
