@@ -1061,6 +1061,7 @@ PAGE_CATEGORIES = {
     ],
     "More": [
         "Learn Astronomy",
+        "Literature Search",
         "Alert Subscriptions",
         "Observatory Reviews",
         "Feedback & Suggestions",
@@ -6093,6 +6094,75 @@ if selected_page == "Feedback & Suggestions":
 # ═══════════════════════════════════════════════════════
 # Transient & Target-Class Follow-Up
 # ═══════════════════════════════════════════════════════
+if selected_page == "Literature Search":
+    page_header("📚", "Literature Search",
+        "Search real astronomy papers via NASA ADS. Every result comes "
+        "straight from the ADS database — titles, authors and links are the "
+        "genuine records, never AI-generated.")
+
+    _lc1, _lc2, _lc3 = st.columns([3, 1, 1])
+    with _lc1:
+        _topic = st.text_input(
+            "Topic or keywords",
+            placeholder="e.g. X-ray binaries, neutron star mergers",
+            key="lit_topic")
+    with _lc2:
+        from ads_search import SORT_OPTIONS
+        _sort = st.selectbox("Sort by", list(SORT_OPTIONS.keys()), key="lit_sort")
+    with _lc3:
+        _rows = st.selectbox("Results", [10, 15, 20], index=1, key="lit_rows")
+
+    with st.expander("Filters (optional)"):
+        _yc1, _yc2 = st.columns(2)
+        _ymin = _yc1.number_input("Year from", min_value=1900, max_value=2100,
+                                  value=None, step=1, key="lit_ymin",
+                                  placeholder="any")
+        _ymax = _yc2.number_input("Year to", min_value=1900, max_value=2100,
+                                  value=None, step=1, key="lit_ymax",
+                                  placeholder="any")
+
+    _go = st.button("🔍 Search", type="primary", key="lit_search")
+
+    if _go and _topic.strip():
+        from ads_search import search_papers, ADSError
+        try:
+            with st.spinner("Searching NASA ADS…"):
+                _papers = search_papers(
+                    _topic.strip(), rows=_rows, sort=_sort,
+                    year_min=int(_ymin) if _ymin else None,
+                    year_max=int(_ymax) if _ymax else None)
+        except ADSError as _e:
+            st.warning(str(_e))
+            _papers = None
+
+        if _papers is not None:
+            if not _papers:
+                st.info(f"No papers found for \"{_topic.strip()}\". Try broader "
+                        "or different keywords.")
+            else:
+                st.caption(f"{len(_papers)} papers from NASA ADS "
+                           f"(sorted by {_sort.lower()}).")
+                for p in _papers:
+                    _meta = " · ".join(str(x) for x in [
+                        p["authors"], p["year"], p["pub"]] if x)
+                    _cite = (f"  ·  {p['citations']} citations"
+                             if p.get("citations") else "")
+                    if p.get("link"):
+                        _title_md = f"**[{p['title']}]({p['link']})**"
+                        _link_tag = f" [{p['link_type']}]"
+                    else:
+                        _title_md = f"**{p['title']}**"
+                        _link_tag = ""
+                    st.markdown(
+                        f"{_title_md}{_link_tag}  \n"
+                        f"<span style='color:{TEXT2};font-size:0.85rem;'>"
+                        f"{_meta}{_cite}</span>",
+                        unsafe_allow_html=True)
+                    st.markdown("")  # spacing
+                st.caption("Links prefer the DOI, then arXiv, then the ADS "
+                           "abstract page. Data: NASA Astrophysics Data System.")
+
+
 if selected_page == "Observing Assistant":
     page_header("🔭", "Intelligent Observing Assistant",
         "Ask where to observe a target, or how GOWC works. Observing answers "
