@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/components/auth-provider";
 
 const NAV = [
   { href: "/", label: "Dashboard" },
@@ -18,6 +19,7 @@ const NAV = [
 
 export function SiteHeader() {
   const pathname = usePathname();
+  const { user, configured, signOut } = useAuth();
   return (
     <header className="sticky top-0 z-10 border-b border-border/60 bg-card/70 backdrop-blur">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-4 gap-y-2 px-6 py-4">
@@ -30,28 +32,54 @@ export function SiteHeader() {
             </p>
           </div>
         </Link>
-        <nav className="flex flex-wrap items-center gap-1 text-sm">
-          {NAV.map((item) => {
-            const active =
-              item.href === "/"
-                ? pathname === "/"
-                : pathname.startsWith(item.href);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "rounded-md px-2.5 py-1.5 transition-colors",
-                  active
-                    ? "bg-accent text-accent-foreground font-medium"
-                    : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
-                )}
-              >
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
+        <div className="flex flex-wrap items-center gap-3">
+          <nav className="flex flex-wrap items-center gap-1 text-sm">
+            {NAV.map((item) => {
+              const active =
+                item.href === "/"
+                  ? pathname === "/"
+                  : pathname.startsWith(item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    "rounded-md px-2.5 py-1.5 transition-colors",
+                    active
+                      ? "bg-accent text-accent-foreground font-medium"
+                      : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
+                  )}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
+          {configured && (
+            <div className="flex items-center gap-2 text-sm">
+              {user ? (
+                <>
+                  <span className="hidden max-w-[140px] truncate text-muted-foreground sm:inline">
+                    {user.email}
+                  </span>
+                  <button
+                    onClick={() => signOut()}
+                    className="rounded-md border border-border px-2.5 py-1.5 hover:bg-accent"
+                  >
+                    Sign out
+                  </button>
+                </>
+              ) : (
+                <Link
+                  href="/login"
+                  className="rounded-md bg-primary px-3 py-1.5 font-medium text-primary-foreground hover:opacity-90"
+                >
+                  Log in
+                </Link>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </header>
   );
