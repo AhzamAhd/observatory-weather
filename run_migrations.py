@@ -1,24 +1,31 @@
 #!/usr/bin/env python3
 """
-Run database migrations to set up auth tables.
-Run this once before deploying the app.
+Run database migrations to set up auth/saves tables.
+Runs every migrations/*.sql file in filename order. Each file uses
+CREATE TABLE IF NOT EXISTS, so re-running is safe.
 """
 import db
 import sys
+import glob
+import os
 
 def run_migrations():
-    """Execute all migration SQL files."""
+    """Execute all migration SQL files in order."""
     try:
-        # Read and execute the migration SQL
-        with open("migrations/001_add_auth_tables.sql", "r") as f:
-            sql = f.read()
+        files = sorted(glob.glob("migrations/*.sql"))
+        if not files:
+            print("No migration files found in migrations/")
+            return False
 
-        # Split by semicolon and execute each statement
-        statements = [s.strip() for s in sql.split(';') if s.strip()]
+        for path in files:
+            print(f"\n--- {os.path.basename(path)} ---")
+            with open(path, "r") as f:
+                sql = f.read()
 
-        for stmt in statements:
-            print(f"Executing: {stmt[:60]}...")
-            db.execute(stmt)
+            statements = [s.strip() for s in sql.split(';') if s.strip()]
+            for stmt in statements:
+                print(f"Executing: {stmt[:60]}...")
+                db.execute(stmt)
 
         print("\nMigrations completed successfully!")
         return True
