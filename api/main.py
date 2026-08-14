@@ -24,7 +24,7 @@ if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
 from routers import (observatories, observe, transients_api, literature,  # noqa: E402
-                     objects, sky_events)
+                     objects, sky_events, telescopes)
 
 app = FastAPI(
     title="GOWC API",
@@ -58,3 +58,4 @@ app.include_router(transients_api.router)
 app.include_router(literature.router)
 app.include_router(objects.router)
 app.include_router(sky_events.router)
+app.include_router(telescopes.router)
