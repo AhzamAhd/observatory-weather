@@ -1,0 +1,13 @@
+# GOWC API backend dependencies. Separate from the root requirements.txt
+# (which is the Streamlit app). The backend also imports GOWC's existing
+# modules from the repo root, which bring their own deps (ephem, requests,
+# psycopg2, pandas, python-dotenv) — install the root requirements too, or
+# these plus the modules' needs.
+fastapi==0.136.1
+uvicorn==0.46.0
+# Shared with the root app (listed so the api/ folder is self-describing):
+psycopg2-binary==2.9.12
+pandas==3.0.2
+ephem==4.2.1
+requests==2.33.1
+python-dotenv==1.2.2
