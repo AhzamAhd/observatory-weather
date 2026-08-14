@@ -117,27 +117,57 @@ _EXTRACT_SCHEMA = {
                            "specified one (resolve 'tonight'/'today' to the "
                            "provided current date). Null if unspecified.",
         },
-        "is_observing_question": {
-            "type": "boolean",
-            "description": "True if the user is asking where/whether/when to "
-                           "observe a target. False for anything else "
-                           "(greetings, unrelated questions).",
+        "intent": {
+            "type": "string",
+            "enum": ["observing", "help", "other"],
+            "description": "Classify the question. 'observing' = where/whether/"
+                           "when to observe a specific target or target class. "
+                           "'help' = a question about how the GOWC website "
+                           "works, what a metric means, what a page does, or "
+                           "how a score is calculated. 'other' = greeting or "
+                           "unrelated.",
         },
     },
-    "required": ["target_name", "ra_deg", "dec_deg", "date_iso",
-                 "is_observing_question"],
+    "required": ["target_name", "ra_deg", "dec_deg", "date_iso", "intent"],
     "additionalProperties": False,
 }
 
 _EXTRACT_SYSTEM = (
-    "You extract structured parameters from an astronomer's question about "
-    "where to observe a target. You do NOT answer the question, compute "
-    "anything, or invent coordinates. Only fill ra_deg/dec_deg if the user "
-    "literally provided numeric coordinates. Otherwise put the target's name "
-    "in target_name and leave coordinates null — a separate engine resolves "
-    "names to coordinates. Resolve relative dates against the current date "
-    "given in the user message."
+    "You route an astronomer's question and, if it's about observing a target, "
+    "extract parameters. You do NOT answer, compute, or invent coordinates.\n"
+    "- Set intent: 'observing' (asking where/when/whether to observe a target "
+    "or class), 'help' (how GOWC works, what a metric/page means, how a score "
+    "is computed), or 'other' (greeting/unrelated).\n"
+    "- For observing questions, put the target's name verbatim in target_name "
+    "and leave coordinates null unless the user literally gave numeric RA/Dec. "
+    "A separate engine resolves names.\n"
+    "Resolve relative dates against the current date given in the message."
 )
+
+
+# ── Help lane: answer GOWC how-does-it-work questions, grounded in facts ──
+_HELP_SYSTEM = (
+    "You are GOWC's help assistant. Answer the user's question about the GOWC "
+    "website using ONLY the facts provided below. Rules:\n"
+    "- Do NOT invent features, pages, metrics, or numbers that are not in the "
+    "facts. If the facts don't cover it, say you're not sure and suggest the "
+    "Feedback & Suggestions page.\n"
+    "- Be concise and friendly: a short, direct answer, not an essay.\n"
+    "- If the user seems to want observing advice for a specific target, tell "
+    "them to ask e.g. \"Where should I observe Sco X-1 tonight?\"\n\n"
+    "GOWC FACTS:\n" + __import__("gowc_facts").GOWC_FACTS
+)
+
+
+def _answer_help(client, question):
+    resp = client.messages.create(
+        model=MODEL,
+        max_tokens=700,
+        system=_HELP_SYSTEM,
+        messages=[{"role": "user", "content": question}],
+    )
+    text = "".join(b.text for b in resp.content if b.type == "text")
+    return text, resp.usage
 
 
 def _extract_params(client, question, current_date_iso):
@@ -230,12 +260,26 @@ def ask(question: str, user_key: str, weather_rows=None, api_key=None):
     except anthropic.APIError as e:
         raise AssistantError(f"Sorry, I couldn't process that right now ({type(e).__name__}).")
 
-    if not params.get("is_observing_question"):
+    intent = params.get("intent", "observing")
+
+    # Help lane — GOWC how-does-it-work questions, grounded in gowc_facts.
+    if intent == "help":
+        try:
+            answer, u2 = _answer_help(client, question)
+            total_in += u2.input_tokens; total_out += u2.output_tokens
+            total_cost += _usage_cost(u2)
+        except anthropic.APIError as e:
+            raise AssistantError(f"Sorry, I couldn't answer that right now ({type(e).__name__}).")
+        _record_request(user_key, total_in, total_out, total_cost)
+        return {"answer": answer, "engine_result": None, "params": params}
+
+    # Greetings / unrelated.
+    if intent == "other":
         _record_request(user_key, total_in, total_out, total_cost)
         return {
-            "answer": ("I'm the observing assistant — ask me where or when to "
-                       "observe a target, e.g. \"Where should I observe Sco X-1 "
-                       "tonight?\""),
+            "answer": ("I can help you observe targets (\"Where should I observe "
+                       "Sco X-1 tonight?\") and answer questions about how GOWC "
+                       "works (scores, metrics, pages). What would you like?"),
             "engine_result": None,
             "params": params,
         }

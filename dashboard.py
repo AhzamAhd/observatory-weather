@@ -6095,19 +6095,19 @@ if selected_page == "Feedback & Suggestions":
 # ═══════════════════════════════════════════════════════
 if selected_page == "Observing Assistant":
     page_header("🔭", "Intelligent Observing Assistant",
-        "Ask in plain language where or when to observe a target. A "
-        "rules-based engine computes every real number — the assistant only "
-        "phrases the result. It never invents values.")
+        "Ask where to observe a target, or how GOWC works. Observing answers "
+        "come from a rules-based engine that computes every real number — the "
+        "assistant only phrases them and never invents values.")
 
     st.caption(
-        "The engine ranks 8 well-placed observatories on target altitude, "
-        "airmass, astronomical night, and GOWC live conditions. Times are UTC.")
-
+        "**Observing:** ask by target name (Sco X-1, Cyg X-1, GX 339-4, Vela "
+        "X-1, Crab Nebula, M31…), by class (\"neutron stars\", \"black holes\", "
+        "\"X-ray binaries\"), or give RA/Dec in degrees — typos and variants "
+        "are matched. The engine ranks 8 well-placed observatories on altitude, "
+        "airmass, astronomical night, and GOWC live conditions (times UTC).")
     st.caption(
-        "Ask by target name (Sco X-1, Cyg X-1, GX 339-4, Vela X-1, Crab "
-        "Nebula, M31…), by class (\"neutron stars\", \"black holes\", "
-        "\"X-ray binaries\" — I'll list the catalog targets), or give RA/Dec "
-        "in decimal degrees. Typos and name variants are matched.")
+        "**About GOWC:** ask how the observing score is calculated, what "
+        "airmass or seeing means, what a page does, and other site questions.")
 
     _q = st.text_input(
         "Your question",
