@@ -288,3 +288,39 @@ export async function fetchEclipses(): Promise<EclipsesResponse> {
   if (!res.ok) throw new Error(`API error ${res.status}`);
   return res.json();
 }
+
+// ── Telescope efficiency ──────────────────────────────────────────
+
+export interface EfficiencySite {
+  observatory: string;
+  country: string | null;
+  altitude_m: number | null;
+  latitude: number;
+  longitude: number;
+  efficiency_score: number;
+  grade: string;
+  usable_hours: number | null;
+  seeing_arcsec: number | null;
+  pwv_mm: number | null;
+  weather_score: number | null;
+}
+export interface EfficiencyResponse {
+  telescope_type: string;
+  count: number;
+  sites: EfficiencySite[];
+}
+
+export async function fetchTelescopeEfficiency(
+  telescopeType: string,
+  limit = 100
+): Promise<EfficiencyResponse> {
+  const qs = new URLSearchParams({
+    telescope_type: telescopeType,
+    limit: String(limit),
+  });
+  const res = await fetch(`${API_BASE}/telescopes/efficiency?${qs.toString()}`, {
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`API error ${res.status}`);
+  return res.json();
+}
