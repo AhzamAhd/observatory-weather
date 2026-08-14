@@ -28,7 +28,7 @@ from datetime import datetime, timezone
 import anthropic
 
 import db
-from observing_engine import rank_sites, resolve_target, KNOWN_TARGETS
+from observing_engine import rank_sites, resolve_target, find_targets, KNOWN_TARGETS
 
 
 MODEL = "claude-opus-5"
@@ -247,12 +247,31 @@ def ask(question: str, user_key: str, weather_rows=None, api_key=None):
         name = params.get("target_name")
         coords = resolve_target(name) if name else None
         if coords is None:
+            # No single confident match. Offer candidates from the catalog —
+            # a class ("neutron stars") lists that class; a partial/typo name
+            # lists near matches. Still deterministic; the user picks one.
+            candidates = find_targets(name) if name else []
             _record_request(user_key, total_in, total_out, total_cost)
-            known = ", ".join(sorted(t.title() for t in KNOWN_TARGETS))
+            if candidates:
+                lines = "\n".join(
+                    f"- **{c['display']}**"
+                    + (f" ({c['kind']})" if c.get("kind") else "")
+                    for c in candidates)
+                return {
+                    "answer": (
+                        f"\"{name}\" matches several targets I can rank — "
+                        f"ask about one of these by name:\n\n{lines}\n\n"
+                        "…or give me RA/Dec in decimal degrees."),
+                    "engine_result": None,
+                    "params": params,
+                    "candidates": candidates,
+                }
             return {
                 "answer": (f"I don't have coordinates for "
-                           f"\"{name or 'that target'}\". I can look up: {known}. "
-                           "Or give me RA/Dec in decimal degrees."),
+                           f"\"{name or 'that target'}\". Try a specific X-ray "
+                           "binary (e.g. Sco X-1, Cyg X-1, GX 339-4), a class "
+                           "like \"neutron stars\" or \"black holes\", or give "
+                           "me RA/Dec in decimal degrees."),
                 "engine_result": None,
                 "params": params,
             }

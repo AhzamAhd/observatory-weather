@@ -260,6 +260,9 @@ def rank_sites(ra_deg, dec_deg, date_utc=None, weather_rows=None):
 # A small built-in catalog so the assistant can resolve common target names to
 # coordinates WITHOUT the LLM inventing them. The LLM may only pick a name from
 # here or pass through explicit user-supplied RA/Dec.
+# Built-in fallbacks — a few famous objects that aren't in the transient
+# catalog. The full resolvable set is these PLUS every transient-catalog target
+# (X-ray binaries, live MAXI alerts, etc.), merged in build_target_index().
 KNOWN_TARGETS = {
     "vela x-1":   (135.5286, -40.5547),
     "sco x-1":    (244.9793, -15.6403),
@@ -272,10 +275,143 @@ KNOWN_TARGETS = {
     "sn 1987a":   (83.8667, -69.2694),
 }
 
+# Class keywords → the transient-catalog classes they map to. Lets the
+# assistant answer "where can I observe neutron stars / X-ray binaries?" by
+# listing the matching catalog targets instead of refusing.
+_CLASS_KEYWORDS = {
+    "neutron star": ["Neutron-star X-ray binaries (LMXB/HMXB)"],
+    "ns-xrb": ["Neutron-star X-ray binaries (LMXB/HMXB)"],
+    "lmxb": ["Neutron-star X-ray binaries (LMXB/HMXB)"],
+    "hmxb": ["Neutron-star X-ray binaries (LMXB/HMXB)"],
+    "black hole": ["Black-hole X-ray binaries"],
+    "black-hole": ["Black-hole X-ray binaries"],
+    "bh-xrb": ["Black-hole X-ray binaries"],
+    "x-ray binary": ["Neutron-star X-ray binaries (LMXB/HMXB)",
+                     "Black-hole X-ray binaries"],
+    "x-ray binaries": ["Neutron-star X-ray binaries (LMXB/HMXB)",
+                       "Black-hole X-ray binaries"],
+    "xrb": ["Neutron-star X-ray binaries (LMXB/HMXB)",
+            "Black-hole X-ray binaries"],
+}
+
+
+def _norm(s):
+    """Normalise a target name for matching: lowercase, collapse spaces, drop
+    punctuation that varies between how people write catalog names."""
+    import re
+    return re.sub(r"[^a-z0-9]+", " ", s.lower()).strip()
+
+
+_TARGET_INDEX = None   # {normalised_name: {"display", "ra_deg", "dec_deg", "kind"}}
+
+
+def build_target_index():
+    """Merge the built-in targets with every transient-catalog target that has
+    coordinates. Cached after first build. Import failure of transients is
+    tolerated (the assistant still works with the built-ins)."""
+    global _TARGET_INDEX
+    if _TARGET_INDEX is not None:
+        return _TARGET_INDEX
+
+    idx = {}
+    for name, (ra, dec) in KNOWN_TARGETS.items():
+        idx[_norm(name)] = {"display": name.title(), "ra_deg": ra,
+                            "dec_deg": dec, "kind": None}
+
+    try:
+        import transients as T
+        for cls in ("Neutron-star X-ray binaries (LMXB/HMXB)",
+                    "Black-hole X-ray binaries"):
+            for t in T.get_targets(cls):
+                if t.get("ra_deg") is None or t.get("dec_deg") is None:
+                    continue
+                key = _norm(t["name"])
+                if key and key not in idx:
+                    idx[key] = {"display": t["name"], "ra_deg": t["ra_deg"],
+                                "dec_deg": t["dec_deg"], "kind": t.get("kind")}
+                # also index the alt_name if present
+                alt = t.get("alt_name")
+                if alt and _norm(alt) not in idx:
+                    idx[_norm(alt)] = {"display": t["name"], "ra_deg": t["ra_deg"],
+                                       "dec_deg": t["dec_deg"], "kind": t.get("kind")}
+    except Exception:
+        pass
+
+    _TARGET_INDEX = idx
+    return idx
+
 
 def resolve_target(name):
-    """Return (ra_deg, dec_deg) for a known target name, or None."""
-    return KNOWN_TARGETS.get(name.strip().lower())
+    """Return (ra_deg, dec_deg) for a target name, or None.
+
+    Matching order: exact normalised, then close fuzzy match (difflib). Only
+    returns a single confident hit — for ambiguous/class queries use
+    find_targets() instead.
+    """
+    if not name:
+        return None
+    idx = build_target_index()
+    key = _norm(name)
+    if key in idx:
+        e = idx[key]
+        return (e["ra_deg"], e["dec_deg"])
+    # fuzzy: accept a single high-confidence match
+    import difflib
+    hits = difflib.get_close_matches(key, list(idx.keys()), n=1, cutoff=0.82)
+    if hits:
+        e = idx[hits[0]]
+        return (e["ra_deg"], e["dec_deg"])
+    return None
+
+
+def find_targets(query, limit=8):
+    """Return a list of candidate targets for an ambiguous or class query.
+
+    Each item: {"display", "ra_deg", "dec_deg", "kind"}. Handles:
+      - a class keyword ("neutron stars", "x-ray binaries") -> list that class
+      - a partial/typo name -> fuzzy + substring matches
+    Empty list if nothing plausible. LLM-free.
+    """
+    idx = build_target_index()
+    qn = _norm(query)
+
+    # 1) class keyword? (normalise the keyword the same way as the query)
+    for kw, classes in _CLASS_KEYWORDS.items():
+        if _norm(kw) in qn:
+            out = []
+            try:
+                import transients as T
+                for cls in classes:
+                    for t in T.get_targets(cls):
+                        if t.get("ra_deg") is not None:
+                            out.append({"display": t["name"], "ra_deg": t["ra_deg"],
+                                        "dec_deg": t["dec_deg"], "kind": t.get("kind")})
+            except Exception:
+                pass
+            # dedup by display name, keep order
+            seen = set(); uniq = []
+            for o in out:
+                if o["display"] not in seen:
+                    seen.add(o["display"]); uniq.append(o)
+            return uniq[:limit]
+
+    # 2) substring + fuzzy name matches. Dedup by DISPLAY name (alt_name keys
+    #    point at the same object) so the same target isn't listed twice.
+    import difflib
+    subs = [k for k in idx if qn and qn in k]
+    fuzzy = difflib.get_close_matches(qn, list(idx.keys()), n=limit * 2, cutoff=0.6)
+    out = []
+    seen_display = set()
+    for k in subs + fuzzy:
+        d = idx[k]["display"]
+        if d in seen_display:
+            continue
+        seen_display.add(d)
+        out.append({"display": d, "ra_deg": idx[k]["ra_deg"],
+                    "dec_deg": idx[k]["dec_deg"], "kind": idx[k]["kind"]})
+        if len(out) >= limit:
+            break
+    return out
 
 
 if __name__ == "__main__":

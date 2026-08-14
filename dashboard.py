@@ -6103,8 +6103,11 @@ if selected_page == "Observing Assistant":
         "The engine ranks 8 well-placed observatories on target altitude, "
         "airmass, astronomical night, and GOWC live conditions. Times are UTC.")
 
-    _known = ", ".join(sorted(t.title() for t in __import__("observing_engine").KNOWN_TARGETS))
-    st.caption(f"Targets I can resolve by name: {_known}. Or give RA/Dec in degrees.")
+    st.caption(
+        "Ask by target name (Sco X-1, Cyg X-1, GX 339-4, Vela X-1, Crab "
+        "Nebula, M31…), by class (\"neutron stars\", \"black holes\", "
+        "\"X-ray binaries\" — I'll list the catalog targets), or give RA/Dec "
+        "in decimal degrees. Typos and name variants are matched.")
 
     _q = st.text_input(
         "Your question",
