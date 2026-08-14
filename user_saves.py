@@ -99,6 +99,74 @@ def is_observatory_saved(user_id: int, observatory_id: int) -> bool:
     )
     return result is not None
 
+def update_observatory_notes(user_id: int, saved_id: int, notes: str) -> dict:
+    """Update the notes on a saved observatory (ownership-checked)."""
+    try:
+        row = db.fetch_one(
+            "SELECT user_id FROM saved_observatories WHERE id = %s",
+            (saved_id,)
+        )
+        if not row or row["user_id"] != user_id:
+            return {"success": False, "message": "Unauthorized"}
+
+        db.execute(
+            "UPDATE saved_observatories SET notes = %s WHERE id = %s",
+            (notes, saved_id)
+        )
+        return {"success": True, "message": "Notes updated"}
+    except Exception as e:
+        return {"success": False, "message": f"Error: {str(e)}"}
+
+# ── Saved searches ────────────────────────────────────────────────
+
+def save_search(user_id: int, name: str, query_text: str = None,
+                min_score: int = None, condition: str = None,
+                map_style: str = None) -> dict:
+    """Save a named Live Map search/filter."""
+    name = (name or "").strip()
+    if not name:
+        return {"success": False, "message": "Give the search a name"}
+    try:
+        db.execute(
+            """INSERT INTO saved_searches
+               (user_id, name, query_text, min_score, condition, map_style, created_at)
+               VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+            (user_id, name, query_text or None, min_score, condition,
+             map_style, utcnow())
+        )
+        return {"success": True, "message": "Search saved!"}
+    except Exception as e:
+        return {"success": False, "message": f"Error: {str(e)}"}
+
+def get_saved_searches(user_id: int) -> list:
+    """Get all saved searches for a user."""
+    try:
+        return db.fetch_all(
+            """SELECT id, name, query_text, min_score, condition, map_style, created_at
+               FROM saved_searches
+               WHERE user_id = %s
+               ORDER BY created_at DESC""",
+            (user_id,)
+        )
+    except Exception as e:
+        st.error(f"Error loading searches: {str(e)}")
+        return []
+
+def delete_saved_search(user_id: int, search_id: int) -> dict:
+    """Delete a saved search (ownership-checked)."""
+    try:
+        row = db.fetch_one(
+            "SELECT user_id FROM saved_searches WHERE id = %s",
+            (search_id,)
+        )
+        if not row or row["user_id"] != user_id:
+            return {"success": False, "message": "Unauthorized"}
+
+        db.execute("DELETE FROM saved_searches WHERE id = %s", (search_id,))
+        return {"success": True, "message": "Search deleted"}
+    except Exception as e:
+        return {"success": False, "message": f"Error: {str(e)}"}
+
 def save_observation_session(user_id: int, title: str, target: str,
                              observatory_id: int, notes: str,
                              data: dict = None) -> dict:
@@ -150,58 +218,150 @@ def delete_observation_session(user_id: int, session_id: int) -> dict:
     except Exception as e:
         return {"success": False, "message": f"Error: {str(e)}"}
 
-def render_my_saves_page(user_id: int):
-    """Render the My Saves page."""
-    st.markdown("# 📋 My Saved Observatories & Sessions")
+def render_my_saves_page(user_id: int, observatory_names: list = None):
+    """
+    Render the My Saves page.
 
-    tab1, tab2 = st.tabs(["Favorite Sites", "Observation Logs"])
+    observatory_names: optional list of all observatory names (from the
+    dashboard df) used to populate the observation-log site picker.
+    """
+    st.markdown("# 📋 My Saves")
 
-    with tab1:
+    tab_sites, tab_searches, tab_logs = st.tabs(
+        ["⭐ Favorite Sites", "🔍 Saved Searches", "📝 Observation Logs"])
+
+    # ── Favorite sites ────────────────────────────────────
+    with tab_sites:
         st.markdown("### Your Favorite Observatories")
 
         saved_obs = get_saved_observatories(user_id)
 
         if not saved_obs:
-            st.info("No saved observatories yet. Add one from the Live Weather Map!")
+            st.info("No saved observatories yet. Add one from the Live Weather "
+                    "Map or an Observatory Detail page.")
         else:
             for obs in saved_obs:
                 with st.container(border=True):
-                    col1, col2, col3 = st.columns([3, 1, 1])
-
+                    col1, col2 = st.columns([4, 1])
                     with col1:
                         st.markdown(f"**{obs['observatory_name']}**")
-                        st.caption(f"📍 {obs['latitude']:.2f}°, {obs['longitude']:.2f}° · {obs['elevation']:.0f}m")
-                        if obs['notes']:
-                            st.markdown(f"*{obs['notes']}*")
-
+                        st.caption(
+                            f"📍 {obs['latitude']:.2f}°, {obs['longitude']:.2f}° "
+                            f"· {obs['elevation']:.0f}m")
                     with col2:
-                        pass
-
-                    with col3:
-                        if st.button("❌", key=f"remove_{obs['id']}", help="Remove"):
+                        if st.button("❌ Remove", key=f"remove_{obs['id']}",
+                                     use_container_width=True):
                             remove_saved_observatory(user_id, obs['observatory_id'])
                             st.rerun()
 
-    with tab2:
+                    with st.expander("📝 Notes"):
+                        _notes = st.text_area(
+                            "Your notes for this site",
+                            value=obs['notes'] or "",
+                            key=f"notes_{obs['id']}",
+                            label_visibility="collapsed")
+                        if st.button("Save notes", key=f"savenotes_{obs['id']}"):
+                            r = update_observatory_notes(user_id, obs['id'], _notes)
+                            if r["success"]:
+                                st.toast(r["message"])
+                                st.rerun()
+                            else:
+                                st.error(r["message"])
+
+                    if st.button("🔬 View live detail",
+                                 key=f"viewdetail_{obs['id']}"):
+                        # Jump to the Observatory Detail page for this site.
+                        st.session_state["nav_page"] = "Observatory Detail"
+                        st.session_state["detail_obs"] = obs['observatory_name']
+                        st.session_state["detail_sub"] = "Live detail"
+                        st.rerun()
+
+    # ── Saved searches ────────────────────────────────────
+    with tab_searches:
+        st.markdown("### Your Saved Searches")
+
+        searches = get_saved_searches(user_id)
+
+        if not searches:
+            st.info("No saved searches yet. Build a filter on the Live Weather "
+                    "Map and click **Save this search**.")
+        else:
+            for s in searches:
+                with st.container(border=True):
+                    col1, col2, col3 = st.columns([3, 1, 1])
+                    with col1:
+                        st.markdown(f"**{s['name']}**")
+                        _bits = []
+                        if s['query_text']:
+                            _bits.append(f"search: “{s['query_text']}”")
+                        if s['map_style']:
+                            _bits.append(f"{s['map_style']} map")
+                        st.caption(" · ".join(_bits) if _bits else "All sites")
+                    with col2:
+                        if st.button("▶ Run", key=f"runsearch_{s['id']}",
+                                     use_container_width=True):
+                            # Push filter values into the Live Map widgets.
+                            st.session_state["nav_page"] = "Live Weather Map"
+                            st.session_state["map_obs_search"] = s['query_text'] or ""
+                            if s['map_style']:
+                                st.session_state["main_map_style"] = s['map_style']
+                            st.rerun()
+                    with col3:
+                        if st.button("❌", key=f"delsearch_{s['id']}",
+                                     use_container_width=True):
+                            delete_saved_search(user_id, s['id'])
+                            st.rerun()
+
+    # ── Observation logs ──────────────────────────────────
+    with tab_logs:
         st.markdown("### Your Observation Logs")
+
+        with st.expander("➕ New observation log", expanded=False):
+            _title = st.text_input("Title", key="newlog_title",
+                                    placeholder="e.g. M31 imaging run")
+            _target = st.text_input("Target", key="newlog_target",
+                                    placeholder="e.g. Andromeda Galaxy")
+            _names = observatory_names or []
+            _site = st.selectbox("Observatory", _names,
+                                 key="newlog_site") if _names else None
+            _notes = st.text_area("Notes", key="newlog_notes",
+                                  placeholder="Conditions, equipment, results…")
+            if st.button("Save log", key="newlog_save"):
+                if not _title:
+                    st.error("Give the log a title")
+                elif not _site:
+                    st.error("Pick an observatory")
+                else:
+                    _oid = get_observatory_id_by_name(_site)
+                    if _oid is None:
+                        st.error("Could not match that observatory")
+                    else:
+                        r = save_observation_session(
+                            user_id, _title, _target, _oid, _notes)
+                        if r["success"]:
+                            st.toast(r["message"])
+                            st.rerun()
+                        else:
+                            st.error(r["message"])
 
         sessions = get_observation_sessions(user_id)
 
         if not sessions:
-            st.info("No observation logs yet. Create one to track your sessions!")
+            st.info("No observation logs yet. Use the form above to add one.")
         else:
             for session in sessions:
                 with st.container(border=True):
                     col1, col2 = st.columns([4, 1])
-
                     with col1:
                         st.markdown(f"**{session['title']}**")
-                        st.caption(f"🎯 Target: {session['target']} at {session['observatory_name']}")
+                        st.caption(
+                            f"🎯 Target: {session['target'] or '—'} "
+                            f"at {session['observatory_name']}")
                         st.caption(f"📅 {session['created_at']}")
                         if session['notes']:
                             st.markdown(f"*{session['notes']}*")
-
                     with col2:
-                        if st.button("🗑️", key=f"delete_{session['id']}", help="Delete"):
+                        if st.button("🗑️", key=f"delete_{session['id']}",
+                                     help="Delete", use_container_width=True):
                             delete_observation_session(user_id, session['id'])
                             st.rerun()
