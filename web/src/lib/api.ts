@@ -242,3 +242,49 @@ export async function fetchObjectVisibility(
   if (!res.ok) throw new Error(`API error ${res.status}`);
   return res.json();
 }
+
+// ── Sky events ────────────────────────────────────────────────────
+
+export interface MeteorShower {
+  name: string;
+  peak_date?: string;
+  active_start?: string;
+  active_end?: string;
+  zhr?: number;
+  speed_km_s?: number;
+  parent?: string;
+  description?: string;
+}
+export interface MeteorShowersResponse {
+  active: MeteorShower[];
+  upcoming: MeteorShower[];
+}
+
+export interface EclipseEvent {
+  date: string;
+  type: string;
+  subtype?: string;
+  magnitude?: number;
+  max_eclipse?: string | null;
+  [k: string]: unknown;
+}
+export interface EclipsesResponse {
+  count: number;
+  events: EclipseEvent[];
+}
+
+export async function fetchMeteorShowers(): Promise<MeteorShowersResponse> {
+  const res = await fetch(`${API_BASE}/sky-events/meteor-showers`, {
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`API error ${res.status}`);
+  return res.json();
+}
+
+export async function fetchEclipses(): Promise<EclipsesResponse> {
+  const res = await fetch(`${API_BASE}/sky-events/eclipses`, {
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`API error ${res.status}`);
+  return res.json();
+}

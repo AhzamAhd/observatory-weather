@@ -9,6 +9,7 @@ const NAV = [
   { href: "/assistant", label: "Assistant" },
   { href: "/objects", label: "Objects" },
   { href: "/transients", label: "Transients" },
+  { href: "/sky-events", label: "Sky Events" },
   { href: "/literature", label: "Literature" },
 ];
 
@@ -16,7 +17,7 @@ export function SiteHeader() {
   const pathname = usePathname();
   return (
     <header className="sticky top-0 z-10 border-b border-border/60 bg-card/70 backdrop-blur">
-      <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-4">
+      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-4 gap-y-2 px-6 py-4">
         <Link href="/" className="flex items-center gap-3">
           <span className="text-2xl">🔭</span>
           <div>
@@ -26,7 +27,7 @@ export function SiteHeader() {
             </p>
           </div>
         </Link>
-        <nav className="flex items-center gap-1 text-sm">
+        <nav className="flex flex-wrap items-center gap-1 text-sm">
           {NAV.map((item) => {
             const active =
               item.href === "/"
