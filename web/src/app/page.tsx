@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   fetchObservatories,
   type Observatory,
@@ -150,7 +151,8 @@ export default function Dashboard() {
               <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-6 text-center text-sm text-destructive">
                 Couldn&apos;t reach the GOWC API ({error}).
                 <div className="mt-1 text-xs text-muted-foreground">
-                  Is the backend running? <code>cd api &amp;&amp; uvicorn main:app --port 8000</code>
+                  The service may be waking from sleep — this can take ~30s on
+                  the first request. Please retry in a moment.
                 </div>
               </div>
             )}
@@ -171,7 +173,12 @@ export default function Dashboard() {
                     {filtered.slice(0, 100).map((o) => (
                       <TableRow key={o.id}>
                         <TableCell className="font-medium">
-                          {o.observatory.replace(/^\d+\s+/, "")}
+                          <Link
+                            href={`/observatory/${o.id}`}
+                            className="hover:text-primary hover:underline"
+                          >
+                            {o.observatory.replace(/^\d+\s+/, "")}
+                          </Link>
                         </TableCell>
                         <TableCell className="text-muted-foreground">
                           {o.country ?? "—"}
