@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   fetchObservatories,
   type Observatory,
@@ -100,9 +101,17 @@ export default function Dashboard() {
               </p>
             </div>
           </div>
-          <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary ring-1 ring-inset ring-primary/20">
-            Live conditions
-          </span>
+          <nav className="flex items-center gap-4 text-sm">
+            <Link
+              href="/assistant"
+              className="text-muted-foreground hover:text-foreground"
+            >
+              Observing Assistant
+            </Link>
+            <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary ring-1 ring-inset ring-primary/20">
+              Live conditions
+            </span>
+          </nav>
         </div>
       </header>
 
