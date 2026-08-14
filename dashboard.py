@@ -6100,11 +6100,12 @@ if selected_page == "Observing Assistant":
         "assistant only phrases them and never invents values.")
 
     st.caption(
-        "**Observing:** ask by target name (Sco X-1, Cyg X-1, GX 339-4, Vela "
-        "X-1, Crab Nebula, M31…), by class (\"neutron stars\", \"black holes\", "
-        "\"X-ray binaries\"), or give RA/Dec in degrees — typos and variants "
-        "are matched. The engine ranks 8 well-placed observatories on altitude, "
-        "airmass, astronomical night, and GOWC live conditions (times UTC).")
+        "**Observing:** ask about X-ray binaries (Sco X-1, Cyg X-1…), the "
+        "Moon and planets, or a class (\"neutron stars\", \"black holes\") and "
+        "I'll rank observatories directly. For galaxies, nebulae and named "
+        "stars (Andromeda, Betelgeuse, Orion Nebula…) I'll point you to the "
+        "right GOWC page. Typos and name variants are matched; RA/Dec in "
+        "degrees also works.")
     st.caption(
         "**About GOWC:** ask how the observing score is calculated, what "
         "airmass or seeing means, what a page does, and other site questions.")
