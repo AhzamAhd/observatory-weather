@@ -24,6 +24,23 @@ export interface ObservatoriesResponse {
   observatories: Observatory[];
 }
 
+// Full detail for one observatory (adds fields the list omits).
+export interface ObservatoryDetail extends Observatory {
+  mpc_code: string | null;
+  precipitation_mm: number | null;
+  surface_pressure: number | null;
+  jet_stream_ms: number | null;
+  condition: string;
+}
+
+export async function fetchObservatory(id: number): Promise<ObservatoryDetail> {
+  const res = await fetch(`${API_BASE}/observatories/${id}`, {
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`API error ${res.status}`);
+  return res.json();
+}
+
 export async function fetchObservatories(
   params: { limit?: number; minScore?: number } = {}
 ): Promise<ObservatoriesResponse> {
