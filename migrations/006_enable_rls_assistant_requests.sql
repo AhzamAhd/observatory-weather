@@ -1,0 +1,13 @@
+-- Enable Row Level Security on assistant_requests.
+--
+-- Like the other app tables (see 004_enable_rls), Supabase auto-exposes this
+-- table through its PostgREST API. Without RLS, anyone with the project URL +
+-- anon key could read the assistant usage log (session keys, timestamps, cost)
+-- directly over HTTP — flagged CRITICAL by the Supabase linter. This table was
+-- added after 004 (migration 005) and missed that lockdown.
+--
+-- The app connects as the `postgres` role, which has BYPASSRLS, so enabling
+-- RLS with no policy leaves the app unaffected while the anon/authenticated
+-- API roles get zero rows — the intended state (this data is only ever reached
+-- through the app's backend, never the public API).
+ALTER TABLE public.assistant_requests ENABLE ROW LEVEL SECURITY;
