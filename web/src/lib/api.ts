@@ -93,3 +93,82 @@ export async function rankSites(target: string): Promise<RankResponse> {
   }
   return res.json();
 }
+
+// ── Transients ────────────────────────────────────────────────────
+
+export interface TransientClass {
+  name: string;
+  live: boolean;
+}
+export interface TransientClassesResponse {
+  groups: Record<string, TransientClass[]>;
+}
+
+export interface TransientTarget {
+  name: string;
+  alt_name?: string | null;
+  ra_deg: number | null;
+  dec_deg: number | null;
+  kind?: string | null;
+  catalog?: boolean;
+  comment?: string | null;
+  alert_level?: string | null;
+  updated?: string | null;
+}
+export interface TransientTargetsResponse {
+  target_class: string;
+  targets: TransientTarget[];
+}
+
+export async function fetchTransientClasses(): Promise<TransientClassesResponse> {
+  const res = await fetch(`${API_BASE}/transients/classes`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`API error ${res.status}`);
+  return res.json();
+}
+
+export async function fetchTransientTargets(
+  targetClass: string
+): Promise<TransientTargetsResponse> {
+  const qs = new URLSearchParams({ target_class: targetClass });
+  const res = await fetch(`${API_BASE}/transients/targets?${qs.toString()}`, {
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`API error ${res.status}`);
+  return res.json();
+}
+
+// ── Literature (NASA ADS) ─────────────────────────────────────────
+
+export interface Paper {
+  title: string;
+  authors: string;
+  year: string | null;
+  pub: string | null;
+  citations: number;
+  link: string | null;
+  link_type: string | null;
+  bibcode: string | null;
+}
+export interface LiteratureResponse {
+  query: string;
+  count: number;
+  papers: Paper[];
+}
+
+export async function searchLiterature(params: {
+  q: string;
+  sort?: string;
+  rows?: number;
+}): Promise<LiteratureResponse> {
+  const qs = new URLSearchParams({ q: params.q });
+  if (params.sort) qs.set("sort", params.sort);
+  if (params.rows) qs.set("rows", String(params.rows));
+  const res = await fetch(`${API_BASE}/literature/search?${qs.toString()}`, {
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.detail ?? `API error ${res.status}`);
+  }
+  return res.json();
+}

@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import {
   fetchObservatories,
   type Observatory,
 } from "@/lib/api";
+import { SiteHeader } from "@/components/site-header";
 import { ScoreBadge } from "@/components/score-badge";
 import { Input } from "@/components/ui/input";
 import {
@@ -87,33 +87,7 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      {/* Header */}
-      <header className="border-b border-border/60 bg-card/40 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
-          <div className="flex items-center gap-3">
-            <span className="text-2xl">🔭</span>
-            <div>
-              <h1 className="text-lg font-semibold leading-tight">
-                GOWC
-              </h1>
-              <p className="text-xs text-muted-foreground">
-                Global Observatory Weather Tracker
-              </p>
-            </div>
-          </div>
-          <nav className="flex items-center gap-4 text-sm">
-            <Link
-              href="/assistant"
-              className="text-muted-foreground hover:text-foreground"
-            >
-              Observing Assistant
-            </Link>
-            <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary ring-1 ring-inset ring-primary/20">
-              Live conditions
-            </span>
-          </nav>
-        </div>
-      </header>
+      <SiteHeader />
 
       <main className="mx-auto max-w-6xl px-6 py-8">
         <div className="mb-6">
