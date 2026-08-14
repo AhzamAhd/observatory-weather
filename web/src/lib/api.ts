@@ -189,3 +189,56 @@ export async function searchLiterature(params: {
   }
   return res.json();
 }
+
+// ── Object visibility ─────────────────────────────────────────────
+
+export interface CatalogObject {
+  name: string;
+  type: string;
+}
+export interface CatalogResponse {
+  count: number;
+  objects: CatalogObject[];
+}
+
+export interface VisibilitySite {
+  observatory: string;
+  country: string | null;
+  altitude_deg: number | null;
+  direction?: string | null;
+  visibility_quality?: string | null;
+  airmass: number | null;
+  hours_visible?: number | null;
+  weather_score?: number | null;
+  combined_score?: number | null;
+}
+export interface VisibilityResponse {
+  object: string;
+  count?: number;
+  sites: VisibilitySite[];
+  message?: string;
+}
+
+export async function fetchObjectCatalog(
+  q?: string
+): Promise<CatalogResponse> {
+  const qs = new URLSearchParams();
+  if (q) qs.set("q", q);
+  qs.set("limit", "400");
+  const res = await fetch(`${API_BASE}/objects/catalog?${qs.toString()}`, {
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`API error ${res.status}`);
+  return res.json();
+}
+
+export async function fetchObjectVisibility(
+  objectName: string
+): Promise<VisibilityResponse> {
+  const qs = new URLSearchParams({ object_name: objectName });
+  const res = await fetch(`${API_BASE}/objects/visibility?${qs.toString()}`, {
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`API error ${res.status}`);
+  return res.json();
+}
