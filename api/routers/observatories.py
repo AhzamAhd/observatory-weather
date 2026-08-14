@@ -4,11 +4,30 @@ The headline observation_score here is GOWC's GENUINE multiplicative
 observing-quality index (the same one the Streamlit app shows), not a raw
 cloud-only proxy. Both apps must agree, so this reuses atmospheric.py exactly
 as dashboard.py does."""
+import math
+
 from fastapi import APIRouter, HTTPException, Query
 
 import db
 from atmospheric import (calculate_seeing, calculate_jet_stream_impact,
                         observing_quality_score, observing_condition)
+
+
+def _clean(row: dict) -> dict:
+    """Replace NaN/Inf floats with None so the row is valid JSON.
+
+    Some observatories have missing weather fields (e.g. jet_stream_ms) that
+    come back as NaN from the DB/pandas; NaN is not valid JSON and makes the
+    response serializer 500. Also stringify the timestamp."""
+    out = {}
+    for k, v in row.items():
+        if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+            out[k] = None
+        else:
+            out[k] = v
+    if out.get("fetch_datetime") is not None:
+        out["fetch_datetime"] = str(out["fetch_datetime"])
+    return out
 
 router = APIRouter(prefix="/observatories", tags=["observatories"])
 
@@ -60,10 +79,7 @@ def list_observatories(
     df = df.sort_values("observation_score", ascending=False)
     if min_score is not None:
         df = df[df["observation_score"] >= min_score]
-    rows = df.head(limit).to_dict("records")
-    for r in rows:
-        if r.get("fetch_datetime") is not None:
-            r["fetch_datetime"] = str(r["fetch_datetime"])
+    rows = [_clean(r) for r in df.head(limit).to_dict("records")]
     return {"count": len(rows), "observatories": rows}
 
 
@@ -91,6 +107,4 @@ def get_observatory(observatory_id: int):
         raise HTTPException(404, "Observatory not found")
     row["observation_score"] = _real_score(row)
     row["condition"] = observing_condition(row["observation_score"])
-    if row.get("fetch_datetime") is not None:
-        row["fetch_datetime"] = str(row["fetch_datetime"])
-    return row
+    return _clean(row)
