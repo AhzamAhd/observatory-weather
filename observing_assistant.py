@@ -28,7 +28,8 @@ from datetime import datetime, timezone
 import anthropic
 
 import db
-from observing_engine import rank_sites, resolve_target, find_targets, KNOWN_TARGETS
+from observing_engine import (rank_sites, resolve_target, find_targets,
+                              resolve_solar_system, KNOWN_TARGETS)
 
 
 MODEL = "claude-opus-5"
@@ -287,16 +288,20 @@ def ask(question: str, user_key: str, weather_rows=None, api_key=None):
     # Resolve coordinates: explicit RA/Dec, else known-target name. NEVER guess.
     ra = params.get("ra_deg")
     dec = params.get("dec_deg")
+    body_cls = None
     if ra is None or dec is None:
         name = params.get("target_name")
-        coords = resolve_target(name) if name else None
-        if coords is None:
-            # No single confident match. Offer candidates from the catalog —
-            # a class ("neutron stars") lists that class; a partial/typo name
-            # lists near matches. Still deterministic; the user picks one.
+        # Moon / planets are moving bodies — the engine computes them live.
+        body_cls = resolve_solar_system(name) if name else None
+        coords = None if body_cls else (resolve_target(name) if name else None)
+        if coords is None and body_cls is None:
+            # The engine can directly rank X-ray-binary targets (it has their
+            # coords). For anything else, act as a concierge: consult the GOWC
+            # object directory and DIRECT the user to the GOWC page that already
+            # handles that object. Never fabricate coordinates.
             candidates = find_targets(name) if name else []
-            _record_request(user_key, total_in, total_out, total_cost)
             if candidates:
+                _record_request(user_key, total_in, total_out, total_cost)
                 lines = "\n".join(
                     f"- **{c['display']}**"
                     + (f" ({c['kind']})" if c.get("kind") else "")
@@ -310,16 +315,47 @@ def ask(question: str, user_key: str, weather_rows=None, api_key=None):
                     "params": params,
                     "candidates": candidates,
                 }
+
+            # Concierge: is this object already in GOWC somewhere?
+            from gowc_directory import lookup as _dir_lookup
+            hits = _dir_lookup(name) if name else []
+            _record_request(user_key, total_in, total_out, total_cost)
+            if hits:
+                best = hits[0]
+                if best["page"] == "Object Visibility":
+                    return {
+                        "answer": (
+                            f"**{best['display']}** is in GOWC. Head to the "
+                            f"**Object Visibility** page and search for it there "
+                            "— it shows whether the object is up tonight, its "
+                            "airmass through the night, and the best "
+                            "observatories to catch it."),
+                        "engine_result": None,
+                        "params": params,
+                        "directory_hit": best,
+                    }
+                return {
+                    "answer": (
+                        f"**{best['display']}** is tracked on the **Transient "
+                        f"Follow-Up** page (active X-ray-binary targets and "
+                        "outburst alerts). You can also ask me to rank sites for "
+                        "it directly by name."),
+                    "engine_result": None,
+                    "params": params,
+                    "directory_hit": best,
+                }
+
             return {
-                "answer": (f"I don't have coordinates for "
-                           f"\"{name or 'that target'}\". Try a specific X-ray "
-                           "binary (e.g. Sco X-1, Cyg X-1, GX 339-4), a class "
-                           "like \"neutron stars\" or \"black holes\", or give "
-                           "me RA/Dec in decimal degrees."),
+                "answer": (f"I couldn't find \"{name or 'that target'}\" in "
+                           "GOWC. For deep-sky objects, planets and named stars, "
+                           "try the **Object Visibility** page; for X-ray "
+                           "binaries, **Transient Follow-Up**. Or give me RA/Dec "
+                           "in decimal degrees and I'll rank sites for it."),
                 "engine_result": None,
                 "params": params,
             }
-        ra, dec = coords
+        if coords is not None:
+            ra, dec = coords
 
     # Resolve date
     date_utc = now.replace(tzinfo=None)
@@ -330,7 +366,10 @@ def ask(question: str, user_key: str, weather_rows=None, api_key=None):
             pass
 
     # Step 2 — ENGINE computes the real answer (no LLM)
-    engine_result = rank_sites(ra, dec, date_utc, weather_rows=weather_rows)
+    engine_result = rank_sites(ra, dec, date_utc, weather_rows=weather_rows,
+                               body_cls=body_cls)
+    if body_cls is not None:
+        engine_result["target"] = {"name": params.get("target_name")}
 
     # Step 3 — LLM formats the engine's numbers (relay only)
     try:

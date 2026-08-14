@@ -91,12 +91,15 @@ def observe_at(ra_deg, dec_deg, site, when_utc):
     body._ra = ephem.degrees(str(ra_deg))
     body._dec = ephem.degrees(str(dec_deg))
     body.compute(obs)
-    alt = math.degrees(float(body.alt))
+    return _result_from_body(body, obs)
 
+
+def _result_from_body(body, obs):
+    """Shared result builder given a computed ephem body and observer."""
+    alt = math.degrees(float(body.alt))
     sun = ephem.Sun()
     sun.compute(obs)
     sun_alt = math.degrees(float(sun.alt))
-
     return {
         "alt_deg": alt,
         "airmass": _airmass(alt),
@@ -107,10 +110,45 @@ def observe_at(ra_deg, dec_deg, site, when_utc):
     }
 
 
-def _night_window(ra_deg, dec_deg, site, date_utc):
+# ── Solar-system bodies (Moon, planets): position changes over the night,
+# so they're recomputed at each time step rather than from a fixed RA/Dec. ──
+SOLAR_SYSTEM = {
+    "moon": ephem.Moon, "mercury": ephem.Mercury, "venus": ephem.Venus,
+    "mars": ephem.Mars, "jupiter": ephem.Jupiter, "saturn": ephem.Saturn,
+    "uranus": ephem.Uranus, "neptune": ephem.Neptune, "sun": ephem.Sun,
+}
+
+
+def resolve_solar_system(name):
+    """Return an ephem body class for a Moon/planet name, or None.
+
+    Matches on whole-word tokens so "the Moon", "planet Jupiter", "Moon
+    tonight" all resolve, without misfiring on substrings.
+    """
+    if not name:
+        return None
+    tokens = set(_norm(name).split())
+    for key, cls in SOLAR_SYSTEM.items():
+        if key in tokens:
+            return cls
+    return None
+
+
+def observe_body_at(body_cls, site, when_utc):
+    """Observability of a moving solar-system body from one site at a time."""
+    obs = _observer(site, when_utc)
+    body = body_cls()
+    body.compute(obs)
+    return _result_from_body(body, obs)
+
+
+def _night_window(ra_deg, dec_deg, site, date_utc, body_cls=None):
     """Scan the 24h from local-ish night start and return the best observable
     window for this target at this site: the contiguous stretch where the
     target is up AND it's astronomical night, with the minimum airmass in it.
+
+    If body_cls is given (a Moon/planet ephem class), the moving body's
+    position is recomputed at each step; otherwise the fixed ra/dec is used.
 
     Returns dict or None if never observable that date.
     """
@@ -120,7 +158,10 @@ def _night_window(ra_deg, dec_deg, site, date_utc):
     samples = []
     for i in range(int(24 * 60 / STEP_MINUTES) + 1):
         t = start + timedelta(minutes=i * STEP_MINUTES)
-        r = observe_at(ra_deg, dec_deg, site, t)
+        if body_cls is not None:
+            r = observe_body_at(body_cls, site, t)
+        else:
+            r = observe_at(ra_deg, dec_deg, site, t)
         samples.append((t, r))
 
     # Find the longest contiguous observable run; track min airmass + its time.
@@ -185,7 +226,7 @@ def _nearest_weather(site, weather_rows):
     return 50.0, False
 
 
-def rank_sites(ra_deg, dec_deg, date_utc=None, weather_rows=None):
+def rank_sites(ra_deg, dec_deg, date_utc=None, weather_rows=None, body_cls=None):
     """Rank the observatory set for a target on a given UTC date.
 
     weather_rows: optional iterable of GOWC live rows, each with
@@ -193,6 +234,10 @@ def rank_sites(ra_deg, dec_deg, date_utc=None, weather_rows=None):
     is matched to the nearest station within WEATHER_MATCH_TOL_DEG; sites with
     no nearby station fall back to a neutral 50 and are flagged weather_known
     False.
+
+    body_cls: optional ephem body class for a moving solar-system object
+    (Moon/planet). When given, ra_deg/dec_deg are ignored and the body's
+    position is recomputed over the night.
 
     Returns a dict:
       {
@@ -209,7 +254,7 @@ def rank_sites(ra_deg, dec_deg, date_utc=None, weather_rows=None):
 
     ranked = []
     for site in OBSERVATORIES:
-        window = _night_window(ra_deg, dec_deg, site, date_utc)
+        window = _night_window(ra_deg, dec_deg, site, date_utc, body_cls=body_cls)
         observable = window is not None
 
         weather, weather_known = _nearest_weather(site, weather_rows)
@@ -219,7 +264,10 @@ def rank_sites(ra_deg, dec_deg, date_utc=None, weather_rows=None):
             # airmass 1.0 -> 1.0, airmass 2.5+ -> ~0. Linear, clamped.
             airmass_term = max(0.0, min(1.0, (2.5 - min_am) / 1.5))
             # altitude margin: how far above MIN_ALT the target's best moment is.
-            best_r = observe_at(ra_deg, dec_deg, site, window["best_time_utc"])
+            if body_cls is not None:
+                best_r = observe_body_at(body_cls, site, window["best_time_utc"])
+            else:
+                best_r = observe_at(ra_deg, dec_deg, site, window["best_time_utc"])
             alt_term = max(0.0, min(1.0, (best_r["alt_deg"] - MIN_ALT_DEG) / 60.0))
             score = round(
                 100.0 * (W_AIRMASS * airmass_term
