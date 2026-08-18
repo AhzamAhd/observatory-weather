@@ -797,6 +797,11 @@ def load_data():
             w.precipitation_mm,
             w.surface_pressure,
             w.jet_stream_ms,
+            w.temp_850hpa,
+            w.temp_500hpa,
+            w.geopot_850hpa,
+            w.geopot_500hpa,
+            w.wind_850hpa,
             ROUND(GREATEST(0,
                 100
                 - (w.cloud_cover_pct * 0.50)
@@ -849,9 +854,20 @@ def load_data():
     _df = _df.rename(columns={"observation_score": "weather_score"})
 
     def _quality_row(r):
+        # Pass the vertical profile so calculate_seeing uses the Tatarski model
+        # when available (falls back to the surface heuristic otherwise).
+        profile = {
+            "temp_850hpa":   r.get("temp_850hpa"),
+            "temp_500hpa":   r.get("temp_500hpa"),
+            "geopot_850hpa": r.get("geopot_850hpa"),
+            "geopot_500hpa": r.get("geopot_500hpa"),
+            "wind_850hpa":   r.get("wind_850hpa"),
+            "jet_stream_ms": r.get("jet_stream_ms"),
+        }
         seeing = calculate_seeing(
             r.get("temperature_c"), r.get("wind_speed_ms"),
-            r.get("humidity_pct"), r.get("altitude_m", 0))
+            r.get("humidity_pct"), r.get("altitude_m", 0),
+            profile=profile)
         _, jet_impact = calculate_jet_stream_impact(
             r.get("jet_stream_ms"), r.get("latitude", 0))
         return observing_quality_score(

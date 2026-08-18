@@ -123,6 +123,12 @@ def upsert_weather_readings(data, now):
             record.get("jet_stream_ms"),
             record.get("dewpoint_c"),
             calculate_score(cloud, humid, wind),
+            # Vertical profile (for the Tatarski seeing model):
+            record.get("temp_850hpa"),
+            record.get("temp_500hpa"),
+            record.get("geopot_850hpa"),
+            record.get("geopot_500hpa"),
+            record.get("wind_850hpa"),
         ))
 
     if rows:
@@ -134,7 +140,10 @@ def upsert_weather_readings(data, now):
                 wind_speed_ms,    temperature_c,
                 precipitation_mm, surface_pressure,
                 jet_stream_ms,    dewpoint_c,
-                observation_score
+                observation_score,
+                temp_850hpa,      temp_500hpa,
+                geopot_850hpa,    geopot_500hpa,
+                wind_850hpa
             ) VALUES %s
             ON CONFLICT (observatory_id, fetch_date)
             DO UPDATE SET
@@ -148,7 +157,12 @@ def upsert_weather_readings(data, now):
                 surface_pressure  = EXCLUDED.surface_pressure,
                 jet_stream_ms     = EXCLUDED.jet_stream_ms,
                 dewpoint_c        = EXCLUDED.dewpoint_c,
-                observation_score = EXCLUDED.observation_score
+                observation_score = EXCLUDED.observation_score,
+                temp_850hpa       = EXCLUDED.temp_850hpa,
+                temp_500hpa       = EXCLUDED.temp_500hpa,
+                geopot_850hpa     = EXCLUDED.geopot_850hpa,
+                geopot_500hpa     = EXCLUDED.geopot_500hpa,
+                wind_850hpa       = EXCLUDED.wind_850hpa
         """, rows)
 
     print(f"  weather_readings — "
