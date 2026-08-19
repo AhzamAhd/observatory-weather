@@ -53,15 +53,19 @@ INSTRUMENTS = {
                 "gain":         2.9,       # e-/ADU
                 "full_well_e":  135000,
                 "quantum_efficiency": 0.80,
-                "throughput":   0.75,      # EST, telescope+instrument optics
-                "source": "ING WFC manual / ETC; Ives et al. detector notes",
+                "throughput":   0.85 * 0.89,   # tel x instr optics (SIGNAL WFC)
+                "empirical_efficiency": 0.70,  # measured/theoretical (SIGNAL WFC)
+                "source": "ING SIGNAL ETC (WHT/INT); validated 2026",
                 "filters": {
                     # Published ZP1 (mag for 1 e-/s) from ING WFC ETC, converted.
                     "U (ultraviolet)": {"wavelength_nm": 361, "bandwidth_nm": 63,  "band": "U", "zp_per_sec": 10**(24.9/2.5)},
-                    "B (blue)":        {"wavelength_nm": 442, "bandwidth_nm": 100, "band": "B", "zp_per_sec": 10**(27.0/2.5)},
-                    "V (visual)":      {"wavelength_nm": 540, "bandwidth_nm": 89,  "band": "V", "zp_per_sec": 10**(27.0/2.5)},
-                    "R (red)":         {"wavelength_nm": 641, "bandwidth_nm": 148, "band": "R", "zp_per_sec": 10**(27.3/2.5)},
-                    "I (near-IR)":     {"wavelength_nm": 799, "bandwidth_nm": 152, "band": "I", "zp_per_sec": 10**(26.5/2.5)},
+                    # Computed path (validated vs SIGNAL): real throughput,
+                    # QE and empirical_efficiency above drive the flux, so no
+                    # published zp_per_sec here.
+                    "B (blue)":        {"wavelength_nm": 442, "bandwidth_nm": 100, "band": "B"},
+                    "V (visual)":      {"wavelength_nm": 540, "bandwidth_nm": 86,  "band": "V"},
+                    "R (red)":         {"wavelength_nm": 641, "bandwidth_nm": 148, "band": "R"},
+                    "I (near-IR)":     {"wavelength_nm": 799, "bandwidth_nm": 152, "band": "I"},
                 },
             },
         },
@@ -249,6 +253,9 @@ def get_instrument_config(facility, instrument, filter_name):
         "dark_current":       inst["dark_current"],
         "quantum_efficiency": inst["quantum_efficiency"],
         "throughput":         inst["throughput"],
+        # Measured end-to-end efficiency as a fraction of the theoretical optical
+        # calc (SIGNAL's "empirical/theoretical"). Default 1.0 = pure theoretical.
+        "empirical_efficiency": inst.get("empirical_efficiency", 1.0),
         "full_well_e":        inst.get("full_well_e"),
         "gain":               inst.get("gain"),
         "type":               "optical",

@@ -507,7 +507,8 @@ def calculate_snr(
     site_altitude_m=2000.0,
     filter_band="V",
     wavelength_nm=550.0,
-    bandwidth_nm=100.0
+    bandwidth_nm=100.0,
+    extinction_coeff=None
 ):
     aperture     = telescope_specs["aperture_m"]
     pixel_scale  = telescope_specs["pixel_scale"]
@@ -525,6 +526,11 @@ def calculate_snr(
     # throughput, filter response and detector QE, so we use it DIRECTLY and skip
     # the generic throughput*QE photon-counting path (which would double-count).
     zp_per_sec   = telescope_specs.get("zp_per_sec")
+    # Empirical/theoretical efficiency: the measured end-to-end efficiency as a
+    # fraction of the idealised optical calculation (dust, real coatings, aging).
+    # SIGNAL exposes this explicitly; e.g. INT/WFC ~0.70, ACAM 1.00. Defaults to
+    # 1.0 (pure theoretical). Applied to both source and sky photon rates.
+    empirical_eff = telescope_specs.get("empirical_efficiency", 1.0) or 1.0
 
     # If a resolved instrument config was passed (from instruments.py), let its
     # own filter/site fields drive the calculation. Explicit non-default caller
@@ -546,10 +552,13 @@ def calculate_snr(
     else:
         pwv_transmission = 1.0
 
-    # Atmospheric extinction
+    # Atmospheric extinction. An explicit extinction_coeff (mag/airmass)
+    # overrides the site-altitude-derived value — used by the SNR page's manual
+    # mode to match an ETC exactly.
     if object_altitude_deg is not None:
         ext_transmission = atmospheric_extinction(
             object_altitude_deg,
+            extinction_coeff=extinction_coeff,
             site_altitude_m=site_altitude_m,
             filter_band=filter_band)
         effective_throughput = throughput * ext_transmission
@@ -607,11 +616,12 @@ def calculate_snr(
         # atmospheric extinction (the ZP is above-atmosphere/zenith) and, for
         # IR, PWV. Throughput/QE are already baked into the ZP.
         atmos = ext_transmission * pwv_transmission
-        source_rate    = zp_per_sec * 10 ** (-effective_magnitude / 2.5) * atmos
+        source_rate    = (zp_per_sec * 10 ** (-effective_magnitude / 2.5)
+                          * atmos * empirical_eff)
         source_counts  = source_rate * exposure_time_s
         # Sky brightness is per arcsec^2; scale by pixel area to get per-pixel.
         sky_rate_pixel = (zp_per_sec * 10 ** (-sky_brightness_mag / 2.5)
-                          * atmos * (pixel_scale ** 2))
+                          * atmos * (pixel_scale ** 2) * empirical_eff)
     else:
         # ── Computed path (Vega zero-point x throughput x QE) ─────
         # Source signal — photon collection depends on the chosen filter's
@@ -622,7 +632,7 @@ def calculate_snr(
             source_flux, aperture,
             bandwidth_nm=bandwidth_nm, wavelength_nm=wavelength_nm,
             throughput=effective_throughput, qe=qe, obstruction=obstruction
-        )
+        ) * empirical_eff
         source_counts = source_rate * exposure_time_s
 
         # Sky background per pixel (same band zero-point as the source)
@@ -631,15 +641,20 @@ def calculate_snr(
             sky_flux, aperture,
             bandwidth_nm=bandwidth_nm, wavelength_nm=wavelength_nm,
             throughput=effective_throughput, qe=qe, obstruction=obstruction
-        ) * (pixel_scale ** 2)
+        ) * (pixel_scale ** 2) * empirical_eff
 
-    # Number of pixels
+    # Number of pixels in the photometry aperture. The aperture has RADIUS =
+    # 1 FWHM (a ~2xFWHM diameter), the standard point-source aperture that
+    # captures the PSF wings — matching the ING SIGNAL ETC (validated to 0.1%)
+    # and the signal aperture used for extended objects above. (The earlier
+    # 1/2-FWHM radius aperture summed too few sky/read-noise pixels and read
+    # SNR ~20% high.)
     effective_seeing = max(
         seeing_arcsec or 1.5,
         object_angular_size_arcsec or 0
     )
     n_pixels = math.pi * (
-        effective_seeing / (2 * pixel_scale)
+        effective_seeing / pixel_scale
     ) ** 2
     n_pixels = max(1, round(n_pixels))
 
@@ -688,7 +703,7 @@ def calculate_snr(
     # precision. This is a planning band, not a formal error bar.
     def _snr_with_seeing(seeing_factor):
         npx = max(1, round(math.pi * (
-            (effective_seeing * seeing_factor) / (2 * pixel_scale)) ** 2))
+            (effective_seeing * seeing_factor) / pixel_scale) ** 2))
         sky_c = sky_rate_pixel * exposure_time_s * npx
         dark_c = dark_current * exposure_time_s * npx
         read_c = (read_noise ** 2) * npx
@@ -705,14 +720,14 @@ def calculate_snr(
     for _ in range(50):
         if zp_per_sec:
             test_rate = (zp_per_sec * 10 ** (-(lim_mag + step) / 2.5)
-                         * ext_transmission * pwv_transmission)
+                         * ext_transmission * pwv_transmission * empirical_eff)
         else:
             test_flux = mag_to_flux(lim_mag + step, band=filter_band)
             test_rate = flux_to_photons(
                 test_flux, aperture,
                 bandwidth_nm=bandwidth_nm, wavelength_nm=wavelength_nm,
                 throughput=effective_throughput, qe=qe, obstruction=obstruction
-            )
+            ) * empirical_eff
         test_counts = test_rate * exposure_time_s
         test_noise  = math.sqrt(
             test_counts + sky_counts +

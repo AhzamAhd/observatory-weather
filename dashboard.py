@@ -4566,6 +4566,37 @@ if selected_page == "SNR Calculator":
         st.caption("Using representative specs for the selected observatory. "
                    "Toggle on to use a real instrument's published constants.")
 
+    # ── Manual mode (match an external ETC) ───────────────────────
+    # By default GOWC computes airmass, extinction and sky brightness from the
+    # real sky (target + time + Moon). Manual mode lets the user type these
+    # directly, so an ETC run (e.g. ING SIGNAL) can be reproduced exactly.
+    _manual_airmass = None
+    _manual_extinction = None
+    _manual_sky = None
+    with st.expander("⚙️ Manual mode — type airmass / extinction / sky "
+                     "(to match an ETC)"):
+        _use_manual = st.toggle(
+            "Override with manual values", value=False, key="snr_manual",
+            help="When on, the values below replace the auto-computed airmass, "
+                 "extinction and sky brightness — letting you reproduce an "
+                 "external ETC calculation exactly.")
+        if _use_manual:
+            _man1, _man2, _man3 = st.columns(3)
+            with _man1:
+                _manual_airmass = st.number_input(
+                    "Airmass", min_value=1.0, max_value=5.0, value=1.0,
+                    step=0.1, key="snr_man_airmass")
+            with _man2:
+                _manual_extinction = st.number_input(
+                    "Extinction (mag/airmass)", min_value=0.0, max_value=1.0,
+                    value=0.12, step=0.01, key="snr_man_ext")
+            with _man3:
+                _manual_sky = st.number_input(
+                    "Sky brightness (mag/arcsec²)", min_value=15.0,
+                    max_value=23.0, value=21.5, step=0.1, key="snr_man_sky")
+            st.caption("Manual values active — airmass, extinction and sky "
+                       "brightness above override the live sky.")
+
     st.markdown("---")
 
     # ── Single observatory deep dive (uses the site chosen above) ──
@@ -4616,6 +4647,16 @@ if selected_page == "SNR Calculator":
     _snr_obj_alt = _obj_altitude(
         obs_row["latitude"], obs_row["longitude"], snr_object, _snr_when)
 
+    # Manual-mode overrides: a typed airmass sets the effective object altitude
+    # (alt = asin(1/X)); typed sky brightness and extinction replace the live
+    # values. This lets the UI reproduce an ETC run exactly.
+    _eff_obj_alt = _snr_obj_alt
+    _eff_sky = float(sky_brightness)
+    if _manual_airmass is not None:
+        _eff_obj_alt = math.degrees(math.asin(min(1.0, 1.0 / _manual_airmass)))
+    if _manual_sky is not None:
+        _eff_sky = float(_manual_sky)
+
     # When a real instrument is chosen, its resolved config drives the specs and
     # the filter/site — its own band/wavelength/altitude auto-populate inside
     # calculate_snr. Otherwise use the site's representative specs and the
@@ -4625,26 +4666,28 @@ if selected_page == "SNR Calculator":
             object_magnitude    = float(object_mag),
             exposure_time_s     = int(exposure_s),
             telescope_specs     = _instrument_cfg,
-            sky_brightness_mag  = float(sky_brightness),
+            sky_brightness_mag  = _eff_sky,
             seeing_arcsec       = float(seeing),
             object_name         = snr_object,
-            object_altitude_deg = _snr_obj_alt,
+            object_altitude_deg = _eff_obj_alt,
             pwv_mm              = pwv,
+            extinction_coeff    = _manual_extinction,
         )
     else:
         result = calculate_snr(
             object_magnitude      = float(object_mag),
             exposure_time_s       = int(exposure_s),
             telescope_specs       = tel_specs,
-            sky_brightness_mag    = float(sky_brightness),
+            sky_brightness_mag    = _eff_sky,
             seeing_arcsec         = float(seeing),
             object_name           = snr_object,
-            object_altitude_deg   = _snr_obj_alt,
+            object_altitude_deg   = _eff_obj_alt,
             pwv_mm                = pwv,
             site_altitude_m       = obs_row.get("altitude_m", 2000) or 2000,
             filter_band           = _filt["band"],
             wavelength_nm         = _filt["wavelength_nm"],
             bandwidth_nm          = _filt["bandwidth_nm"],
+            extinction_coeff      = _manual_extinction,
         )
 
     if _snr_obj_alt is not None:
