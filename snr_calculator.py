@@ -476,25 +476,43 @@ def calculate_snr(
         airmass              = 1.5
         ext_transmission     = 0.85
 
-    # Surface brightness for extended objects. If an object is extended
-    # but has no catalogued size, fall back to a nominal 10' diameter so
-    # its light is spread (not treated as a point source, which would
-    # massively overstate SNR).
+    # ── Extended vs point source ──────────────────────────────────
+    # For an extended object we do NOT collect its whole integrated magnitude in
+    # one seeing disk — we measure the flux WITHIN the photometry aperture. So:
+    #   surface brightness  SB = m_total + 2.5*log10(object_area_arcsec^2)
+    #   aperture magnitude  m_ap = SB - 2.5*log10(aperture_area_arcsec^2)
+    # i.e. we scale the total light down by (aperture_area / object_area). The
+    # aperture is a seeing disk (radius ~ seeing FWHM). This replaces the old
+    # code, which plugged the whole-object surface brightness straight in as a
+    # total magnitude and drove large objects to SNR 0.
     angular_size_arcmin = None
     if object_name:
         angular_size_arcmin = OBJECT_ANGULAR_SIZES.get(object_name, 0)
         if (not angular_size_arcmin) and is_extended_object(object_name):
             angular_size_arcmin = 10.0
 
+    # Photometry aperture: a seeing disk (or the object, whichever is smaller).
+    _seeing_fwhm = seeing_arcsec or 1.5
+    _ap_radius_arcsec = _seeing_fwhm  # ~1 FWHM radius aperture
+    aperture_area_arcsec2 = math.pi * _ap_radius_arcsec ** 2
+
     if (angular_size_arcmin and
             angular_size_arcmin > 0 and
             is_extended_object(object_name)):
-        effective_magnitude = get_surface_brightness(
-            object_magnitude, angular_size_arcmin)
         is_extended = True
+        object_radius_arcsec = (angular_size_arcmin * 60.0) / 2.0
+        object_area_arcsec2 = math.pi * object_radius_arcsec ** 2
+        # Fraction of the object's light falling in the photometry aperture.
+        frac = min(1.0, aperture_area_arcsec2 / object_area_arcsec2)
+        # m_ap = m_total - 2.5*log10(fraction of light in the aperture).
+        effective_magnitude = object_magnitude - 2.5 * math.log10(frac)
+        # Surface brightness (mag/arcsec^2) kept for reporting.
+        surface_brightness_mag = get_surface_brightness(
+            object_magnitude, angular_size_arcmin)
     else:
         effective_magnitude = object_magnitude
         is_extended         = False
+        surface_brightness_mag = None
 
     if zp_per_sec:
         # ── Published-ZP path (real instrument) ───────────────────
@@ -675,6 +693,9 @@ def calculate_snr(
         "is_extended":        is_extended,
         "effective_magnitude": round(
             effective_magnitude, 2),
+        "surface_brightness_mag": (round(surface_brightness_mag, 2)
+                                   if surface_brightness_mag is not None
+                                   else None),
         "angular_size_arcmin": angular_size_arcmin,
         "time_for_snr5":      format_time(time_for_snr(5)),
         "time_for_snr10":     format_time(time_for_snr(10)),
