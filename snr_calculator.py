@@ -633,13 +633,18 @@ def calculate_snr(
             throughput=effective_throughput, qe=qe, obstruction=obstruction
         ) * (pixel_scale ** 2)
 
-    # Number of pixels
+    # Number of pixels in the photometry aperture. The aperture has RADIUS =
+    # 1 FWHM (a ~2xFWHM diameter), the standard point-source aperture that
+    # captures the PSF wings — matching the ING SIGNAL ETC (validated to 0.1%)
+    # and the signal aperture used for extended objects above. (The earlier
+    # 1/2-FWHM radius aperture summed too few sky/read-noise pixels and read
+    # SNR ~20% high.)
     effective_seeing = max(
         seeing_arcsec or 1.5,
         object_angular_size_arcsec or 0
     )
     n_pixels = math.pi * (
-        effective_seeing / (2 * pixel_scale)
+        effective_seeing / pixel_scale
     ) ** 2
     n_pixels = max(1, round(n_pixels))
 
@@ -688,7 +693,7 @@ def calculate_snr(
     # precision. This is a planning band, not a formal error bar.
     def _snr_with_seeing(seeing_factor):
         npx = max(1, round(math.pi * (
-            (effective_seeing * seeing_factor) / (2 * pixel_scale)) ** 2))
+            (effective_seeing * seeing_factor) / pixel_scale) ** 2))
         sky_c = sky_rate_pixel * exposure_time_s * npx
         dark_c = dark_current * exposure_time_s * npx
         read_c = (read_noise ** 2) * npx
