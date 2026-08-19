@@ -50,6 +50,8 @@ from telescope_efficiency import get_all_efficiency_scores
 from snr_calculator import (calculate_snr, get_snr_for_all_observatories,
                               TELESCOPE_SPECS, OBJECT_MAGNITUDES,
                               get_sky_brightness, PHOTOMETRIC_FILTERS)
+from instruments import (list_facilities, list_instruments, list_filters,
+                         get_instrument_config)
 from airmass_calculator import (
     get_object_airmass_curve,
     compare_objects_airmass,
@@ -4468,6 +4470,68 @@ if selected_page == "SNR Calculator":
 
     st.markdown("---")
 
+    # ── Telescope & instrument ────────────────────────────────────
+    # Optionally pick a REAL telescope+instrument+filter whose published
+    # constants (zero-point, read noise, pixel scale, full well) flow straight
+    # into the CCD equation — far more accurate than the generic per-site
+    # estimate. When off, the calculator uses the representative specs as before.
+    st.markdown("#### Telescope & instrument")
+    use_real_instrument = st.toggle(
+        "Use a real instrument (published constants)",
+        value=False,
+        key="snr_use_instrument",
+        help="Pick an actual telescope + instrument + filter. Its real "
+             "zero-point, read noise, pixel scale and detector full-well are "
+             "used directly, instead of a generic estimate for the site."
+    )
+
+    _instrument_cfg = None      # resolved config when a real instrument is used
+    if use_real_instrument:
+        _ic1, _ic2, _ic3 = st.columns(3)
+        with _ic1:
+            snr_facility = st.selectbox(
+                "Telescope / facility",
+                list_facilities(),
+                key="snr_facility"
+            )
+        with _ic2:
+            _inst_opts = list_instruments(snr_facility)
+            snr_instrument = st.selectbox(
+                "Instrument",
+                _inst_opts,
+                key="snr_instrument"
+            )
+        with _ic3:
+            _filt_opts = list_filters(snr_facility, snr_instrument)
+            snr_inst_filter = st.selectbox(
+                "Filter",
+                _filt_opts,
+                key="snr_instrument_filter"
+            )
+
+        _instrument_cfg = get_instrument_config(
+            snr_facility, snr_instrument, snr_inst_filter)
+
+        if _instrument_cfg:
+            _zp_label = ("published zero-point"
+                         if _instrument_cfg["zp_mode"] == "published"
+                         else "computed from throughput × QE")
+            st.caption(
+                f"**{_instrument_cfg['aperture_m']:.2f} m** aperture · "
+                f"pixel {_instrument_cfg['pixel_scale']}″ · "
+                f"read noise {_instrument_cfg['read_noise']} e⁻ · "
+                f"λ {_instrument_cfg['wavelength_nm']} nm ({_instrument_cfg['band']}) · "
+                f"{_zp_label}."
+            )
+            st.caption(f"Source: {_instrument_cfg['source']}. "
+                       "Some detector values are literature estimates (see "
+                       "instruments.py).")
+    else:
+        st.caption("Using representative specs for the selected observatory. "
+                   "Toggle on to use a real instrument's published constants.")
+
+    st.markdown("---")
+
     # ── Single observatory deep dive (uses the site chosen above) ──
     st.subheader(f"Analysis for {snr_obs}")
 
@@ -4516,20 +4580,36 @@ if selected_page == "SNR Calculator":
     _snr_obj_alt = _obj_altitude(
         obs_row["latitude"], obs_row["longitude"], snr_object, _snr_when)
 
-    result = calculate_snr(
-        object_magnitude      = float(object_mag),
-        exposure_time_s       = int(exposure_s),
-        telescope_specs       = tel_specs,
-        sky_brightness_mag    = float(sky_brightness),
-        seeing_arcsec         = float(seeing),
-        object_name           = snr_object,
-        object_altitude_deg   = _snr_obj_alt,
-        pwv_mm                = pwv,
-        site_altitude_m       = obs_row.get("altitude_m", 2000) or 2000,
-        filter_band           = _filt["band"],
-        wavelength_nm         = _filt["wavelength_nm"],
-        bandwidth_nm          = _filt["bandwidth_nm"],
-    )
+    # When a real instrument is chosen, its resolved config drives the specs and
+    # the filter/site — its own band/wavelength/altitude auto-populate inside
+    # calculate_snr. Otherwise use the site's representative specs and the
+    # standard filter picked in the controls above.
+    if _instrument_cfg:
+        result = calculate_snr(
+            object_magnitude    = float(object_mag),
+            exposure_time_s     = int(exposure_s),
+            telescope_specs     = _instrument_cfg,
+            sky_brightness_mag  = float(sky_brightness),
+            seeing_arcsec       = float(seeing),
+            object_name         = snr_object,
+            object_altitude_deg = _snr_obj_alt,
+            pwv_mm              = pwv,
+        )
+    else:
+        result = calculate_snr(
+            object_magnitude      = float(object_mag),
+            exposure_time_s       = int(exposure_s),
+            telescope_specs       = tel_specs,
+            sky_brightness_mag    = float(sky_brightness),
+            seeing_arcsec         = float(seeing),
+            object_name           = snr_object,
+            object_altitude_deg   = _snr_obj_alt,
+            pwv_mm                = pwv,
+            site_altitude_m       = obs_row.get("altitude_m", 2000) or 2000,
+            filter_band           = _filt["band"],
+            wavelength_nm         = _filt["wavelength_nm"],
+            bandwidth_nm          = _filt["bandwidth_nm"],
+        )
 
     if _snr_obj_alt is not None:
         if _snr_obj_alt < 0:
@@ -4566,14 +4646,35 @@ if selected_page == "SNR Calculator":
         unsafe_allow_html=True
     )
 
+    # Honest planning band (seeing ×0.7…×1.5) — shows modelling uncertainty
+    # rather than a single false-precision number.
+    _snr_lo = result.get("snr_pessimistic")
+    _snr_hi = result.get("snr_optimistic")
+    if _snr_lo is not None and _snr_hi is not None and _snr_hi > _snr_lo:
+        st.caption(
+            f"Planning range **{_snr_lo} – {_snr_hi}** "
+            "(folds in seeing uncertainty ×0.7…×1.5 — the dominant unknown; "
+            "not a formal error bar)."
+        )
+
+    # Saturation warning — only when the instrument reports a detector full well.
+    if result.get("is_saturated"):
+        st.error(
+            f"⚠️ **Detector saturation likely.** The brightest pixel "
+            f"(~{result.get('peak_pixel_e'):,.0f} e⁻) exceeds this detector's "
+            f"full well ({result.get('full_well_e'):,} e⁻). Photometry would be "
+            "non-linear — shorten the exposure or defocus. The SNR above is not "
+            "trustworthy in this regime."
+        )
+
     # Key metrics
     m1, m2, m3, m4, m5 = st.columns(5)
     m1.metric("SNR",           snr_val)
     m2.metric("Limiting mag",
               result["limiting_magnitude"])
     m3.metric("Telescope",
-              tel_specs.get("name",
-              f"{tel_specs['aperture_m']}m"))
+              (_instrument_cfg["name"] if _instrument_cfg
+               else tel_specs.get("name", f"{tel_specs['aperture_m']}m")))
     m4.metric("Seeing",        f"{seeing}\"")
     m5.metric("Sky brightness",
               f"{sky_brightness} mag/arcsec²")
