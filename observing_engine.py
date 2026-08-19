@@ -70,11 +70,13 @@ def _observer(site, when):
 
 
 def _airmass(alt_deg):
-    """Kasten-Young (1989) airmass. Returns None below the horizon."""
+    """Pickering (2002) airmass — the single airmass definition used across
+    GOWC (see airmass_calculator.altitude_to_airmass). Returns None below the
+    horizon."""
     if alt_deg <= 0:
         return None
-    za = 90.0 - alt_deg
-    return 1.0 / (math.cos(math.radians(za)) + 0.50572 * (96.07995 - za) ** -1.6364)
+    return 1.0 / math.sin(math.radians(
+        alt_deg + 244.0 / (165.0 + 47.0 * alt_deg ** 1.1)))
 
 
 def observe_at(ra_deg, dec_deg, site, when_utc):
