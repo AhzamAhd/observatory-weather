@@ -4679,6 +4679,18 @@ if selected_page == "SNR Calculator":
     m5.metric("Sky brightness",
               f"{sky_brightness} mag/arcsec²")
 
+    # For extended objects, explain the surface-brightness treatment: the SNR
+    # measures the light within a seeing-disk aperture, not the whole object.
+    if result.get("is_extended") and result.get("surface_brightness_mag") is not None:
+        st.caption(
+            f"**{snr_object}** is extended "
+            f"({result.get('angular_size_arcmin','?')}′ across) — surface "
+            f"brightness ≈ **{result['surface_brightness_mag']} mag/arcsec²**. "
+            f"SNR is for the light within a seeing-disk aperture "
+            f"(effective mag {result['effective_magnitude']} in {seeing}″), not "
+            "the object's whole integrated magnitude."
+        )
+
     # Exposure times for SNR targets
     st.markdown("**Time needed to reach SNR targets**")
     t1, t2, t3, t4 = st.columns(4)
