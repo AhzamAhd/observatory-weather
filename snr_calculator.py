@@ -507,7 +507,8 @@ def calculate_snr(
     site_altitude_m=2000.0,
     filter_band="V",
     wavelength_nm=550.0,
-    bandwidth_nm=100.0
+    bandwidth_nm=100.0,
+    extinction_coeff=None
 ):
     aperture     = telescope_specs["aperture_m"]
     pixel_scale  = telescope_specs["pixel_scale"]
@@ -551,10 +552,13 @@ def calculate_snr(
     else:
         pwv_transmission = 1.0
 
-    # Atmospheric extinction
+    # Atmospheric extinction. An explicit extinction_coeff (mag/airmass)
+    # overrides the site-altitude-derived value — used by the SNR page's manual
+    # mode to match an ETC exactly.
     if object_altitude_deg is not None:
         ext_transmission = atmospheric_extinction(
             object_altitude_deg,
+            extinction_coeff=extinction_coeff,
             site_altitude_m=site_altitude_m,
             filter_band=filter_band)
         effective_throughput = throughput * ext_transmission
