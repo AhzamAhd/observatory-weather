@@ -525,6 +525,11 @@ def calculate_snr(
     # throughput, filter response and detector QE, so we use it DIRECTLY and skip
     # the generic throughput*QE photon-counting path (which would double-count).
     zp_per_sec   = telescope_specs.get("zp_per_sec")
+    # Empirical/theoretical efficiency: the measured end-to-end efficiency as a
+    # fraction of the idealised optical calculation (dust, real coatings, aging).
+    # SIGNAL exposes this explicitly; e.g. INT/WFC ~0.70, ACAM 1.00. Defaults to
+    # 1.0 (pure theoretical). Applied to both source and sky photon rates.
+    empirical_eff = telescope_specs.get("empirical_efficiency", 1.0) or 1.0
 
     # If a resolved instrument config was passed (from instruments.py), let its
     # own filter/site fields drive the calculation. Explicit non-default caller
@@ -607,11 +612,12 @@ def calculate_snr(
         # atmospheric extinction (the ZP is above-atmosphere/zenith) and, for
         # IR, PWV. Throughput/QE are already baked into the ZP.
         atmos = ext_transmission * pwv_transmission
-        source_rate    = zp_per_sec * 10 ** (-effective_magnitude / 2.5) * atmos
+        source_rate    = (zp_per_sec * 10 ** (-effective_magnitude / 2.5)
+                          * atmos * empirical_eff)
         source_counts  = source_rate * exposure_time_s
         # Sky brightness is per arcsec^2; scale by pixel area to get per-pixel.
         sky_rate_pixel = (zp_per_sec * 10 ** (-sky_brightness_mag / 2.5)
-                          * atmos * (pixel_scale ** 2))
+                          * atmos * (pixel_scale ** 2) * empirical_eff)
     else:
         # ── Computed path (Vega zero-point x throughput x QE) ─────
         # Source signal — photon collection depends on the chosen filter's
@@ -622,7 +628,7 @@ def calculate_snr(
             source_flux, aperture,
             bandwidth_nm=bandwidth_nm, wavelength_nm=wavelength_nm,
             throughput=effective_throughput, qe=qe, obstruction=obstruction
-        )
+        ) * empirical_eff
         source_counts = source_rate * exposure_time_s
 
         # Sky background per pixel (same band zero-point as the source)
@@ -631,7 +637,7 @@ def calculate_snr(
             sky_flux, aperture,
             bandwidth_nm=bandwidth_nm, wavelength_nm=wavelength_nm,
             throughput=effective_throughput, qe=qe, obstruction=obstruction
-        ) * (pixel_scale ** 2)
+        ) * (pixel_scale ** 2) * empirical_eff
 
     # Number of pixels in the photometry aperture. The aperture has RADIUS =
     # 1 FWHM (a ~2xFWHM diameter), the standard point-source aperture that
@@ -710,14 +716,14 @@ def calculate_snr(
     for _ in range(50):
         if zp_per_sec:
             test_rate = (zp_per_sec * 10 ** (-(lim_mag + step) / 2.5)
-                         * ext_transmission * pwv_transmission)
+                         * ext_transmission * pwv_transmission * empirical_eff)
         else:
             test_flux = mag_to_flux(lim_mag + step, band=filter_band)
             test_rate = flux_to_photons(
                 test_flux, aperture,
                 bandwidth_nm=bandwidth_nm, wavelength_nm=wavelength_nm,
                 throughput=effective_throughput, qe=qe, obstruction=obstruction
-            )
+            ) * empirical_eff
         test_counts = test_rate * exposure_time_s
         test_noise  = math.sqrt(
             test_counts + sky_counts +
