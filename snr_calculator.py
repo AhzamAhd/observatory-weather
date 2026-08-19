@@ -433,6 +433,24 @@ def calculate_snr(
     obstruction  = telescope_specs.get("obstruction", 0.0)
     # Detector full-well / saturation limit (electrons per pixel). Optional.
     full_well_e  = telescope_specs.get("full_well_e")
+    # Published zero-point (e-/s for a mag-0 star, above atmosphere). When a real
+    # instrument+filter supplies this, it already folds in area, optics
+    # throughput, filter response and detector QE, so we use it DIRECTLY and skip
+    # the generic throughput*QE photon-counting path (which would double-count).
+    zp_per_sec   = telescope_specs.get("zp_per_sec")
+
+    # If a resolved instrument config was passed (from instruments.py), let its
+    # own filter/site fields drive the calculation. Explicit non-default caller
+    # arguments still win; these fill in from the instrument when the caller
+    # left the defaults in place.
+    if telescope_specs.get("band") and filter_band == "V":
+        filter_band = telescope_specs["band"]
+    if telescope_specs.get("wavelength_nm") and wavelength_nm == 550.0:
+        wavelength_nm = telescope_specs["wavelength_nm"]
+    if telescope_specs.get("bandwidth_nm") and bandwidth_nm == 100.0:
+        bandwidth_nm = telescope_specs["bandwidth_nm"]
+    if telescope_specs.get("altitude_m") and site_altitude_m == 2000.0:
+        site_altitude_m = telescope_specs["altitude_m"]
 
     # PWV transmission for infrared
     if telescope_type == "infrared" and pwv_mm:
@@ -478,24 +496,37 @@ def calculate_snr(
         effective_magnitude = object_magnitude
         is_extended         = False
 
-    # Source signal — photon collection depends on the chosen
-    # filter's central wavelength and bandwidth. Use the band's Vega
-    # zero-point so red/IR fluxes are correct (not the flat AB value).
-    source_flux   = mag_to_flux(effective_magnitude, band=filter_band)
-    source_rate   = flux_to_photons(
-        source_flux, aperture,
-        bandwidth_nm=bandwidth_nm, wavelength_nm=wavelength_nm,
-        throughput=effective_throughput, qe=qe, obstruction=obstruction
-    )
-    source_counts = source_rate * exposure_time_s
+    if zp_per_sec:
+        # ── Published-ZP path (real instrument) ───────────────────
+        # Count rate = ZP(e-/s for mag 0) x 10^(-mag/2.5), then attenuate by
+        # atmospheric extinction (the ZP is above-atmosphere/zenith) and, for
+        # IR, PWV. Throughput/QE are already baked into the ZP.
+        atmos = ext_transmission * pwv_transmission
+        source_rate    = zp_per_sec * 10 ** (-effective_magnitude / 2.5) * atmos
+        source_counts  = source_rate * exposure_time_s
+        # Sky brightness is per arcsec^2; scale by pixel area to get per-pixel.
+        sky_rate_pixel = (zp_per_sec * 10 ** (-sky_brightness_mag / 2.5)
+                          * atmos * (pixel_scale ** 2))
+    else:
+        # ── Computed path (Vega zero-point x throughput x QE) ─────
+        # Source signal — photon collection depends on the chosen filter's
+        # central wavelength and bandwidth. Use the band's Vega zero-point so
+        # red/IR fluxes are correct (not the flat AB value).
+        source_flux   = mag_to_flux(effective_magnitude, band=filter_band)
+        source_rate   = flux_to_photons(
+            source_flux, aperture,
+            bandwidth_nm=bandwidth_nm, wavelength_nm=wavelength_nm,
+            throughput=effective_throughput, qe=qe, obstruction=obstruction
+        )
+        source_counts = source_rate * exposure_time_s
 
-    # Sky background per pixel (same band zero-point as the source)
-    sky_flux       = mag_to_flux(sky_brightness_mag, band=filter_band)
-    sky_rate_pixel = flux_to_photons(
-        sky_flux, aperture,
-        bandwidth_nm=bandwidth_nm, wavelength_nm=wavelength_nm,
-        throughput=effective_throughput, qe=qe, obstruction=obstruction
-    ) * (pixel_scale ** 2)
+        # Sky background per pixel (same band zero-point as the source)
+        sky_flux       = mag_to_flux(sky_brightness_mag, band=filter_band)
+        sky_rate_pixel = flux_to_photons(
+            sky_flux, aperture,
+            bandwidth_nm=bandwidth_nm, wavelength_nm=wavelength_nm,
+            throughput=effective_throughput, qe=qe, obstruction=obstruction
+        ) * (pixel_scale ** 2)
 
     # Number of pixels
     effective_seeing = max(
@@ -567,12 +598,16 @@ def calculate_snr(
     lim_mag  = object_magnitude
     step     = 0.5
     for _ in range(50):
-        test_flux   = mag_to_flux(lim_mag + step, band=filter_band)
-        test_rate   = flux_to_photons(
-            test_flux, aperture,
-            bandwidth_nm=bandwidth_nm, wavelength_nm=wavelength_nm,
-            throughput=effective_throughput, qe=qe, obstruction=obstruction
-        )
+        if zp_per_sec:
+            test_rate = (zp_per_sec * 10 ** (-(lim_mag + step) / 2.5)
+                         * ext_transmission * pwv_transmission)
+        else:
+            test_flux = mag_to_flux(lim_mag + step, band=filter_band)
+            test_rate = flux_to_photons(
+                test_flux, aperture,
+                bandwidth_nm=bandwidth_nm, wavelength_nm=wavelength_nm,
+                throughput=effective_throughput, qe=qe, obstruction=obstruction
+            )
         test_counts = test_rate * exposure_time_s
         test_noise  = math.sqrt(
             test_counts + sky_counts +
