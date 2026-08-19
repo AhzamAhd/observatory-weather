@@ -1,9 +1,20 @@
 import requests
 import json
 import os
+import sys
 import time
 from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+# Observatory names contain non-ASCII characters (e.g. "Skalnaté pleso"). On
+# Windows the console defaults to a cp1252 codec that raises UnicodeEncodeError
+# when such a name is printed, which would abort the whole fetch. Force UTF-8
+# with a replacing error handler so progress logging can never crash the run.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except (AttributeError, ValueError):
+    pass
 
 
 def _nearest_hour_profile(hourly):

@@ -1,9 +1,19 @@
 import os
+import sys
 import json
 import glob
 from datetime import datetime, timezone
 from db import execute_many, fetch_one, query_df
 from dotenv import load_dotenv
+
+# Progress/summary output contains non-ASCII (observatory names, box-drawing
+# characters). Force UTF-8 with replacement so a Windows cp1252 console can't
+# crash the run with UnicodeEncodeError after the data is already committed.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except (AttributeError, ValueError):
+    pass
 
 load_dotenv()
 
@@ -131,6 +141,17 @@ def upsert_weather_readings(data, now):
             record.get("wind_850hpa"),
         ))
 
+    # Several list entries can resolve to the same observatory_id (near-duplicate
+    # coordinates), which would make the same (observatory_id, fetch_date) key
+    # appear twice in one batch — Postgres rejects that in a single ON CONFLICT
+    # command ("cannot affect row a second time"). Dedupe on the conflict key,
+    # keeping the last occurrence.
+    if rows:
+        deduped = {}
+        for r in rows:
+            deduped[(r[0], r[1])] = r  # key = (observatory_id, fetch_date)
+        rows = list(deduped.values())
+
     if rows:
         execute_many("""
             INSERT INTO weather_readings (
@@ -202,6 +223,14 @@ def insert_weather_history(data, now):
             record.get("dewpoint_c"),
             calculate_score(cloud, humid, wind),
         ))
+
+    # Dedupe on the conflict key for the same reason as weather_readings —
+    # in-batch duplicate (observatory_id, fetch_date) keys break ON CONFLICT.
+    if rows:
+        deduped = {}
+        for r in rows:
+            deduped[(r[0], r[1])] = r
+        rows = list(deduped.values())
 
     if rows:
         execute_many("""
