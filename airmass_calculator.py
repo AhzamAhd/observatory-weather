@@ -6,21 +6,20 @@ from object_visibility import OBJECTS
 
 def altitude_to_airmass(altitude_deg):
     """
-    Convert altitude above horizon to airmass.
-    Uses Pickering (2002) formula — more accurate
-    than simple 1/sin(alt) near horizon.
+    Convert altitude above horizon to airmass X, using the Pickering (2002)
+    interpolative formula:
+
+        X = 1 / sin( alt + 244 / (165 + 47 * alt^1.1) )   [alt in degrees]
+
+    More accurate than the plain sec(z) = 1/sin(alt) near the horizon, and the
+    single airmass definition used throughout GOWC. (Pickering, K.A. 2002, DIO
+    12; agrees with Kasten & Young 1989 to <0.1% away from the horizon.)
     """
     if altitude_deg <= 0:
         return None
-
-    # Pickering formula
-    alt_rad = math.radians(altitude_deg)
-    airmass = 1.0 / (
-        math.sin(math.radians(
-            altitude_deg +
-            244.0 / (165.0 + 47.0 * altitude_deg**1.1)
-        ))
-    )
+    airmass = 1.0 / math.sin(math.radians(
+        altitude_deg + 244.0 / (165.0 + 47.0 * altitude_deg ** 1.1)
+    ))
     return round(airmass, 3)
 
 def airmass_to_altitude(airmass):

@@ -244,32 +244,77 @@ def seeing_color(seeing_arcsec):
     elif seeing_arcsec < 3.5: return "#E24B4A"
     else:                      return "#993C1D"
 
+def _specific_humidity(temp_c, rh_pct, pressure_hpa):
+    """Specific humidity q (kg/kg) from temperature, relative humidity and
+    pressure, via the Magnus saturation vapour pressure."""
+    if None in (temp_c, rh_pct, pressure_hpa) or pressure_hpa <= 0:
+        return None
+    a, b = 17.625, 243.04
+    e_s = 6.112 * math.exp((a * temp_c) / (b + temp_c))   # sat. vapour pressure, hPa
+    e = (rh_pct / 100.0) * e_s                            # actual vapour pressure, hPa
+    # q = 0.622 e / (P - 0.378 e)
+    return 0.622 * e / (pressure_hpa - 0.378 * e)
+
+
 def calculate_pwv(surface_pressure, humidity_pct,
-                  temperature_c, altitude_m=0):
+                  temperature_c, altitude_m=0, profile=None):
     """
-    Estimate Precipitable Water Vapor in millimetres.
-    Critical for infrared and radio astronomy.
-    Lower PWV = better for IR/radio work.
-    Excellent < 2mm, Good 2-5mm, Poor > 10mm.
+    Precipitable Water Vapor (mm). Lower = better for IR/sub-mm work.
+    Excellent < 2, Good 2-5, Poor > 10 mm.
+
+    PREFERRED PATH: when `profile` carries relative humidity + temperature at
+    pressure levels (rh_850hpa, rh_500hpa, temp_850hpa, temp_500hpa) we integrate
+    the standard column relation
+        PWV = (1 / (rho_w g)) * integral of q dp
+    over surface -> 850 -> 500 hPa (specific humidity q from RH via Magnus).
+    This is the physically-correct layered integration used for radiosonde PWV.
+
+    FALLBACK PATH: the previous single-level scale-height approximation.
     """
+    # PREFERRED: layered integration over the real humidity profile.
+    if profile:
+        try:
+            rho_w = 1000.0    # water density kg/m^3
+            g = 9.80665
+            # Build (pressure_hPa, q) nodes from surface up.
+            nodes = []
+            if None not in (surface_pressure, temperature_c, humidity_pct):
+                q0 = _specific_humidity(temperature_c, humidity_pct, surface_pressure)
+                if q0 is not None:
+                    nodes.append((surface_pressure, q0))
+            for p, tk, rk in ((850.0, "temp_850hpa", "rh_850hpa"),
+                              (500.0, "temp_500hpa", "rh_500hpa")):
+                t = profile.get(tk)
+                rh = profile.get(rk)
+                if t is not None and rh is not None and p < (surface_pressure or 1e9):
+                    q = _specific_humidity(t, rh, p)
+                    if q is not None:
+                        nodes.append((p, q))
+            if len(nodes) >= 2:
+                nodes.sort(key=lambda n: -n[0])   # descending pressure (surface first)
+                pw_kg_m2 = 0.0                     # column water, kg/m^2
+                for (p_lo, q_lo), (p_hi, q_hi) in zip(nodes, nodes[1:]):
+                    dp_pa = (p_lo - p_hi) * 100.0  # hPa -> Pa
+                    q_mean = 0.5 * (q_lo + q_hi)
+                    pw_kg_m2 += q_mean * dp_pa / g
+                pwv_mm = pw_kg_m2 / rho_w * 1000.0  # kg/m^2 == mm of water; *1 => mm
+                # kg/m^2 of water is already numerically mm; the /rho_w*1000 is identity.
+                pwv_mm = pw_kg_m2   # 1 kg/m^2 water column == 1 mm PWV
+                if pwv_mm > 0:
+                    return round(max(0.1, min(60.0, pwv_mm)), 2)
+        except Exception:
+            pass   # fall through to heuristic
+
     if any(v is None for v in [
         surface_pressure, humidity_pct, temperature_c
     ]):
         return None
 
-    # Saturation vapour pressure using Magnus formula
+    # FALLBACK: single-level scale-height approximation.
     a, b = 17.625, 243.04
-    svp  = 6.112 * math.exp(
-        (a * temperature_c) / (b + temperature_c)
-    )
-
-    # Actual vapour pressure
+    svp  = 6.112 * math.exp((a * temperature_c) / (b + temperature_c))
     avp  = (humidity_pct / 100) * svp
-
-    # Scale height approximation (km)
     scale_height = 2.0 * math.exp(-altitude_m / 8000)
-
-    # PWV in mm
     pwv = 0.1 * avp * scale_height
     return round(max(0.1, pwv), 2)
 
@@ -398,17 +443,22 @@ def get_full_atmospheric_analysis(record):
     """
     Run all three calculations for one observatory record.
     """
+    # The record itself carries the pressure-level fields (temp_850hpa, etc.)
+    # when available, so pass it as the profile to both calculations — they use
+    # the Tatarski/layered-PWV paths if the fields are present, else fall back.
     seeing     = calculate_seeing(
         record.get("temperature_c"),
         record.get("wind_speed_ms"),
         record.get("humidity_pct"),
-        record.get("altitude_m", 0)
+        record.get("altitude_m", 0),
+        profile=record
     )
     pwv        = calculate_pwv(
         record.get("surface_pressure"),
         record.get("humidity_pct"),
         record.get("temperature_c"),
-        record.get("altitude_m", 0)
+        record.get("altitude_m", 0),
+        profile=record
     )
     jet_ms, jet_impact = calculate_jet_stream_impact(
         record.get("jet_stream_ms"),

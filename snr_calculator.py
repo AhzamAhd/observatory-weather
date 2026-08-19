@@ -333,6 +333,36 @@ def flux_to_photons(flux_jy, aperture_m,
     ) / energy_per_photon
     return max(0, photon_rate)
 
+def scintillation_sigma(aperture_m, exposure_time_s, airmass=1.0,
+                        site_altitude_m=2000.0, median_correction=1.5):
+    """Fractional scintillation noise sigma_Y (dimensionless) via the modern
+    Osborn et al. (2015) form of Young's approximation:
+
+        sigma_Y^2 = 10e-6 * C_Y^2 * D^(-4/3) * t^(-1) * X^3 * exp(-2 h/H)
+
+    where D = aperture (m), t = exposure (s), X = airmass = sec(zenith), h =
+    site altitude (m), H ~ 8000 m the turbulence scale height, and C_Y ~ 1.5 is
+    the empirical median correction (Kornilov et al. 2012; Osborn et al. 2015),
+    which corrects Young's classic underestimate. Note X^3 = (cos gamma)^(-3).
+
+    Reference: Osborn, Foehring, Dhillon & Wilson (2015), MNRAS 452, 1707,
+    "Atmospheric scintillation in astronomical photometry", Eq. 2.
+
+    Returns sigma_Y (the fractional flux standard deviation); multiply by the
+    source counts to get the scintillation noise contribution."""
+    if not (aperture_m and aperture_m > 0 and exposure_time_s and exposure_time_s > 0):
+        return 0.0
+    H = 8000.0
+    X = max(1.0, airmass)
+    h = max(0.0, site_altitude_m or 0.0)
+    sigma2 = (10e-6 * (median_correction ** 2)
+              * aperture_m ** (-4.0 / 3.0)
+              * (1.0 / exposure_time_s)
+              * (X ** 3)
+              * math.exp(-2.0 * h / H))
+    return math.sqrt(max(0.0, sigma2))
+
+
 def snr_quality(snr):
     if snr >= 100:  return "Exceptional — publication quality"
     elif snr >= 50: return "Excellent — high precision work"
@@ -442,15 +472,13 @@ def calculate_snr(
     dark_counts = dark_current * exposure_time_s * n_pixels
     read_counts = (read_noise ** 2) * n_pixels
 
-    # Scintillation
-    if seeing_arcsec and aperture and exposure_time_s > 0:
-        scint_coeff = (
-            0.09 * (aperture ** (-2/3)) *
-            (1.0 / math.sqrt(exposure_time_s))
-        )
-        scint_noise = scint_coeff * source_counts
-    else:
-        scint_noise = 0
+    # Scintillation — Osborn et al. (2015) median-corrected Young's form, which
+    # (unlike the old D^-2/3 t^-1/2 approximation) has the correct D^-4/3 t^-1
+    # dependence plus airmass (X^3) and site-altitude (exp(-2h/H)) terms.
+    sigma_scint = scintillation_sigma(
+        aperture, exposure_time_s, airmass=airmass,
+        site_altitude_m=site_altitude_m)
+    scint_noise = sigma_scint * source_counts
 
     # Total noise and SNR
     total_noise = math.sqrt(

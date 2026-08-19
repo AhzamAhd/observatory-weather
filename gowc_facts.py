@@ -23,7 +23,7 @@ Marginal / Poor.
 ## Key metrics explained
 - Airmass: how much atmosphere you look through toward a target. 1.0 is
   straight up (best); it rises as the target gets lower. Below ~2 is good,
-  above ~3 is poor. GOWC uses the Kasten-Young / Pickering airmass formula.
+  above ~3 is poor. GOWC uses the Pickering (2002) airmass formula.
 - Seeing (arcseconds): atmospheric blurring, from real Fried-parameter physics
   (r0 -> 0.98 x wavelength / r0), calibrated to published site values
   (Mauna Kea ~0.5", Paranal ~0.8", La Palma ~0.9"). Lower is sharper.
