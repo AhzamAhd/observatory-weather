@@ -11,6 +11,8 @@ TELESCOPE_SPECS = {
         "dark_current":       0.001,
         "quantum_efficiency": 0.85,
         "throughput":         0.75,
+        "obstruction":        0.30,
+        "full_well_e":        100000,
         "type":               "optical"
     },
     "Paranal Observatory": {
@@ -22,6 +24,8 @@ TELESCOPE_SPECS = {
         "dark_current":       0.0005,
         "quantum_efficiency": 0.92,
         "throughput":         0.80,
+        "obstruction":        0.14,
+        "full_well_e":        200000,
         "type":               "optical"
     },
     "Mauna Kea Observatory": {
@@ -310,19 +314,48 @@ def is_extended_object(object_name):
         for kw in extended_keywords
     )
 
-def mag_to_flux(magnitude, zero_point=3631):
+# ── Photometric zero-points (Vega system) ─────────────────────────
+# Flux density of a 0-magnitude Vega-system star, per band, in Jansky.
+# GOWC's object magnitudes are Johnson-Cousins/Vega (e.g. Sirius V=-1.46),
+# NOT AB, so a single flat 3631 Jy (the AB zero-point) is only right at ~V and
+# over-/under-estimates flux badly in the red and IR. These are the standard
+# Bessell (1998) Vega zero-points. Falling back to 3631 keeps AB behaviour.
+# Reference: Bessell, Castelli & Plez (1998), A&A 333, 231, Table A2.
+VEGA_ZERO_POINT_JY = {
+    "U": 1810.0,
+    "B": 4260.0,
+    "V": 3640.0,
+    "R": 3080.0,
+    "I": 2550.0,
+    "J": 1600.0,
+    "H": 1080.0,
+    "K": 670.0,
+}
+
+def mag_to_flux(magnitude, zero_point=3631, band=None):
+    """Vega/AB magnitude to flux density (Jy). If a photometric band is given,
+    use that band's Vega zero-point; otherwise use the supplied zero_point
+    (default 3631 Jy = AB)."""
+    if band is not None:
+        zero_point = VEGA_ZERO_POINT_JY.get(band, zero_point)
     return zero_point * 10 ** (-magnitude / 2.5)
 
 def flux_to_photons(flux_jy, aperture_m,
                     bandwidth_nm=100,
                     wavelength_nm=550,
                     throughput=0.75,
-                    qe=0.85):
+                    qe=0.85,
+                    obstruction=0.0):
+    """Photon rate (e-/s) from flux density. `obstruction` is the linear
+    diameter ratio of the central obstruction (secondary mirror); the blocked
+    area (obstruction^2 of the aperture) is removed from the collecting area."""
     h = 6.626e-34
     c = 3e8
     wavelength_m = wavelength_nm * 1e-9
     energy_per_photon = (h * c) / wavelength_m
-    area_m2 = math.pi * (aperture_m / 2) ** 2
+    # Effective collecting area with the central obstruction removed.
+    obstruction = min(max(obstruction or 0.0, 0.0), 0.9)
+    area_m2 = math.pi * (aperture_m / 2) ** 2 * (1.0 - obstruction ** 2)
     bandwidth_hz = (
         (c / wavelength_m**2) *
         (bandwidth_nm * 1e-9)
@@ -395,6 +428,11 @@ def calculate_snr(
     dark_current = telescope_specs["dark_current"]
     qe           = telescope_specs["quantum_efficiency"]
     throughput   = telescope_specs["throughput"]
+    # Central obstruction (secondary mirror), as a linear diameter ratio.
+    # Optional in the specs dict; 0 = unobstructed (refractor / no data).
+    obstruction  = telescope_specs.get("obstruction", 0.0)
+    # Detector full-well / saturation limit (electrons per pixel). Optional.
+    full_well_e  = telescope_specs.get("full_well_e")
 
     # PWV transmission for infrared
     if telescope_type == "infrared" and pwv_mm:
@@ -441,21 +479,22 @@ def calculate_snr(
         is_extended         = False
 
     # Source signal — photon collection depends on the chosen
-    # filter's central wavelength and bandwidth.
-    source_flux   = mag_to_flux(effective_magnitude)
+    # filter's central wavelength and bandwidth. Use the band's Vega
+    # zero-point so red/IR fluxes are correct (not the flat AB value).
+    source_flux   = mag_to_flux(effective_magnitude, band=filter_band)
     source_rate   = flux_to_photons(
         source_flux, aperture,
         bandwidth_nm=bandwidth_nm, wavelength_nm=wavelength_nm,
-        throughput=effective_throughput, qe=qe
+        throughput=effective_throughput, qe=qe, obstruction=obstruction
     )
     source_counts = source_rate * exposure_time_s
 
-    # Sky background per pixel
-    sky_flux       = mag_to_flux(sky_brightness_mag)
+    # Sky background per pixel (same band zero-point as the source)
+    sky_flux       = mag_to_flux(sky_brightness_mag, band=filter_band)
     sky_rate_pixel = flux_to_photons(
         sky_flux, aperture,
         bandwidth_nm=bandwidth_nm, wavelength_nm=wavelength_nm,
-        throughput=effective_throughput, qe=qe
+        throughput=effective_throughput, qe=qe, obstruction=obstruction
     ) * (pixel_scale ** 2)
 
     # Number of pixels
@@ -490,15 +529,49 @@ def calculate_snr(
     )
     snr = source_counts / total_noise if total_noise > 0 else 0
 
+    # ── Saturation check ──────────────────────────────────────────
+    # Mean signal in a PSF-footprint pixel (source spread over n_pixels, plus
+    # sky and dark). A point source actually peaks higher than the mean, so we
+    # apply a ~3x peak-to-mean factor as a conservative early warning. If the
+    # detector's full well is exceeded, photometry is non-linear/unusable and
+    # the headline SNR is not trustworthy.
+    peak_pixel_e = None
+    is_saturated = False
+    if full_well_e:
+        mean_pixel_e = (source_counts + sky_counts + dark_counts) / n_pixels
+        peak_pixel_e = mean_pixel_e * (1.0 if is_extended else 3.0)
+        is_saturated = peak_pixel_e > full_well_e
+
+    # ── Honest uncertainty band ───────────────────────────────────
+    # The single SNR number hides real modelling uncertainty. The dominant
+    # terms an observer cannot pin down from a forecast are: delivered seeing
+    # (GOWC's is ~1.5x high and uncalibrated -> sky/pixel count uncertain),
+    # scintillation amplitude (C_Y scatter, ~+/-30%), and transparency (thin
+    # cirrus). We propagate a seeing swing of x0.7..x1.5 through the sky term to
+    # bracket the SNR, giving an optimistic/pessimistic pair rather than false
+    # precision. This is a planning band, not a formal error bar.
+    def _snr_with_seeing(seeing_factor):
+        npx = max(1, round(math.pi * (
+            (effective_seeing * seeing_factor) / (2 * pixel_scale)) ** 2))
+        sky_c = sky_rate_pixel * exposure_time_s * npx
+        dark_c = dark_current * exposure_time_s * npx
+        read_c = (read_noise ** 2) * npx
+        noise = math.sqrt(source_counts + sky_c + dark_c + read_c
+                          + scint_noise ** 2)
+        return source_counts / noise if noise > 0 else 0
+    # Better seeing (x0.7) -> higher SNR; worse (x1.5) -> lower.
+    snr_optimistic = round(_snr_with_seeing(0.7), 1)
+    snr_pessimistic = round(_snr_with_seeing(1.5), 1)
+
     # Limiting magnitude
     lim_mag  = object_magnitude
     step     = 0.5
     for _ in range(50):
-        test_flux   = mag_to_flux(lim_mag + step)
+        test_flux   = mag_to_flux(lim_mag + step, band=filter_band)
         test_rate   = flux_to_photons(
             test_flux, aperture,
             bandwidth_nm=bandwidth_nm, wavelength_nm=wavelength_nm,
-            throughput=effective_throughput, qe=qe
+            throughput=effective_throughput, qe=qe, obstruction=obstruction
         )
         test_counts = test_rate * exposure_time_s
         test_noise  = math.sqrt(
@@ -546,6 +619,13 @@ def calculate_snr(
     return {
         "snr":                round(snr, 1),
         "snr_quality":        snr_quality(snr),
+        # Honest planning band (seeing x0.7..x1.5); pessimistic < snr < optimistic.
+        "snr_optimistic":     snr_optimistic,
+        "snr_pessimistic":    snr_pessimistic,
+        # Saturation warning (None if the detector has no full_well_e in specs).
+        "is_saturated":       is_saturated,
+        "peak_pixel_e":       round(peak_pixel_e, 0) if peak_pixel_e else None,
+        "full_well_e":        full_well_e,
         "source_counts":      round(source_counts, 1),
         "sky_counts":         round(sky_counts, 1),
         "dark_counts":        round(dark_counts, 1),
