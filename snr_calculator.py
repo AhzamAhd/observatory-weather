@@ -240,8 +240,95 @@ OBJECT_ANGULAR_SIZES = {
     "Antares":     0.046,
 }
 
-# ── Helper functions ──────────────────────────────────────────────
-def get_sky_brightness(moon_phase_pct, moon_altitude_deg):
+# ── Sky brightness: Krisciunas & Schaefer (1991) moon model ───────
+def _mag_to_nanolambert(mag_arcsec2):
+    """V-band surface brightness (mag/arcsec^2) -> luminance in nanoLamberts,
+    per Krisciunas & Schaefer (1991) Eq. 27."""
+    return 34.08 * math.exp(20.7233 - 0.92104 * mag_arcsec2)
+
+
+def _nanolambert_to_mag(b_nl):
+    """NanoLamberts -> V-band surface brightness (mag/arcsec^2), the inverse of
+    _mag_to_nanolambert (K&S 1991 Eq. 28)."""
+    if b_nl <= 0:
+        return 22.0
+    return (20.7233 - math.log(b_nl / 34.08)) / 0.92104
+
+
+def moon_sky_brightness(moon_phase_pct, moon_alt_deg, target_alt_deg,
+                        moon_target_sep_deg, dark_sky_mag=21.8,
+                        k_extinction=0.15):
+    """V-band sky brightness (mag/arcsec^2) including moonlight, via the
+    Krisciunas & Schaefer (1991) model (PASP 103, 1033).
+
+    Adds the Moon's scattered-light contribution to a dark-sky baseline as a
+    function of lunar phase, the Moon's and target's airmasses, and the angular
+    separation between them. Larger separation and lower Moon => darker sky.
+    Below the horizon the Moon contributes nothing.
+
+    Parameters
+    ----------
+    moon_phase_pct : illuminated fraction (0-100).
+    moon_alt_deg, target_alt_deg : altitudes above the horizon (deg).
+    moon_target_sep_deg : Moon-target angular separation (deg).
+    dark_sky_mag : moonless zenith sky brightness (mag/arcsec^2); site darkness.
+    k_extinction : V-band atmospheric extinction coefficient (mag/airmass).
+    """
+    # No Moon contribution when it is below the horizon.
+    if moon_alt_deg is None or moon_alt_deg <= 0:
+        return round(dark_sky_mag, 2)
+    if target_alt_deg is None or target_alt_deg <= 0:
+        return round(dark_sky_mag, 2)
+    rho = max(1.0, min(179.0, moon_target_sep_deg or 60.0))
+
+    # Lunar phase angle alpha (deg): 0 = full, 180 = new.
+    alpha = (1.0 - (moon_phase_pct or 0) / 100.0) * 180.0
+    # Illuminance of the Moon outside the atmosphere (K&S Eq. 20). The +16.57
+    # zero-point puts i_star on the scale that makes f(rho)*i_star come out in
+    # nanoLamberts directly (K&S 1991).
+    m_star = -12.73 + 0.026 * abs(alpha) + 4e-9 * alpha ** 4
+    i_star = 10 ** (-0.4 * (m_star + 16.57))
+
+    # Scattering function f(rho): Rayleigh + Mie/aureole terms (K&S Eq. 21).
+    f_rho = (10 ** 5.36) * (1.06 + math.cos(math.radians(rho)) ** 2) \
+        + 10 ** (6.15 - rho / 40.0)
+
+    # Airmass along a line of sight at altitude h (K&S Eq. 3).
+    def _X(h):
+        z = 90.0 - h
+        return (1.0 - 0.96 * math.sin(math.radians(z)) ** 2) ** -0.5
+
+    X_moon = _X(moon_alt_deg)
+    X_target = _X(target_alt_deg)
+
+    # Moon's added brightness in nanoLamberts (K&S Eq. 15).
+    b_moon = (f_rho * i_star
+              * 10 ** (-0.4 * k_extinction * X_moon)
+              * (1.0 - 10 ** (-0.4 * k_extinction * X_target)))
+
+    # Dark sky in nanoLamberts, then add the Moon and convert back to mag.
+    b_dark = _mag_to_nanolambert(dark_sky_mag)
+    b_total = b_dark + max(0.0, b_moon)
+    return round(_nanolambert_to_mag(b_total), 2)
+
+
+def get_sky_brightness(moon_phase_pct, moon_altitude_deg,
+                       target_altitude_deg=None, moon_target_sep_deg=None,
+                       dark_sky_mag=21.8, k_extinction=0.15):
+    """Sky brightness (V mag/arcsec^2).
+
+    If the Moon-target separation and target altitude are provided, use the
+    physical Krisciunas & Schaefer (1991) model (separation is the dominant
+    driver of moonlit sky brightness). Otherwise fall back to the original
+    phase/altitude lookup so existing callers are unchanged.
+    """
+    if (target_altitude_deg is not None and moon_target_sep_deg is not None):
+        return moon_sky_brightness(
+            moon_phase_pct, moon_altitude_deg, target_altitude_deg,
+            moon_target_sep_deg, dark_sky_mag=dark_sky_mag,
+            k_extinction=k_extinction)
+
+    # ── Legacy fallback: 5-bucket phase table + linear altitude term ──
     if moon_altitude_deg <= 0:
         return SKY_BRIGHTNESS["new_moon"]
     if moon_phase_pct < 10:
