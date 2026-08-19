@@ -2,8 +2,36 @@ import requests
 import json
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
+
+def _nearest_hour_profile(hourly):
+    """From Open-Meteo's hourly block, return a dict of each field's value at
+    the hour nearest the current UTC time. Empty dict if no hourly data."""
+    times = hourly.get("time") or []
+    if not times:
+        return {}
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    # Open-Meteo hourly times are "YYYY-MM-DDTHH:MM" (local-to-request, but we
+    # only need the nearest index, so parse naively and pick the closest).
+    best_i, best_dt = 0, None
+    for i, t in enumerate(times):
+        try:
+            dt = datetime.strptime(t, "%Y-%m-%dT%H:%M")
+        except (ValueError, TypeError):
+            continue
+        diff = abs((dt - now).total_seconds())
+        if best_dt is None or diff < best_dt:
+            best_dt, best_i = diff, i
+    out = {}
+    for key, values in hourly.items():
+        if key == "time":
+            continue
+        if isinstance(values, list) and best_i < len(values):
+            out[key] = values[best_i]
+    return out
+
 
 def load_observatories():
     path = "data/observatory_list.json"
@@ -30,6 +58,22 @@ def fetch_weather(observatory):
             "windspeed_80m",
             "windspeed_120m",
         ],
+        # Pressure-level (vertical profile) fields — needed for the Tatarski
+        # seeing model's real potential-temperature gradient and wind shear.
+        # These come from the hourly endpoint; we take the hour nearest the
+        # fetch time. temp/geopotential at 850 & 500 hPa give dTheta/dz; wind at
+        # 850 & 250 hPa gives free-atmosphere shear + the jet.
+        "hourly": [
+            "temperature_850hPa",
+            "temperature_700hPa",
+            "temperature_500hPa",
+            "geopotential_height_850hPa",
+            "geopotential_height_500hPa",
+            "wind_speed_850hPa",
+            "wind_speed_250hPa",
+            "relative_humidity_850hPa",
+            "relative_humidity_500hPa",
+        ],
         "wind_speed_unit": "ms",
         "forecast_days":   1
     }
@@ -44,7 +88,12 @@ def fetch_weather(observatory):
                 time.sleep(min(wait, 15))
                 continue
             response.raise_for_status()
-            current = response.json()["current"]
+            payload = response.json()
+            current = payload["current"]
+
+            # Pick the hourly index nearest the current UTC time so the vertical
+            # profile matches the surface reading.
+            prof = _nearest_hour_profile(payload.get("hourly", {}))
 
             return {
                 "observatory_name": observatory["name"],
@@ -62,7 +111,17 @@ def fetch_weather(observatory):
                 "dewpoint_c":       current.get("dewpoint_2m"),
                 "wind_speed_80m":   current.get("windspeed_80m"),
                 "wind_speed_120m":  current.get("windspeed_120m"),
-                "jet_stream_ms":    None,
+                # Vertical profile (for the Tatarski seeing model):
+                "temp_850hpa":      prof.get("temperature_850hPa"),
+                "temp_700hpa":      prof.get("temperature_700hPa"),
+                "temp_500hpa":      prof.get("temperature_500hPa"),
+                "geopot_850hpa":    prof.get("geopotential_height_850hPa"),
+                "geopot_500hpa":    prof.get("geopotential_height_500hPa"),
+                "wind_850hpa":      prof.get("wind_speed_850hPa"),
+                "rh_850hpa":        prof.get("relative_humidity_850hPa"),
+                "rh_500hpa":        prof.get("relative_humidity_500hPa"),
+                # 250 hPa wind is the jet-stream proxy at that level.
+                "jet_stream_ms":    prof.get("wind_speed_250hPa"),
             }
 
         except requests.exceptions.Timeout:

@@ -38,7 +38,8 @@ _LATEST_SQL = """
         o.id, o.name AS observatory, o.country, o.latitude, o.longitude,
         o.altitude_m, o.mpc_code,
         w.fetch_datetime, w.cloud_cover_pct, w.humidity_pct, w.wind_speed_ms,
-        w.temperature_c, w.precipitation_mm, w.surface_pressure, w.jet_stream_ms
+        w.temperature_c, w.precipitation_mm, w.surface_pressure, w.jet_stream_ms,
+        w.temp_850hpa, w.temp_500hpa, w.geopot_850hpa, w.geopot_500hpa, w.wind_850hpa
     FROM weather_readings w
     JOIN observatories o ON w.observatory_id = o.id
     WHERE w.fetch_date = (SELECT MAX(fetch_date) FROM weather_readings)
@@ -48,10 +49,20 @@ _LATEST_SQL = """
 
 def _real_score(r):
     """GOWC's genuine multiplicative observing-quality index — identical to
-    the Streamlit app's headline score (atmospheric.observing_quality_score)."""
+    the Streamlit app's headline score (atmospheric.observing_quality_score).
+    Passes the vertical profile so seeing uses the Tatarski model when present."""
+    profile = {
+        "temp_850hpa":   r.get("temp_850hpa"),
+        "temp_500hpa":   r.get("temp_500hpa"),
+        "geopot_850hpa": r.get("geopot_850hpa"),
+        "geopot_500hpa": r.get("geopot_500hpa"),
+        "wind_850hpa":   r.get("wind_850hpa"),
+        "jet_stream_ms": r.get("jet_stream_ms"),
+    }
     seeing = calculate_seeing(
         r.get("temperature_c"), r.get("wind_speed_ms"),
-        r.get("humidity_pct"), r.get("altitude_m") or 0)
+        r.get("humidity_pct"), r.get("altitude_m") or 0,
+        profile=profile)
     _, jet_impact = calculate_jet_stream_impact(
         r.get("jet_stream_ms"), r.get("latitude") or 0)
     return observing_quality_score(
@@ -87,7 +98,8 @@ _ONE_SQL = """
     SELECT o.id, o.name AS observatory, o.country, o.latitude, o.longitude,
         o.altitude_m, o.mpc_code,
         w.fetch_datetime, w.cloud_cover_pct, w.humidity_pct, w.wind_speed_ms,
-        w.temperature_c, w.precipitation_mm, w.surface_pressure, w.jet_stream_ms
+        w.temperature_c, w.precipitation_mm, w.surface_pressure, w.jet_stream_ms,
+        w.temp_850hpa, w.temp_500hpa, w.geopot_850hpa, w.geopot_500hpa, w.wind_850hpa
     FROM weather_readings w
     JOIN observatories o ON w.observatory_id = o.id
     WHERE o.id = %s

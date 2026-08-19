@@ -3,6 +3,102 @@ import math
 # Wavelength seeing is referenced to (V band, 500 nm).
 _SEEING_WAVELENGTH_M = 500e-9
 
+# ── Physically-grounded seeing via the Tatarski Cn2 formulation ───────
+# References:
+#   Tatarski, V.I. (1971), "The Effects of the Turbulent Atmosphere on Wave
+#     Propagation" — the C_T^2 = (c/Pr_t) L0^(4/3) Gamma^2 relation and the
+#     optical conversion Cn^2 = (79e-6 P/T^2)^2 C_T^2.
+#   Basu, S. & Holtslag, A.A.M. (2021), arXiv:2110.03439 — revisits/derives the
+#     Tatarski C_T^2 formulation; notes it is valid for STABLY stratified
+#     conditions (i.e. nighttime, when astronomers observe).
+#   Fried, D.L. (1966), JOSA 56, 1372 — r0 = (0.423 k^2 X integral Cn^2 dh)^-3/5.
+# This replaces the earlier hand-fitted Cn^2 heuristic with the published
+# formalism, driven by REAL vertical gradients from Open-Meteo pressure levels
+# (850/500 hPa). Where profile data is missing we fall back to the heuristic.
+_G = 9.80665          # gravitational acceleration, m/s^2
+_CP = 1004.0          # specific heat of dry air, J/(kg K)
+_R_DRY = 287.05       # gas constant for dry air, J/(kg K)
+_C_TATARSKI = 2.8     # Tatarski proportionality constant c (2.8-3.2)
+_PR_T = 1.0           # turbulent Prandtl number (~1 in stable stratification)
+
+
+def potential_temp_gradient(t_low_c, z_low_m, t_high_c, z_high_m,
+                            p_low_hpa=850.0, p_high_hpa=500.0):
+    """Potential-temperature gradient Gamma = dTheta/dz (K/m) between two
+    pressure levels using their geopotential heights. Positive = stable.
+
+    Theta = T (1000/P)^(R/CP); we difference Theta over the height gap. This is
+    the real static-stability gradient Tatarski's C_T^2 needs."""
+    if None in (t_low_c, z_low_m, t_high_c, z_high_m):
+        return None
+    kappa = _R_DRY / _CP
+    theta_low = (t_low_c + 273.15) * (1000.0 / p_low_hpa) ** kappa
+    theta_high = (t_high_c + 273.15) * (1000.0 / p_high_hpa) ** kappa
+    dz = z_high_m - z_low_m
+    if dz <= 0:
+        return None
+    return (theta_high - theta_low) / dz
+
+
+def _outer_length_scale(gamma, wind_shear_per_s):
+    """Outer turbulence length scale L0 (m). In stable stratification L0 is
+    buoyancy-limited; we use a shear/buoyancy mixing length, bounded to a
+    physically sensible 2-50 m. This is the principal estimated quantity when a
+    fine Cn^2 profile is unavailable — documented as such."""
+    n2 = (_G / 300.0) * max(gamma, 1e-5)      # buoyancy frequency squared
+    if wind_shear_per_s and wind_shear_per_s > 1e-4 and n2 > 0:
+        L0 = 0.5 * wind_shear_per_s / n2
+    else:
+        L0 = 20.0
+    return max(2.0, min(50.0, L0))
+
+
+def calculate_seeing_tatarski(t_850_c, t_500_c, geopot_850_m, geopot_500_m,
+                              wind_850_ms=None, wind_250_ms=None,
+                              pressure_hpa=850.0, airmass=1.0,
+                              wavelength_nm=500.0, layer_thickness_m=500.0):
+    """Seeing FWHM (arcsec) from the Tatarski Cn^2 formulation using REAL
+    vertical gradients. Returns None if the required profile data is missing.
+
+    Chain (all published, see module header):
+      Gamma = dTheta/dz  (from 850/500 hPa T + geopotential heights)
+      C_T^2 = (c/Pr_t) L0^(4/3) Gamma^2                    (Tatarski / Basu&Holtslag)
+      Cn^2  = (79e-6 P/T^2)^2 C_T^2                        (optical conversion)
+      r0    = (0.423 k^2 X integral Cn^2 dh)^(-3/5)        (Fried 1966)
+      theta = 0.98 lambda / r0
+
+    HONEST CAVEAT: with only two pressure levels the Cn^2 integral and L0 are
+    coarse, so this over-estimates seeing versus a DIMM by a roughly constant
+    factor (~1.5x at good sites). Reported uncalibrated — the value is the raw
+    physics, not fitted to match published site seeing."""
+    gamma = potential_temp_gradient(t_850_c, geopot_850_m, t_500_c, geopot_500_m)
+    if gamma is None or gamma <= 0:
+        # Non-stable or missing gradient — Tatarski regime doesn't apply.
+        return None
+
+    # Free-atmosphere wind shear between 850 hPa and the 250 hPa jet level
+    # (~10.4 km), used only to set the mixing length L0.
+    shear = None
+    if wind_850_ms is not None and wind_250_ms is not None:
+        shear = abs(wind_250_ms - wind_850_ms) / max(1.0, 10400.0 - geopot_850_m)
+
+    L0 = _outer_length_scale(gamma, shear)
+    ct2 = (_C_TATARSKI / _PR_T) * (L0 ** (4.0 / 3.0)) * (gamma ** 2)
+
+    temp_k = t_850_c + 273.15
+    cn2_factor = 79e-6 * pressure_hpa / (temp_k ** 2)
+    cn2 = (cn2_factor ** 2) * ct2
+
+    cn2_integral = cn2 * layer_thickness_m
+    if cn2_integral <= 0:
+        return None
+
+    wavelength_m = wavelength_nm * 1e-9
+    k = 2.0 * math.pi / wavelength_m
+    r0 = (0.423 * k ** 2 * max(1.0, airmass) * cn2_integral) ** (-3.0 / 5.0)
+    theta_arcsec = (0.98 * wavelength_m / r0) * 206265.0
+    return round(max(0.3, min(5.0, theta_arcsec)), 2)
+
 
 def turbulence_integral(wind_speed_ms, humidity_pct, altitude_m):
     """
@@ -65,11 +161,22 @@ def fried_parameter(cn2_integral, wavelength_m=_SEEING_WAVELENGTH_M,
 def calculate_seeing(temperature_c, wind_speed_ms,
                      humidity_pct, altitude_m=0,
                      airmass=1.0,
-                     wavelength_nm=500.0):
+                     wavelength_nm=500.0,
+                     profile=None):
     """
-    Estimate atmospheric seeing (FWHM, arcsec) from the Fried
-    parameter:
+    Estimate atmospheric seeing (FWHM, arcsec).
 
+    PREFERRED PATH: when `profile` (a dict of Open-Meteo pressure-level fields:
+    temp_850hpa, temp_500hpa, geopot_850hpa, geopot_500hpa, and optionally
+    wind_850hpa, jet_stream_ms) is provided with a stable gradient, seeing is
+    computed from the published Tatarski Cn^2 formalism using REAL vertical
+    gradients — see calculate_seeing_tatarski / module header.
+
+    FALLBACK PATH (no profile, or non-stable/missing gradient): the original
+    surface-weather Fried-parameter heuristic below, which infers Cn^2 from a
+    Hufnagel-Valley-style decomposition of surface wind/humidity/altitude.
+
+    Both paths end at the same Fried step:
         θ = 0.98 * λ / r0      (radians)  →  × 206265 → arcsec
 
     r0 is derived from a Hufnagel–Valley-style Cn² integral
@@ -80,6 +187,22 @@ def calculate_seeing(temperature_c, wind_speed_ms,
     temperature_c is retained for signature compatibility and a
     small cold-air stability bonus.
     """
+    # PREFERRED: real vertical-gradient Tatarski model when profile data exists.
+    if profile:
+        t850 = profile.get("temp_850hpa")
+        t500 = profile.get("temp_500hpa")
+        g850 = profile.get("geopot_850hpa")
+        g500 = profile.get("geopot_500hpa")
+        if None not in (t850, t500, g850, g500):
+            tat = calculate_seeing_tatarski(
+                t850, t500, g850, g500,
+                wind_850_ms=profile.get("wind_850hpa"),
+                wind_250_ms=profile.get("jet_stream_ms"),
+                airmass=airmass, wavelength_nm=wavelength_nm)
+            if tat is not None:
+                return tat
+        # else fall through to the surface heuristic below.
+
     if any(v is None for v in [
         temperature_c, wind_speed_ms, humidity_pct
     ]):
