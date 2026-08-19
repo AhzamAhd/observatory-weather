@@ -4337,6 +4337,26 @@ if selected_page == "SNR Calculator":
         except Exception:
             return None
 
+    # Moon-target angular separation — the dominant driver of moonlit sky
+    # brightness in the Krisciunas & Schaefer model used below.
+    def _moon_target_sep(lat, lon, obj_name, when):
+        try:
+            import ephem
+            from object_visibility import OBJECTS, get_ephem_object
+            info = OBJECTS.get(obj_name)
+            if not info:
+                return None
+            _ob = ephem.Observer()
+            _ob.lat = str(lat); _ob.long = str(lon)
+            _ob.date = when.strftime("%Y/%m/%d %H:%M:%S")
+            _moon = ephem.Moon(_ob)
+            tgt = get_ephem_object(obj_name, info)
+            tgt.compute(_ob)
+            sep = ephem.separation(_moon, tgt)
+            return round(math.degrees(float(sep)), 1)
+        except Exception:
+            return None
+
     # ── Controls ──────────────────────────────────────────
     snr_col1, snr_col2, snr_col3 = st.columns(3)
 
@@ -4459,14 +4479,30 @@ if selected_page == "SNR Calculator":
         _mm2.metric("Moon altitude",
                     f"{_auto_moon_alt}°" if _auto_moon_alt > 0 else "Below horizon")
 
+        # Moon-target separation + target altitude drive the Krisciunas &
+        # Schaefer (1991) sky-brightness model (separation is the dominant term).
+        _snr_tgt_alt = _obj_altitude(
+            _snr_obs_row["latitude"], _snr_obs_row["longitude"],
+            snr_object, _snr_when)
+        _snr_moon_sep = _moon_target_sep(
+            _snr_obs_row["latitude"], _snr_obs_row["longitude"],
+            snr_object, _snr_when)
+
         sky_brightness = get_sky_brightness(
-            moon_phase_input, moon_alt_input)
+            moon_phase_input, moon_alt_input,
+            target_altitude_deg=_snr_tgt_alt,
+            moon_target_sep_deg=_snr_moon_sep)
+        _sep_txt = (f"{_snr_moon_sep}° from Moon"
+                    if _snr_moon_sep is not None else "separation n/a")
         st.metric(
             "Sky brightness",
             f"{sky_brightness} mag/arcsec²",
-            help="Higher = darker sky = better. Computed from the "
-                 "Moon's real position at this observatory right now."
+            help="Higher = darker sky = better. Krisciunas & Schaefer (1991) "
+                 "model: folds in Moon phase, altitude and — the dominant "
+                 "factor — the Moon–target angular separation."
         )
+        if _auto_moon_alt > 0:
+            st.caption(f"{snr_object} is **{_sep_txt}**.")
 
     st.markdown("---")
 
