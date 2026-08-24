@@ -344,10 +344,41 @@ def get_sky_brightness(moon_phase_pct, moon_altitude_deg,
     alt_factor = moon_altitude_deg / 90
     return round(max(17.0, base - (alt_factor * 2.0)), 2)
 
+# Secondary (colour-dependent) extinction coefficients k2 (mag/airmass per unit
+# colour), by band. The bluer the star, the more its light is scattered per
+# airmass, so extinction depends weakly on colour: k(colour) = k1 + k2*(B-V).
+# k2 is largest in the blue (Rayleigh scattering ~ lambda^-4) and negligible in
+# the red/IR. Representative values (small; e.g. Hardie 1962 for La Palma-like
+# sites). Applied only when a target colour is supplied.
+SECONDARY_EXTINCTION_K2 = {
+    "U": -0.05, "B": -0.03, "V": -0.01, "R": 0.00, "I": 0.00,
+    "J": 0.00, "H": 0.00, "K": 0.00,
+}
+
+# Colour terms for the instrumental->standard transformation: the observer's
+# filter response differs slightly from the standard system, so the calibrated
+# magnitude picks up a term proportional to the star's colour,
+# m_std = m_inst + zp + colour_term*(B-V). Small, band-dependent. Applied for
+# reporting when a colour is known; the sign/scale follow standard UBVRI
+# transformations (e.g. Bessell 1990). Not used inside the SNR itself.
+COLOUR_TERM = {
+    "U": 0.03, "B": 0.06, "V": -0.03, "R": -0.02, "I": -0.02,
+    "J": 0.00, "H": 0.00, "K": 0.00,
+}
+
+
 def atmospheric_extinction(altitude_deg,
                            extinction_coeff=None,
                            site_altitude_m=2000.0,
-                           filter_band="V"):
+                           filter_band="V",
+                           colour_bv=None):
+    """Atmospheric transmission fraction toward a target.
+
+    If `colour_bv` (the star's B-V) is given, the extinction coefficient
+    includes the secondary, colour-dependent term k = k1 + k2*(B-V) --- bluer
+    stars are extinguished slightly more per airmass (Rayleigh scattering). With
+    no colour, only the primary coefficient k1 is used, exactly as before.
+    """
     if altitude_deg is None or altitude_deg <= 0:
         return 0.5
     if altitude_deg >= 90:
@@ -357,16 +388,30 @@ def atmospheric_extinction(altitude_deg,
     else:
         airmass = 1 / math.sin(math.radians(altitude_deg))
 
-    # Site-dependent extinction coefficient unless caller
-    # supplies an explicit value.
+    # Primary (colour-independent) coefficient.
     if extinction_coeff is None:
         from airmass_calculator import extinction_coefficient
         extinction_coeff = extinction_coefficient(
             site_altitude_m, filter_band)
 
+    # Secondary (colour-dependent) term, when a target colour is available.
+    if colour_bv is not None:
+        k2 = SECONDARY_EXTINCTION_K2.get(filter_band, 0.0)
+        extinction_coeff = extinction_coeff + k2 * colour_bv
+
     extinction_mag = extinction_coeff * airmass
     transmission   = 10 ** (-extinction_mag / 2.5)
     return round(min(1.0, max(0.0, transmission)), 4)
+
+
+def colour_correction(filter_band, colour_bv):
+    """Instrumental->standard colour term: the magnitude offset a real
+    instrument's filter response introduces for a star of a given B-V colour,
+    m_std = m_inst + zp + (this). Returns 0 if colour is unknown or the band has
+    no term. Reported alongside the SNR; it does not affect the SNR value."""
+    if colour_bv is None:
+        return 0.0
+    return round(COLOUR_TERM.get(filter_band, 0.0) * colour_bv, 4)
 
 def get_surface_brightness(total_magnitude,
                            angular_size_arcmin):
@@ -508,7 +553,8 @@ def calculate_snr(
     filter_band="V",
     wavelength_nm=550.0,
     bandwidth_nm=100.0,
-    extinction_coeff=None
+    extinction_coeff=None,
+    colour_bv=None
 ):
     aperture     = telescope_specs["aperture_m"]
     pixel_scale  = telescope_specs["pixel_scale"]
@@ -560,7 +606,8 @@ def calculate_snr(
             object_altitude_deg,
             extinction_coeff=extinction_coeff,
             site_altitude_m=site_altitude_m,
-            filter_band=filter_band)
+            filter_band=filter_band,
+            colour_bv=colour_bv)
         effective_throughput = throughput * ext_transmission
         airmass = (
             1 / math.sin(
@@ -777,6 +824,9 @@ def calculate_snr(
         # Photometric uncertainty on the magnitude: sigma_m = 1.0857 / SNR
         # (from sigma_m = 2.5/ln(10) * sigma_f/f, with sigma_f/f = 1/SNR).
         "sigma_mag":          (round(1.0857 / snr, 4) if snr > 0 else None),
+        # Instrumental->standard colour term for this band and target colour
+        # (0 if colour unknown). A reporting quantity; does not affect the SNR.
+        "colour_term":        colour_correction(filter_band, colour_bv),
         # Honest planning band (seeing x0.7..x1.5); pessimistic < snr < optimistic.
         "snr_optimistic":     snr_optimistic,
         "snr_pessimistic":    snr_pessimistic,
