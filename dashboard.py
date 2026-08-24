@@ -5822,7 +5822,47 @@ if selected_page == "Feedback & Suggestions":
                 else:
                     st.warning(msg)
 
-    # ── Owner-only recent feedback (via ?admin=1) ──────
+    # ── Suggest a missing observatory ──────────────────
+    st.markdown("---")
+    st.subheader("🔭 Suggest a missing observatory")
+    st.caption("Know an observatory or telescope that isn't in GOWC? Add it "
+               "here. Suggestions are reviewed before being added to the site "
+               "list, so coordinates can be checked.")
+    from observatory_suggestions import add_suggestion, get_suggestions
+    with st.form("obs_suggest_form"):
+        os1, os2 = st.columns([2, 1])
+        with os1:
+            sg_name = st.text_input("Observatory / telescope name",
+                placeholder="e.g. University of Sheffield Observatory")
+        with os2:
+            sg_country = st.text_input("Country", placeholder="e.g. UK")
+        os3, os4, os5 = st.columns(3)
+        with os3:
+            sg_lat = st.number_input("Latitude (°)", -90.0, 90.0, 0.0,
+                format="%.4f", help="Decimal degrees; North positive.")
+        with os4:
+            sg_lon = st.number_input("Longitude (°)", -180.0, 180.0, 0.0,
+                format="%.4f", help="Decimal degrees; East positive.")
+        with os5:
+            sg_alt = st.number_input("Altitude (m)", 0.0, 6000.0, 0.0,
+                help="Site elevation above sea level.")
+        sg_notes = st.text_input("Notes (optional)",
+            placeholder="Telescope size, instruments, MPC code…")
+        sg_contact = st.text_input("Email (optional, for follow-up)",
+            key="sg_contact")
+        sg_submit = st.form_submit_button("Suggest observatory",
+                                          type="primary")
+        if sg_submit:
+            ok, msg = add_suggestion(
+                sg_name, sg_lat, sg_lon, sg_alt,
+                country=sg_country.strip(), notes=sg_notes.strip(),
+                contact=sg_contact.strip())
+            if ok:
+                st.success(msg)
+            else:
+                st.warning(msg)
+
+    # ── Owner-only admin (via ?admin=1) ────────────────
     if st.query_params.get("admin") == "1":
         st.markdown("---")
         st.subheader("Recent feedback (admin)")
@@ -5831,6 +5871,13 @@ if selected_page == "Feedback & Suggestions":
             st.caption("No feedback yet.")
         else:
             st.dataframe(_fb_df, hide_index=True, use_container_width=True)
+
+        st.subheader("Pending observatory suggestions (admin)")
+        _sg_df = get_suggestions(status="pending", limit=200)
+        if _sg_df.empty:
+            st.caption("No pending suggestions.")
+        else:
+            st.dataframe(_sg_df, hide_index=True, use_container_width=True)
 
 
 # ═══════════════════════════════════════════════════════
