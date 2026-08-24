@@ -11068,5 +11068,122 @@
     "altitude_m": 150,
     "country": "United Kingdom",
     "telescope_type": "optical"
+  },
+  {
+    "code": "",
+    "name": "ALMA (Atacama Large Millimeter Array)",
+    "latitude": -23.0193,
+    "longitude": -67.7532,
+    "altitude_m": 5058,
+    "country": "Chile",
+    "telescope_type": "radio"
+  },
+  {
+    "code": "",
+    "name": "Hanle - Indian Astronomical Observatory",
+    "latitude": 32.7794,
+    "longitude": 78.9642,
+    "altitude_m": 4500,
+    "country": "India",
+    "telescope_type": "optical"
+  },
+  {
+    "code": "695",
+    "name": "Kitt Peak National Observatory",
+    "latitude": 31.9583,
+    "longitude": -111.5967,
+    "altitude_m": 2096,
+    "country": "USA",
+    "telescope_type": "optical"
+  },
+  {
+    "code": "",
+    "name": "Lijiang Observatory (Gaomeigu)",
+    "latitude": 26.6956,
+    "longitude": 100.0303,
+    "altitude_m": 3200,
+    "country": "China",
+    "telescope_type": "optical"
+  },
+  {
+    "code": "",
+    "name": "IUCAA Girawali Observatory",
+    "latitude": 19.0797,
+    "longitude": 73.6708,
+    "altitude_m": 1000,
+    "country": "India",
+    "telescope_type": "optical"
+  },
+  {
+    "code": "",
+    "name": "Devasthal Observatory (ARIES)",
+    "latitude": 29.3617,
+    "longitude": 79.6839,
+    "altitude_m": 2540,
+    "country": "India",
+    "telescope_type": "optical"
+  },
+  {
+    "code": "",
+    "name": "Green Bank Telescope (GBT)",
+    "latitude": 38.4331,
+    "longitude": -79.8398,
+    "altitude_m": 807,
+    "country": "USA",
+    "telescope_type": "radio"
+  },
+  {
+    "code": "",
+    "name": "Very Large Array (VLA)",
+    "latitude": 34.0784,
+    "longitude": -107.6184,
+    "altitude_m": 2124,
+    "country": "USA",
+    "telescope_type": "radio"
+  },
+  {
+    "code": "",
+    "name": "MeerKAT / SKA-South",
+    "latitude": -30.713,
+    "longitude": 21.443,
+    "altitude_m": 1038,
+    "country": "South Africa",
+    "telescope_type": "radio"
+  },
+  {
+    "code": "",
+    "name": "FAST (Five-hundred-metre Aperture)",
+    "latitude": 25.6534,
+    "longitude": 106.8567,
+    "altitude_m": 1000,
+    "country": "China",
+    "telescope_type": "radio"
+  },
+  {
+    "code": "",
+    "name": "Parkes (Murriyang) Radio Telescope",
+    "latitude": -32.998,
+    "longitude": 148.2635,
+    "altitude_m": 415,
+    "country": "Australia",
+    "telescope_type": "radio"
+  },
+  {
+    "code": "",
+    "name": "Arecibo Observatory (site)",
+    "latitude": 18.3442,
+    "longitude": -66.7528,
+    "altitude_m": 498,
+    "country": "Puerto Rico",
+    "telescope_type": "radio"
+  },
+  {
+    "code": "",
+    "name": "Very Long Baseline Array - Pie Town",
+    "latitude": 34.301,
+    "longitude": -108.1191,
+    "altitude_m": 2371,
+    "country": "USA",
+    "telescope_type": "radio"
   }
 ]
