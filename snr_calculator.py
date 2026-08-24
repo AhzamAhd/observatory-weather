@@ -774,6 +774,9 @@ def calculate_snr(
     return {
         "snr":                round(snr, 1),
         "snr_quality":        snr_quality(snr),
+        # Photometric uncertainty on the magnitude: sigma_m = 1.0857 / SNR
+        # (from sigma_m = 2.5/ln(10) * sigma_f/f, with sigma_f/f = 1/SNR).
+        "sigma_mag":          (round(1.0857 / snr, 4) if snr > 0 else None),
         # Honest planning band (seeing x0.7..x1.5); pessimistic < snr < optimistic.
         "snr_optimistic":     snr_optimistic,
         "snr_pessimistic":    snr_pessimistic,
