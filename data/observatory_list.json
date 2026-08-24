@@ -11059,5 +11059,14 @@
     "altitude_m": 2788,
     "country": "USA",
     "telescope_type": "optical"
+  },
+  {
+    "code": "",
+    "name": "University of Sheffield Observatory (Hicks Building)",
+    "latitude": 53.3811,
+    "longitude": -1.4869,
+    "altitude_m": 150,
+    "country": "United Kingdom",
+    "telescope_type": "optical"
   }
 ]
