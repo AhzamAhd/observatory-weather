@@ -11023,5 +11023,41 @@
     "altitude_m": 0,
     "country": "Europe",
     "telescope_type": "optical"
+  },
+  {
+    "code": "309",
+    "name": "ESO Paranal Observatory (VLT)",
+    "latitude": -24.6272,
+    "longitude": -70.4042,
+    "altitude_m": 2635,
+    "country": "Chile",
+    "telescope_type": "optical"
+  },
+  {
+    "code": "809",
+    "name": "ESO La Silla Observatory",
+    "latitude": -29.2584,
+    "longitude": -70.73,
+    "altitude_m": 2400,
+    "country": "Chile",
+    "telescope_type": "optical"
+  },
+  {
+    "code": "I11",
+    "name": "Gemini South Observatory",
+    "latitude": -30.2408,
+    "longitude": -70.7367,
+    "altitude_m": 2722,
+    "country": "Chile",
+    "telescope_type": "optical"
+  },
+  {
+    "code": "705",
+    "name": "Apache Point Observatory",
+    "latitude": 32.7803,
+    "longitude": -105.8203,
+    "altitude_m": 2788,
+    "country": "USA",
+    "telescope_type": "optical"
   }
 ]
