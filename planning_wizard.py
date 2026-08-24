@@ -27,6 +27,8 @@ from airmass_calculator import (get_object_airmass_curve,
 from snr_calculator import (OBJECT_MAGNITUDES, PHOTOMETRIC_FILTERS,
                             calculate_snr, get_telescope_specs,
                             get_sky_brightness)
+from instruments import (list_facilities, list_instruments, list_filters,
+                         get_instrument_config)
 
 
 def _step_header(n, total, title):
@@ -53,14 +55,33 @@ def render_planning_wizard(df, utcnow, load_atmospheric_cached):
                               help="Pre-filled from the catalogue; override for "
                                    "a custom target.")
 
-    # ══ STEP 2 — Site ═════════════════════════════════════════════
+    # ══ STEP 2 — Site (+ optional real instrument) ════════════════
     _step_header(2, TOTAL, "Choose the observatory")
-    site = st.selectbox("Observatory", df["observatory"].tolist(),
-                        key="wiz_site")
+    sc_a, sc_b = st.columns([2, 1])
+    with sc_a:
+        site = st.selectbox("Observatory", df["observatory"].tolist(),
+                            key="wiz_site")
     site_row = df[df["observatory"] == site].iloc[0]
     lat = float(site_row["latitude"])
     lon = float(site_row["longitude"])
     alt_m = float(site_row.get("altitude_m", 0) or 0)
+
+    # Optional real instrument. When chosen, its real filters (and constants)
+    # drive Step 7 — so the filter list reflects what that telescope actually
+    # carries, not a generic set. "Generic" keeps the standard filter set.
+    with sc_b:
+        _fac_opts = ["Generic (any filter)"] + list_facilities()
+        wiz_facility = st.selectbox("Instrument (optional)", _fac_opts,
+                                    key="wiz_facility",
+                                    help="Pick a real telescope+instrument to "
+                                         "use its actual filters and constants.")
+    wiz_instrument = None
+    if wiz_facility != "Generic (any filter)":
+        _inst_opts = list_instruments(wiz_facility)
+        wiz_instrument = st.selectbox("Instrument mode", _inst_opts,
+                                      key="wiz_instrument")
+        st.caption(f"Using **{wiz_facility} · {wiz_instrument}** — Step 7 will "
+                   "show only this instrument's real filters.")
 
     # ══ STEP 3 — Night ════════════════════════════════════════════
     _step_header(3, TOTAL, "Choose the night")
@@ -153,15 +174,33 @@ def render_planning_wizard(df, utcnow, load_atmospheric_cached):
     # ══ STEP 7 — SNR / exposure ═══════════════════════════════════
     st.markdown("---")
     _step_header(7, TOTAL, "Exposure & signal-to-noise")
+    # Filter list comes from the chosen instrument when one is selected, so it
+    # only offers filters that telescope actually carries; otherwise the
+    # standard set. A resolved instrument config also supplies real constants.
+    _inst_cfg_base = None
+    if wiz_instrument:
+        _filter_options = list_filters(wiz_facility, wiz_instrument)
+    else:
+        _filter_options = list(PHOTOMETRIC_FILTERS.keys())
+
     sc1, sc2 = st.columns(2)
     with sc1:
-        filter_name = st.selectbox("Filter / band",
-                                   list(PHOTOMETRIC_FILTERS.keys()), index=2,
-                                   key="wiz_filter")
+        _default_ix = _filter_options.index("V (visual)") \
+            if "V (visual)" in _filter_options else 0
+        filter_name = st.selectbox("Filter / band", _filter_options,
+                                   index=_default_ix, key="wiz_filter")
     with sc2:
         target_snr = st.slider("Target SNR", 5, 200, 30, 5, key="wiz_snr")
-    filt = PHOTOMETRIC_FILTERS[filter_name]
-    specs = get_telescope_specs(site, alt_m)
+
+    if wiz_instrument:
+        # Real instrument: resolved config carries specs + this filter's band,
+        # wavelength, bandwidth and (where present) zero-point / efficiency.
+        specs = get_instrument_config(wiz_facility, wiz_instrument, filter_name)
+        filt = {"band": specs["band"], "wavelength_nm": specs["wavelength_nm"],
+                "bandwidth_nm": specs["bandwidth_nm"]}
+    else:
+        filt = PHOTOMETRIC_FILTERS[filter_name]
+        specs = get_telescope_specs(site, alt_m)
 
     # Solve exposure to reach the target SNR by scanning (SNR grows ~sqrt(t)
     # in the sky/read regime; a direct scan is robust across regimes).
