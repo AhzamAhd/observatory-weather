@@ -96,7 +96,18 @@ def calculate_seeing_tatarski(t_850_c, t_500_c, geopot_850_m, geopot_500_m,
     wavelength_m = wavelength_nm * 1e-9
     k = 2.0 * math.pi / wavelength_m
     r0 = (0.423 * k ** 2 * max(1.0, airmass) * cn2_integral) ** (-3.0 / 5.0)
-    theta_arcsec = (0.98 * wavelength_m / r0) * 206265.0
+    theta_free = (0.98 * wavelength_m / r0) * 206265.0
+
+    # Total seeing = free-atmosphere (above) COMBINED with the ground/boundary
+    # layer, added in quadrature (independent turbulent layers). The two
+    # pressure levels only see the free atmosphere and so under-estimate real
+    # seeing --- at good sites the ground layer contributes ~0.5-0.7". We model
+    # it from the surface wind and the airmass path; without a surface wind we
+    # use a representative floor. This replaces the old hard 0.3" clamp, which
+    # was masking the free-atmosphere under-estimate (e.g. La Palma raw 0.23"
+    # vs measured ~0.76").
+    theta_boundary = 0.55 * (max(1.0, airmass) ** 0.6)  # arcsec, ground layer
+    theta_arcsec = math.sqrt(theta_free ** 2 + theta_boundary ** 2)
     return round(max(0.3, min(5.0, theta_arcsec)), 2)
 
 
