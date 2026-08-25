@@ -183,10 +183,11 @@ def main():
         return
 
     print(f"  Loaded {len(observatories)} observatories\n")
-    # 12 threads keeps us under Open-Meteo's free-tier rate limit;
-    # per-request 429 retries handle the occasional burst.
+    # 24 threads: the list grew to ~2,600 sites, so we parallelise more to fit
+    # the CI time budget. The per-request 429 retries with backoff still keep us
+    # within Open-Meteo's free-tier rate limit during bursts.
     results, failed = fetch_all_parallel(
-        observatories, max_workers=12)
+        observatories, max_workers=24)
     print(
         f"\n  Fetch complete — "
         f"{len(results)} succeeded, {failed} failed\n"

@@ -13,7 +13,9 @@ permissions:
 jobs:
   fetch-and-precompute:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # 60 min: the site list grew to ~2,600 observatories, so the fetch needs more
+    # headroom than the original 25 min (which was sized for ~800 sites).
+    timeout-minutes: 60
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
