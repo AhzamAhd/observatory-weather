@@ -84,6 +84,10 @@ def fetch_weather(observatory):
             "wind_speed_250hPa",
             "relative_humidity_850hPa",
             "relative_humidity_500hPa",
+            # Model-computed total-column precipitable water (sea-level column);
+            # scaled to site altitude when used. Far more reliable than deriving
+            # PWV from the coarse 2-3 node humidity profile.
+            "total_column_integrated_water_vapour",
         ],
         "wind_speed_unit": "ms",
         "forecast_days":   1
@@ -131,6 +135,7 @@ def fetch_weather(observatory):
                 "wind_850hpa":      prof.get("wind_speed_850hPa"),
                 "rh_850hpa":        prof.get("relative_humidity_850hPa"),
                 "rh_500hpa":        prof.get("relative_humidity_500hPa"),
+                "pwv_column":       prof.get("total_column_integrated_water_vapour"),
                 # 250 hPa wind is the jet-stream proxy at that level.
                 "jet_stream_ms":    prof.get("wind_speed_250hPa"),
             }

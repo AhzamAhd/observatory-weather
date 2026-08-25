@@ -764,7 +764,17 @@ def load_atmospheric():
             "altitude_m":       row["altitude_m"],
             "surface_pressure": row.get("surface_pressure"),
             "jet_stream_ms":    row.get("jet_stream_ms"),
-            "latitude":         row["latitude"]
+            "latitude":         row["latitude"],
+            # Vertical-profile fields so seeing uses Tatarski and PWV uses the
+            # model column (scaled to altitude) rather than the fallbacks.
+            "temp_850hpa":      row.get("temp_850hpa"),
+            "temp_500hpa":      row.get("temp_500hpa"),
+            "geopot_850hpa":    row.get("geopot_850hpa"),
+            "geopot_500hpa":    row.get("geopot_500hpa"),
+            "wind_850hpa":      row.get("wind_850hpa"),
+            "rh_850hpa":        row.get("rh_850hpa"),
+            "rh_500hpa":        row.get("rh_500hpa"),
+            "pwv_column":       row.get("pwv_column"),
         })
         results.append({
             "observatory":  row["observatory"],
@@ -804,6 +814,9 @@ def load_data():
             w.geopot_850hpa,
             w.geopot_500hpa,
             w.wind_850hpa,
+            w.rh_850hpa,
+            w.rh_500hpa,
+            w.pwv_column,
             ROUND(GREATEST(0,
                 100
                 - (w.cloud_cover_pct * 0.50)
