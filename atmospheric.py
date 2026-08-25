@@ -289,7 +289,20 @@ def calculate_pwv(surface_pressure, humidity_pct,
 
     FALLBACK PATH: the previous single-level scale-height approximation.
     """
-    # PREFERRED: layered integration over the real humidity profile.
+    # MOST PREFERRED: the model's own total-column PWV (Open-Meteo), scaled to
+    # the site altitude. This is a proper radiative-transfer product and far more
+    # reliable than deriving PWV from 2-3 coarse humidity nodes. The provider
+    # gives the sea-level column; water vapour falls as exp(-h/H_w) with scale
+    # height H_w ~ 2000 m, so the column ABOVE a site at height h is
+    # PWV(h) = PWV(0) * exp(-h/H_w). This removes the water below the telescope.
+    if profile is not None:
+        pwv_col = profile.get("pwv_column")
+        if pwv_col is not None and pwv_col >= 0:
+            h = altitude_m or 0.0
+            pwv_site = pwv_col * math.exp(-h / 2000.0)
+            return round(max(0.1, min(60.0, pwv_site)), 2)
+
+    # PREFERRED (fallback): layered integration over the humidity profile.
     if profile:
         try:
             rho_w = 1000.0    # water density kg/m^3
@@ -313,7 +326,16 @@ def calculate_pwv(surface_pressure, humidity_pct,
                 pw_kg_m2 = 0.0                     # column water, kg/m^2
                 for (p_lo, q_lo), (p_hi, q_hi) in zip(nodes, nodes[1:]):
                     dp_pa = (p_lo - p_hi) * 100.0  # hPa -> Pa
-                    q_mean = 0.5 * (q_lo + q_hi)
+                    # Specific humidity falls ~exponentially with height, so over
+                    # a wide pressure gap the arithmetic mean over-weights the
+                    # moist lower node and over-counts water (a linear mean gave
+                    # PWV ~3x high vs measured). Integrate assuming exponential
+                    # decay between nodes: the layer-mean q is then the
+                    # logarithmic (geometric-integral) mean, (q_lo - q_hi)/ln(q_lo/q_hi).
+                    if q_lo > 0 and q_hi > 0 and abs(q_lo - q_hi) > 1e-9:
+                        q_mean = (q_lo - q_hi) / math.log(q_lo / q_hi)
+                    else:
+                        q_mean = 0.5 * (q_lo + q_hi)
                     pw_kg_m2 += q_mean * dp_pa / g
                 pwv_mm = pw_kg_m2 / rho_w * 1000.0  # kg/m^2 == mm of water; *1 => mm
                 # kg/m^2 of water is already numerically mm; the /rho_w*1000 is identity.
