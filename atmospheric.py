@@ -193,7 +193,14 @@ def calculate_seeing(temperature_c, wind_speed_ms,
         t500 = profile.get("temp_500hpa")
         g850 = profile.get("geopot_850hpa")
         g500 = profile.get("geopot_500hpa")
-        if None not in (t850, t500, g850, g500):
+        # A value is usable only if it is a real, finite number. Missing
+        # pressure-level data arrives as None from some paths but as NaN from
+        # pandas (a DB NULL), and NaN slips past a plain `None` check --- it then
+        # poisons the Tatarski arithmetic and pins the seeing at the 5" ceiling.
+        # Require all four to be finite before taking the Tatarski path.
+        def _finite(v):
+            return v is not None and isinstance(v, (int, float)) and math.isfinite(v)
+        if all(_finite(v) for v in (t850, t500, g850, g500)):
             tat = calculate_seeing_tatarski(
                 t850, t500, g850, g500,
                 wind_850_ms=profile.get("wind_850hpa"),
