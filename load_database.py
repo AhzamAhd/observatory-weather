@@ -139,6 +139,8 @@ def upsert_weather_readings(data, now):
             record.get("geopot_850hpa"),
             record.get("geopot_500hpa"),
             record.get("wind_850hpa"),
+            record.get("rh_850hpa"),
+            record.get("rh_500hpa"),
         ))
 
     # Several list entries can resolve to the same observatory_id (near-duplicate
@@ -164,7 +166,8 @@ def upsert_weather_readings(data, now):
                 observation_score,
                 temp_850hpa,      temp_500hpa,
                 geopot_850hpa,    geopot_500hpa,
-                wind_850hpa
+                wind_850hpa,
+                rh_850hpa,        rh_500hpa
             ) VALUES %s
             ON CONFLICT (observatory_id, fetch_date)
             DO UPDATE SET
@@ -183,7 +186,9 @@ def upsert_weather_readings(data, now):
                 temp_500hpa       = EXCLUDED.temp_500hpa,
                 geopot_850hpa     = EXCLUDED.geopot_850hpa,
                 geopot_500hpa     = EXCLUDED.geopot_500hpa,
-                wind_850hpa       = EXCLUDED.wind_850hpa
+                wind_850hpa       = EXCLUDED.wind_850hpa,
+                rh_850hpa         = EXCLUDED.rh_850hpa,
+                rh_500hpa         = EXCLUDED.rh_500hpa
         """, rows)
 
     print(f"  weather_readings — "
