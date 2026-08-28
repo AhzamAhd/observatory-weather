@@ -1655,9 +1655,14 @@ if selected_page == "Live Weather Map":
             tiles="https://mt0.google.com/vt/lyrs=s&hl=en&x={x}&y={y}&z={z}",
             attr="Google")
     else:
+        # Explicit CartoDB dark CDN URL. Folium's "CartoDB dark_matter" shortcut
+        # now routes through a host that demands an API key (tiles render as
+        # "API KEY REQUIRED"); the basemaps.cartocdn.com CDN still serves the
+        # same dark tiles keyless.
         _fmap = folium.Map(
             location=[_map_clat, _map_clon], zoom_start=_map_zoom,
-            tiles="CartoDB dark_matter")
+            tiles="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+            attr="© OpenStreetMap contributors © CARTO")
 
     # Auto-clustering: counts when zoomed out, individual markers zoomed in.
     _cluster = MarkerCluster(name="Observatories").add_to(_fmap)
@@ -2331,10 +2336,13 @@ if selected_page == "Atmospheric Analysis":
         index=0,
         key="atm_tile",
     )
+    # CartoDB's named shortcuts ("CartoDB positron"/"dark_matter") now route
+    # through a host that demands an API key; use the keyless CDN URLs instead.
+    _carto_attr = "© OpenStreetMap contributors © CARTO"
     _atm_tile_map = {
-        "Light":           ("CartoDB positron",   None),
-        "Dark":            ("CartoDB dark_matter", None),
-        "Street (cities)": ("OpenStreetMap",       None),
+        "Light":           ("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", _carto_attr),
+        "Dark":            ("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",  _carto_attr),
+        "Street (cities)": ("OpenStreetMap", None),
         "Satellite": (
             "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
             "Tiles © Esri — Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community",
@@ -2342,7 +2350,7 @@ if selected_page == "Atmospheric Analysis":
     }
     _atm_tile_url, _atm_tile_attr = _atm_tile_map[_atm_tile_choice]
 
-    if _atm_tile_choice == "Satellite":
+    if _atm_tile_attr:
         m_atm = folium.Map(location=[20, 0], zoom_start=2,
                            tiles=_atm_tile_url, attr=_atm_tile_attr)
     else:
@@ -3367,7 +3375,8 @@ if selected_page == "Telescope Efficiency":
 
         m_eff = folium.Map(
             location=[20, 0], zoom_start=2,
-            tiles="CartoDB positron"
+            tiles="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+            attr="© OpenStreetMap contributors © CARTO"
         )
 
         for _, row in eff_df.iterrows():
@@ -5238,7 +5247,8 @@ if _sky_sub == "Comet Tracker":
     import folium
     m_comet = folium.Map(
         location=[20, 0], zoom_start=2,
-        tiles="CartoDB positron"
+        tiles="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+        attr="© OpenStreetMap contributors © CARTO"
     )
 
     # Sample every 5th observatory for speed
