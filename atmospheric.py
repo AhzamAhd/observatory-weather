@@ -53,10 +53,36 @@ def _outer_length_scale(gamma, wind_shear_per_s):
     return max(2.0, min(50.0, L0))
 
 
+def _boundary_layer_seeing(surface_wind_ms, humidity_pct, altitude_m, airmass):
+    """Ground/boundary-layer seeing contribution (arcsec).
+
+    The two pressure levels see only the free atmosphere, but ground-layer
+    turbulence (lowest ~100 m) dominates real seeing at most sites. This term is
+    site-aware rather than a fixed constant: it grows with surface wind (shear-
+    driven mixing) and humidity (a moist, unstable surface layer), and falls with
+    site altitude (high sites sit above much of the boundary layer). Form is a
+    Hufnagel-Valley-style surface decomposition; scaled by airmass for the slant
+    path. Still a parametrisation, not a DIMM-calibrated per-site value --- see
+    the honest caveat in calculate_seeing_tatarski."""
+    w = surface_wind_ms if surface_wind_ms is not None else 4.0
+    rh = humidity_pct if humidity_pct is not None else 50.0
+    h = altitude_m if altitude_m is not None else 0.0
+    # Base ground-layer seeing (arcsec) at a low, calm, dry site.
+    base = 0.50
+    wind_term = (1.0 + (w / 8.0) ** 2) ** 0.3          # more wind -> more shear
+    humid_term = 1.0 + max(0.0, rh - 40.0) / 120.0     # moist surface layer
+    alt_term = math.exp(-h / 2500.0)                   # thins above the BL
+    theta_bl = base * wind_term * humid_term * alt_term
+    theta_bl *= max(1.0, airmass) ** 0.6               # slant path
+    return max(0.15, theta_bl)
+
+
 def calculate_seeing_tatarski(t_850_c, t_500_c, geopot_850_m, geopot_500_m,
                               wind_850_ms=None, wind_250_ms=None,
                               pressure_hpa=850.0, airmass=1.0,
-                              wavelength_nm=500.0, layer_thickness_m=500.0):
+                              wavelength_nm=500.0, layer_thickness_m=500.0,
+                              surface_wind_ms=None, humidity_pct=None,
+                              altitude_m=None):
     """Seeing FWHM (arcsec) from the Tatarski Cn^2 formulation using REAL
     vertical gradients. Returns None if the required profile data is missing.
 
@@ -106,7 +132,8 @@ def calculate_seeing_tatarski(t_850_c, t_500_c, geopot_850_m, geopot_500_m,
     # use a representative floor. This replaces the old hard 0.3" clamp, which
     # was masking the free-atmosphere under-estimate (e.g. La Palma raw 0.23"
     # vs measured ~0.76").
-    theta_boundary = 0.55 * (max(1.0, airmass) ** 0.6)  # arcsec, ground layer
+    theta_boundary = _boundary_layer_seeing(
+        surface_wind_ms, humidity_pct, altitude_m, airmass)
     theta_arcsec = math.sqrt(theta_free ** 2 + theta_boundary ** 2)
     return round(max(0.3, min(5.0, theta_arcsec)), 2)
 
@@ -216,7 +243,9 @@ def calculate_seeing(temperature_c, wind_speed_ms,
                 t850, t500, g850, g500,
                 wind_850_ms=profile.get("wind_850hpa"),
                 wind_250_ms=profile.get("jet_stream_ms"),
-                airmass=airmass, wavelength_nm=wavelength_nm)
+                airmass=airmass, wavelength_nm=wavelength_nm,
+                surface_wind_ms=wind_speed_ms, humidity_pct=humidity_pct,
+                altitude_m=altitude_m)
             if tat is not None:
                 return tat
         # else fall through to the surface heuristic below.
