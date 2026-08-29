@@ -1064,38 +1064,63 @@ st.caption(
 # ── Sidebar branding (navigation itself is in the main area) ──
 st.sidebar.image("assets/gowc_banner.png", width=220)
 
-# Group pages into categories for a two-level sidebar nav.
-# The page names inside must match the keys used by every
-# downstream `if selected_page == ...` block.
-PAGE_CATEGORIES = {
+# ── Two-level navigation ─────────────────────────────────────────────
+# The sidebar dropdown picks a CATEGORY (5 short items). Within the main
+# area a horizontal radio picks the page in that category. Related tools are
+# merged into a single entry with sub-tabs (a merged entry is a dict with a
+# "label" and a list of (sub-tab label, page name) pairs) — this keeps the
+# nav short and professional while every underlying `if selected_page == ...`
+# block below stays untouched: we simply resolve `selected_page` to the right
+# value here before those blocks run.
+#
+# An entry is either a plain page-name string, or:
+#   {"label": <entry label>, "icon": <emoji>,
+#    "sub": [(<sub-tab label>, <page name>), ...]}
+NAV = {
     "Overview": [
-        "Home",
-        "Live Weather Map",
+        {"label": "Home", "icon": "🏠", "page": "Home"},
+        {"label": "Live Weather Map", "icon": "🗺️", "page": "Live Weather Map"},
     ],
     "Planning": [
-        "Observing Windows",
-        "Object Visibility",
-        "Plan an Observation",
+        {"label": "Observing Windows", "icon": "🌙", "sub": [
+            ("By site", "Observing Windows"),
+            ("By target", "Object Visibility"),
+        ]},
+        {"label": "Plan an Observation", "icon": "🧭",
+         "page": "Plan an Observation"},
     ],
     "Analysis": [
-        "Atmospheric Analysis",
-        "Historical Reliability",
-        "Site Comparison",
-        "Telescope Efficiency",
-        "SNR Calculator",
-        "Observatory Detail",
-        "Transient Follow-Up",
-        "Observing Assistant",
+        {"label": "Atmospheric Analysis", "icon": "🌡️",
+         "page": "Atmospheric Analysis"},
+        {"label": "Historical Reliability", "icon": "📊",
+         "page": "Historical Reliability"},
+        {"label": "Site Comparison", "icon": "⚖️", "sub": [
+            ("Compare sites", "Site Comparison"),
+            ("Site detail", "Observatory Detail"),
+        ]},
+        {"label": "Instrument Performance", "icon": "🏆", "sub": [
+            ("Telescope efficiency", "Telescope Efficiency"),
+            ("SNR calculator", "SNR Calculator"),
+        ]},
+        {"label": "Transient Follow-Up", "icon": "⚡",
+         "page": "Transient Follow-Up"},
+        {"label": "Observing Assistant", "icon": "🔭",
+         "page": "Observing Assistant"},
     ],
     "Sky Events": [
-        "Sky Events",
+        {"label": "Sky Events", "icon": "🌠", "page": "Sky Events"},
     ],
     "More": [
-        "Learn Astronomy",
-        "Literature Search",
-        "Alert Subscriptions",
-        "Observatory Reviews",
-        "Feedback & Suggestions",
+        {"label": "Learn & Literature", "icon": "🎓", "sub": [
+            ("Learn astronomy", "Learn Astronomy"),
+            ("Literature search", "Literature Search"),
+        ]},
+        {"label": "Community", "icon": "💬", "sub": [
+            ("Observatory reviews", "Observatory Reviews"),
+            ("Feedback & suggestions", "Feedback & Suggestions"),
+        ]},
+        {"label": "Alert Subscriptions", "icon": "🔔",
+         "page": "Alert Subscriptions"},
     ],
 }
 
@@ -1103,57 +1128,96 @@ PAGE_CATEGORIES = {
 # the owner account is logged in, so ordinary visitors never see it.
 ADMIN_USERNAME = "ahzamahd"
 if st.session_state.get("username") == ADMIN_USERNAME:
-    PAGE_CATEGORIES["More"].append("Site Analytics")
+    NAV["More"].append({"label": "Site Analytics", "icon": "📈",
+                        "page": "Site Analytics"})
 
-# Single dropdown listing every page. Category headers are rendered as
-# formal, non-selectable section labels (uppercase, spaced, with a leading
-# bullet) and the real pages are indented beneath them.
-_nav_options = []
-_nav_headers = set()
-_nav_header_for = {}   # header label -> category name
-_nav_label = {}        # option value -> display label
-for _cat, _pages in PAGE_CATEGORIES.items():
-    _header = f"__cat__{_cat}"
-    _nav_options.append(_header)
-    _nav_headers.add(_header)
-    _nav_header_for[_header] = _cat
-    _nav_label[_header] = f"●  {_cat.upper()}"
-    for _p in _pages:
-        _nav_options.append(_p)
-        _nav_label[_p] = f"      {_p}"   # indent real pages
+# Build lookups: every page name -> (category, entry), used to resolve which
+# category/entry a requested page (e.g. a jump to the assistant) belongs to.
+_pages_of_entry = {}   # id(entry) -> [page names it can show]
+_cat_of_page = {}      # page name -> category
+_entry_of_page = {}    # page name -> entry dict
+for _cat, _entries in NAV.items():
+    for _entry in _entries:
+        _pgs = ([p for _, p in _entry["sub"]] if "sub" in _entry
+                else [_entry["page"]])
+        _pages_of_entry[id(_entry)] = _pgs
+        for _pg in _pgs:
+            _cat_of_page[_pg] = _cat
+            _entry_of_page[_pg] = _entry
 
 # Always-visible login/register control in the MAIN area (the sidebar
 # collapses on mobile, hiding the sidebar auth box).
 render_auth_main()
 
-# Primary navigation lives in the MAIN area (top of page) so it's always
-# reachable regardless of sidebar state — the Streamlit sidebar collapses
-# on mobile and its open-button can vanish. A mirror also sits in the
-# sidebar for desktop users who expect it there.
-# A "jump to assistant" request (from the sidebar/main chatbot button) is
-# honoured here, before the selectbox reads its default — the widget owns the
-# nav_page key, so we can't write it after the widget exists.
+# A "jump to a page" request (from the assistant button, home-page cards, etc.)
+# is honoured here, before the widgets read their defaults. It sets the target
+# category and page so the two-level nav lands on the right place.
 if st.session_state.pop("_goto_assistant", False):
-    st.session_state["nav_page"] = "Observing Assistant"
+    st.session_state["_goto_page"] = "Observing Assistant"
 
-_nav_default = st.session_state.get("nav_page", "Home")
-if _nav_default not in _nav_options:
-    _nav_default = "Home"
+_goto = st.session_state.pop("_goto_page", None)
+if _goto and _goto in _cat_of_page:
+    st.session_state["nav_cat"] = _cat_of_page[_goto]
+    st.session_state["_active_page"] = _goto
 
-_picked = st.selectbox(
-    "Navigate to page",
-    _nav_options,
-    index=_nav_options.index(_nav_default),
-    format_func=lambda o: _nav_label.get(o, o),
-    key="nav_page",
+# 1) Category picker — a compact dropdown in the sidebar (and mirrored in the
+#    main area so it's reachable when the sidebar is collapsed on mobile).
+_cats = list(NAV.keys())
+_cat_default = st.session_state.get("nav_cat", "Overview")
+if _cat_default not in _cats:
+    _cat_default = "Overview"
+
+_active_cat = st.selectbox(
+    "Section",
+    _cats,
+    index=_cats.index(_cat_default),
+    format_func=lambda c: f"●  {c.upper()}",
+    key="nav_cat",
 )
 
-# If a category header was selected, fall back to its first real page.
-if _picked in _nav_headers:
-    _cat_name = _nav_header_for.get(_picked, "Overview")
-    selected_page = PAGE_CATEGORIES.get(_cat_name, ["Home"])[0]
+# 2) Page picker within the active category — a horizontal radio styled as
+#    tabs. Merged entries show their group label; a sub-tab selector below
+#    then chooses the actual page.
+_cat_entries = NAV[_active_cat]
+_entry_labels = [f"{e.get('icon', '')} {e['label']}".strip()
+                 for e in _cat_entries]
+
+# Default the radio to the entry that owns the last active page (if it's in
+# this category), else the first entry.
+_want_page = st.session_state.get("_active_page", "Home")
+_default_idx = 0
+for _i, _e in enumerate(_cat_entries):
+    if _want_page in _pages_of_entry[id(_e)]:
+        _default_idx = _i
+        break
+
+if len(_cat_entries) > 1:
+    _picked_label = st.radio(
+        "Page", _entry_labels, index=_default_idx,
+        horizontal=True, label_visibility="collapsed",
+        key=f"navrow_{_active_cat}",
+    )
+    _entry = _cat_entries[_entry_labels.index(_picked_label)]
 else:
-    selected_page = _picked
+    _entry = _cat_entries[0]
+
+# 3) Resolve to a concrete page. A merged entry gets a sub-tab selector.
+if "sub" in _entry:
+    _sub_labels = [s[0] for s in _entry["sub"]]
+    _sub_pages = [s[1] for s in _entry["sub"]]
+    # Preserve which sub-tab was last active within this entry.
+    _sub_idx = (_sub_pages.index(_want_page)
+                if _want_page in _sub_pages else 0)
+    _sub_choice = st.radio(
+        _entry["label"], _sub_labels, index=_sub_idx,
+        horizontal=True, label_visibility="collapsed",
+        key=f"navsub_{_entry['label']}",
+    )
+    selected_page = _sub_pages[_sub_labels.index(_sub_choice)]
+else:
+    selected_page = _entry["page"]
+
+st.session_state["_active_page"] = selected_page
 
 # ── Prominent, always-visible entry point to the Observing Assistant ──
 # A styled callout in the main area so visitors immediately see the chatbot,
