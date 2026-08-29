@@ -19,3 +19,4 @@ tests/mass_paranal_*.csv
 tests/dimm_lasilla_*.csv
 tests/dimm_mass_*.png
 tests/profile_*.json
+tests/hfa_*.json
