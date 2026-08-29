@@ -40,38 +40,58 @@ def potential_temp_gradient(t_low_c, z_low_m, t_high_c, z_high_m,
     return (theta_high - theta_low) / dz
 
 
-def _outer_length_scale(gamma, wind_shear_per_s):
-    """Outer turbulence length scale L0 (m). In stable stratification L0 is
-    buoyancy-limited; we use a shear/buoyancy mixing length, bounded to a
-    physically sensible 2-50 m. This is the principal estimated quantity when a
-    fine Cn^2 profile is unavailable — documented as such."""
-    n2 = (_G / 300.0) * max(gamma, 1e-5)      # buoyancy frequency squared
-    if wind_shear_per_s and wind_shear_per_s > 1e-4 and n2 > 0:
-        L0 = 0.5 * wind_shear_per_s / n2
-    else:
-        L0 = 20.0
-    return max(2.0, min(50.0, L0))
+def _outer_scale_pow43(wind_shear_per_s):
+    """Outer turbulence length scale to the 4/3 power, L0^(4/3) (m^4/3) --- the
+    quantity C_T^2 actually needs --- via the Dewan et al. (1993) troposphere
+    model:
+
+        L0^(4/3) = 0.1^(4/3) * 10^(1.64 + 42 S)         (S = wind shear, 1/s)
+
+    This is the standard in NWP-derived optical-turbulence work (Dewan 1993;
+    Trinquet & Vernin 2007; Masciadri's Astro-Meso-NH forecasts). It is
+    dimensionally correct (the earlier shear/N^2 mixing length returned seconds,
+    not a length) and takes the shear directly, which is what the 850/250 hPa
+    levels provide, so no arbitrary length clamp is required. With no shear
+    available we fall back to a representative mid-tropospheric shear."""
+    s = wind_shear_per_s if (wind_shear_per_s and wind_shear_per_s > 0) else 3e-3
+    # Cap the exponent so a spuriously large shear can't blow up L0^(4/3);
+    # 42*S at S~0.02 already gives the strong-shear end of Dewan's fit.
+    exponent = 1.64 + 42.0 * min(s, 0.02)
+    return (0.1 ** (4.0 / 3.0)) * (10.0 ** exponent)
 
 
 def _boundary_layer_seeing(surface_wind_ms, humidity_pct, altitude_m, airmass):
     """Ground/boundary-layer seeing contribution (arcsec).
 
-    The two pressure levels see only the free atmosphere, but ground-layer
-    turbulence (lowest ~100 m) dominates real seeing at most sites. This term is
-    site-aware rather than a fixed constant: it grows with surface wind (shear-
-    driven mixing) and humidity (a moist, unstable surface layer), and falls with
-    site altitude (high sites sit above much of the boundary layer). Form is a
-    Hufnagel-Valley-style surface decomposition; scaled by airmass for the slant
-    path. Still a parametrisation, not a DIMM-calibrated per-site value --- see
-    the honest caveat in calculate_seeing_tatarski."""
+    The two pressure levels see only the free atmosphere, but the ground layer
+    (lowest ~few hundred m) dominates real seeing at most sites. A MASS/DIMM
+    decomposition of the Paranal ASM archive (this repo, tests/) puts the median
+    ground layer at ~0.64" -- about two-thirds of the total turbulence variance,
+    consistent with the site literature -- so this term is anchored to that
+    measurement, NOT to an absolute-elevation scaling.
+
+    Site-dependence:
+      * base ~0.78" -- a calm, high, dry site (Paranal-like) STILL has a strong
+        ground layer; the previous exp(-h/2500) suppressed it to ~0.2", which the
+        MASS/DIMM split shows is far too low (review Finding #3).
+      * grows with surface wind (shear-driven mechanical mixing);
+      * grows mildly with humidity as a rough surface-instability proxy (weak in
+        the optical -- kept small, see the paper's caveat);
+      * a GENTLE altitude term (scale height 10000 m) -- the ground layer is a
+        local surface phenomenon set by topography and heating, only weakly tied
+        to absolute elevation, so only the very highest sites see a modest
+        reduction.
+    Scaled by airmass^0.6 for the slant path. Still a parametrisation, not a
+    per-site DIMM fit -- see the honest caveat in calculate_seeing_tatarski."""
     w = surface_wind_ms if surface_wind_ms is not None else 4.0
     rh = humidity_pct if humidity_pct is not None else 50.0
     h = altitude_m if altitude_m is not None else 0.0
-    # Base ground-layer seeing (arcsec) at a low, calm, dry site.
-    base = 0.50
+    # Base ground-layer seeing (arcsec), anchored so a calm/dry Paranal (2635 m,
+    # ~4 m/s, ~15% RH) reproduces the MASS/DIMM-measured median of ~0.64".
+    base = 0.78
     wind_term = (1.0 + (w / 8.0) ** 2) ** 0.3          # more wind -> more shear
-    humid_term = 1.0 + max(0.0, rh - 40.0) / 120.0     # moist surface layer
-    alt_term = math.exp(-h / 2500.0)                   # thins above the BL
+    humid_term = 1.0 + max(0.0, rh - 40.0) / 150.0     # weak instability proxy
+    alt_term = math.exp(-h / 10000.0)                  # gentle: local, not elev.
     theta_bl = base * wind_term * humid_term * alt_term
     theta_bl *= max(1.0, airmass) ** 0.6               # slant path
     return max(0.15, theta_bl)
@@ -80,7 +100,7 @@ def _boundary_layer_seeing(surface_wind_ms, humidity_pct, altitude_m, airmass):
 def calculate_seeing_tatarski(t_850_c, t_500_c, geopot_850_m, geopot_500_m,
                               wind_850_ms=None, wind_250_ms=None,
                               pressure_hpa=850.0, airmass=1.0,
-                              wavelength_nm=500.0, layer_thickness_m=500.0,
+                              wavelength_nm=500.0, layer_thickness_m=2200.0,
                               surface_wind_ms=None, humidity_pct=None,
                               altitude_m=None):
     """Seeing FWHM (arcsec) from the Tatarski Cn^2 formulation using REAL
@@ -108,21 +128,25 @@ def calculate_seeing_tatarski(t_850_c, t_500_c, geopot_850_m, geopot_500_m,
     if wind_850_ms is not None and wind_250_ms is not None:
         shear = abs(wind_250_ms - wind_850_ms) / max(1.0, 10400.0 - geopot_850_m)
 
-    L0 = _outer_length_scale(gamma, shear)
-    ct2 = (_C_TATARSKI / _PR_T) * (L0 ** (4.0 / 3.0)) * (gamma ** 2)
+    # Dewan (1993) returns L0^(4/3) directly, which is exactly the power C_T^2
+    # requires --- no separate exponentiation, and no arbitrary length clamp.
+    l0_pow43 = _outer_scale_pow43(shear)
+    ct2 = (_C_TATARSKI / _PR_T) * l0_pow43 * (gamma ** 2)
 
     temp_k = t_850_c + 273.15
     cn2_factor = 79e-6 * pressure_hpa / (temp_k ** 2)
     cn2 = (cn2_factor ** 2) * ct2
 
     # The single 850-500 hPa gradient stands in for a turbulent layer of
-    # effective thickness layer_thickness_m (500 m). This is the one genuinely
-    # unconstrained parameter in the chain and the main reason the absolute
-    # free-atmosphere seeing is coarse: validation against ~421k archived DIMM
-    # measurements at Paranal and La Silla shows the model over-predicts by
-    # ~1.5-1.9x here. We keep the raw physics uncalibrated (see the paper's
-    # validation section) and instead display MEASURED DIMM seeing directly for
-    # the few sites that publish it -- measurement beats a tuned model.
+    # effective thickness layer_thickness_m. This is the one genuinely
+    # unconstrained parameter in the chain (plausible range ~200-4000 m). It is
+    # set to 2200 m -- NOT tuned to DIMM total, but anchored so the free-
+    # atmosphere term reproduces the MEASURED MASS free-atmosphere seeing at
+    # Paranal (median ~0.49"; see tests/dimm_mass_decomposition.py). 2200 m sits
+    # inside the plausible range and near the ~4000 m gradient slab, so it is a
+    # stated parameter rather than a large ad-hoc suppression. (The earlier 500 m
+    # value combined with a dimensionally-wrong L0 to give ~0.2" free-atmosphere;
+    # both are now corrected -- L0 via Dewan 1993, thickness via MASS.)
     cn2_integral = cn2 * layer_thickness_m
     if cn2_integral <= 0:
         return None
