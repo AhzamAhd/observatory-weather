@@ -71,9 +71,9 @@ def _boundary_layer_seeing(surface_wind_ms, humidity_pct, altitude_m, airmass):
     measurement, NOT to an absolute-elevation scaling.
 
     Site-dependence:
-      * base ~0.78" -- a calm, high, dry site (Paranal-like) STILL has a strong
-        ground layer; the previous exp(-h/2500) suppressed it to ~0.2", which the
-        MASS/DIMM split shows is far too low (review Finding #3).
+      * base ~0.77" -- a high, dry site (Paranal-like) STILL has a strong ground
+        layer; the previous exp(-h/2500) suppressed it to ~0.2", which the
+        MASS/DIMM split shows is far too low.
       * grows with surface wind (shear-driven mechanical mixing);
       * grows mildly with humidity as a rough surface-instability proxy (weak in
         the optical -- kept small, see the paper's caveat);
@@ -86,9 +86,12 @@ def _boundary_layer_seeing(surface_wind_ms, humidity_pct, altitude_m, airmass):
     w = surface_wind_ms if surface_wind_ms is not None else 4.0
     rh = humidity_pct if humidity_pct is not None else 50.0
     h = altitude_m if altitude_m is not None else 0.0
-    # Base ground-layer seeing (arcsec), anchored so a calm/dry Paranal (2635 m,
-    # ~4 m/s, ~15% RH) reproduces the MASS/DIMM-measured median of ~0.64".
-    base = 0.78
+    # Base ground-layer seeing (arcsec), anchored so Paranal (2635 m) at its
+    # MEDIAN surface conditions (~2.8 m/s 10 m wind, ~26% RH) reproduces the
+    # per-timestamp MASS/DIMM-measured ground-layer median of 0.61" (2026-05..08,
+    # ~32k pairs). NB the anchor is at median conditions, not calm/dry: at
+    # w=0, RH<40 this base gives ~0.59".
+    base = 0.77
     wind_term = (1.0 + (w / 8.0) ** 2) ** 0.3          # more wind -> more shear
     humid_term = 1.0 + max(0.0, rh - 40.0) / 150.0     # weak instability proxy
     alt_term = math.exp(-h / 10000.0)                  # gentle: local, not elev.
@@ -99,8 +102,9 @@ def _boundary_layer_seeing(surface_wind_ms, humidity_pct, altitude_m, airmass):
 
 def calculate_seeing_tatarski(t_850_c, t_500_c, geopot_850_m, geopot_500_m,
                               wind_850_ms=None, wind_250_ms=None,
+                              wind_500_ms=None,
                               pressure_hpa=850.0, airmass=1.0,
-                              wavelength_nm=500.0, layer_thickness_m=2200.0,
+                              wavelength_nm=500.0, layer_thickness_m=1200.0,
                               surface_wind_ms=None, humidity_pct=None,
                               altitude_m=None):
     """Seeing FWHM (arcsec) from the Tatarski Cn^2 formulation using REAL
@@ -108,45 +112,69 @@ def calculate_seeing_tatarski(t_850_c, t_500_c, geopot_850_m, geopot_500_m,
 
     Chain (all published, see module header):
       Gamma = dTheta/dz  (from 850/500 hPa T + geopotential heights)
-      C_T^2 = (c/Pr_t) L0^(4/3) Gamma^2                    (Tatarski / Basu&Holtslag)
+      C_T^2 = (c/Pr_t) L0^(4/3) (T/Theta)^2 Gamma^2         (Tatarski / Basu&Holtslag)
       Cn^2  = (79e-6 P/T^2)^2 C_T^2                        (optical conversion)
       r0    = (0.423 k^2 X integral Cn^2 dh)^(-3/5)        (Fried 1966)
-      theta = 0.98 lambda / r0
+      eps   = 0.98 lambda / r0
 
-    HONEST CAVEAT: with only two pressure levels the Cn^2 integral and L0 are
-    coarse, so this over-estimates seeing versus a DIMM by a roughly constant
-    factor (~1.5x at good sites). Reported uncalibrated — the value is the raw
-    physics, not fitted to match published site seeing."""
+    The (T/Theta)^2 factor converts the potential-temperature structure constant
+    (C_theta^2, which the dTheta/dz mixing-length argument yields) to the
+    actual-temperature one C_T^2 that the optical conversion 79e-6 P/T^2 acts on:
+    T' = (T/Theta) theta'. It is ~0.78 at mid-layer (a ~14% effect on seeing) and
+    altitude-dependent, so it cannot be absorbed into the layer thickness.
+
+    CAVEAT: with only two pressure levels the Cn^2 integral, the outer scale and
+    the effective layer thickness are coarse; the free-atmosphere term is anchored
+    to the measured MASS free-atmosphere median at Paranal (see the paper's
+    validation section and tests/dimm_mass_decomposition.py)."""
     gamma = potential_temp_gradient(t_850_c, geopot_850_m, t_500_c, geopot_500_m)
     if gamma is None or gamma <= 0:
         # Non-stable or missing gradient — Tatarski regime doesn't apply.
         return None
 
-    # Free-atmosphere wind shear between 850 hPa and the 250 hPa jet level
-    # (~10.4 km), used only to set the mixing length L0.
+    # Free-atmosphere wind shear for the Dewan L0. Prefer 850->500 hPa so the
+    # shear layer MATCHES the gradient layer (Gamma is 850->500); the Dewan fit
+    # takes the local shear, and pairing it with a 850->250 shear that reaches
+    # into the jet mismatches the layers. Fall back to 850->250 only if the
+    # 500 hPa wind is unavailable. (The clean fix is per-level integration with
+    # 700/600 hPa -- see the paper's future work.)
     shear = None
-    if wind_850_ms is not None and wind_250_ms is not None:
+    if wind_850_ms is not None and wind_500_ms is not None:
+        dz = max(1.0, geopot_500_m - geopot_850_m)
+        shear = abs(wind_500_ms - wind_850_ms) / dz
+    elif wind_850_ms is not None and wind_250_ms is not None:
         shear = abs(wind_250_ms - wind_850_ms) / max(1.0, 10400.0 - geopot_850_m)
 
     # Dewan (1993) returns L0^(4/3) directly, which is exactly the power C_T^2
     # requires --- no separate exponentiation, and no arbitrary length clamp.
     l0_pow43 = _outer_scale_pow43(shear)
-    ct2 = (_C_TATARSKI / _PR_T) * l0_pow43 * (gamma ** 2)
+
+    # (T/Theta)^2 conversion from C_theta^2 to C_T^2 (Basu & Holtslag 2021).
+    # Use the layer-mean temperature and potential temperature.
+    kappa = _R_DRY / _CP
+    theta_850 = (t_850_c + 273.15) * (1000.0 / 850.0) ** kappa
+    theta_500 = (t_500_c + 273.15) * (1000.0 / 500.0) ** kappa
+    t_mean = 0.5 * ((t_850_c + 273.15) + (t_500_c + 273.15))
+    theta_mean = 0.5 * (theta_850 + theta_500)
+    t_over_theta_sq = (t_mean / theta_mean) ** 2
+
+    ct2 = (_C_TATARSKI / _PR_T) * l0_pow43 * t_over_theta_sq * (gamma ** 2)
 
     temp_k = t_850_c + 273.15
     cn2_factor = 79e-6 * pressure_hpa / (temp_k ** 2)
     cn2 = (cn2_factor ** 2) * ct2
 
     # The single 850-500 hPa gradient stands in for a turbulent layer of
-    # effective thickness layer_thickness_m. This is the one genuinely
-    # unconstrained parameter in the chain (plausible range ~200-4000 m). It is
-    # set to 2200 m -- NOT tuned to DIMM total, but anchored so the free-
-    # atmosphere term reproduces the MEASURED MASS free-atmosphere seeing at
-    # Paranal (median ~0.49"; see tests/dimm_mass_decomposition.py). 2200 m sits
-    # inside the plausible range and near the ~4000 m gradient slab, so it is a
-    # stated parameter rather than a large ad-hoc suppression. (The earlier 500 m
-    # value combined with a dimensionally-wrong L0 to give ~0.2" free-atmosphere;
-    # both are now corrected -- L0 via Dewan 1993, thickness via MASS.)
+    # effective thickness layer_thickness_m -- the one genuinely unconstrained
+    # parameter in the chain (plausible ~200-4000 m). It is set to 1200 m,
+    # anchored so the free-atmosphere term reproduces the MEASURED MASS
+    # free-atmosphere median at Paranal (0.43" over 2026-05..08, ~32k pairs; see
+    # tests/dimm_mass_decomposition.py) -- NOT to DIMM total. This is a
+    # calibration of the free-atmosphere term against MASS, so agreement with
+    # MASS at Paranal is exact by construction; the real test is the held-out
+    # agreement at other sites (see the paper's validation section). The clean
+    # fix that removes this parameter entirely is per-level integration above the
+    # site (700/600 hPa) -- listed as priority future work.
     cn2_integral = cn2 * layer_thickness_m
     if cn2_integral <= 0:
         return None
@@ -275,6 +303,7 @@ def calculate_seeing(temperature_c, wind_speed_ms,
                 t850, t500, g850, g500,
                 wind_850_ms=profile.get("wind_850hpa"),
                 wind_250_ms=profile.get("jet_stream_ms"),
+                wind_500_ms=profile.get("wind_500hpa"),
                 airmass=airmass, wavelength_nm=wavelength_nm,
                 surface_wind_ms=wind_speed_ms, humidity_pct=humidity_pct,
                 altitude_m=altitude_m)
