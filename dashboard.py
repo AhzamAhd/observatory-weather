@@ -2301,6 +2301,38 @@ if selected_page == "Atmospheric Analysis":
                 "Try refreshing with Fetch Live Data.")
         st.stop()
 
+    # ── Live measured seeing (real DIMM, where a public monitor exists) ──
+    # For the few sites that publish real-time DIMM seeing, show the MEASURED
+    # value beside GOWC's model --- a measurement beats a model. Others use the
+    # physics model and are labelled as such.
+    try:
+        from live_dimm import get_live_seeing, SOURCES
+        _live = []
+        for _key in SOURCES:
+            _res = get_live_seeing(_key)
+            if _res:
+                _model_row = atm_df[atm_df["observatory"].str.contains(
+                    _key, case=False, na=False)]
+                _model = (_model_row.iloc[0]["seeing_arcsec"]
+                          if not _model_row.empty else None)
+                _live.append((_key, _res[0], _res[1], _model))
+        if _live:
+            st.markdown("#### 📡 Live measured seeing (DIMM)")
+            st.caption("Real seeing measured by on-site Differential Image "
+                       "Motion Monitors, shown alongside GOWC's model for the "
+                       "same site. A measurement is ground truth; the model is "
+                       "used everywhere a monitor is not available.")
+            _lc = st.columns(len(_live))
+            for _i, (_nm, _meas, _ts, _mdl) in enumerate(_live):
+                with _lc[_i]:
+                    _delta = (f"model {_mdl}\"" if _mdl is not None else None)
+                    st.metric(f"{_nm} — measured", f"{_meas}\"",
+                              delta=_delta, delta_color="off")
+                    st.caption(f"as of {_ts} UTC")
+            st.markdown("---")
+    except Exception:
+        pass   # live monitor unavailable -> silently use the model below
+
     # Summary metrics
     a1, a2, a3, a4 = st.columns(4)
     best_seeing = atm_df.iloc[0]

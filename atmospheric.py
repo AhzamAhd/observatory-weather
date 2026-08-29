@@ -80,7 +80,7 @@ def _boundary_layer_seeing(surface_wind_ms, humidity_pct, altitude_m, airmass):
 def calculate_seeing_tatarski(t_850_c, t_500_c, geopot_850_m, geopot_500_m,
                               wind_850_ms=None, wind_250_ms=None,
                               pressure_hpa=850.0, airmass=1.0,
-                              wavelength_nm=500.0, layer_thickness_m=200.0,
+                              wavelength_nm=500.0, layer_thickness_m=500.0,
                               surface_wind_ms=None, humidity_pct=None,
                               altitude_m=None):
     """Seeing FWHM (arcsec) from the Tatarski Cn^2 formulation using REAL
@@ -116,12 +116,13 @@ def calculate_seeing_tatarski(t_850_c, t_500_c, geopot_850_m, geopot_500_m,
     cn2 = (cn2_factor ** 2) * ct2
 
     # The single 850-500 hPa gradient stands in for a turbulent layer of
-    # effective thickness layer_thickness_m. This is the one genuinely
-    # unconstrained parameter in the chain; it was set to 200 m by matching the
-    # model's median free-atmosphere seeing to archived DIMM measurements at ESO
-    # Paranal and La Silla (~421k points), which centres the total seeing on the
-    # measured site medians (average GOWC/DIMM ratio ~1.0). See the validation
-    # section of the methods paper.
+    # effective thickness layer_thickness_m (500 m). This is the one genuinely
+    # unconstrained parameter in the chain and the main reason the absolute
+    # free-atmosphere seeing is coarse: validation against ~421k archived DIMM
+    # measurements at Paranal and La Silla shows the model over-predicts by
+    # ~1.5-1.9x here. We keep the raw physics uncalibrated (see the paper's
+    # validation section) and instead display MEASURED DIMM seeing directly for
+    # the few sites that publish it -- measurement beats a tuned model.
     cn2_integral = cn2 * layer_thickness_m
     if cn2_integral <= 0:
         return None
