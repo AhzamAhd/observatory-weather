@@ -30,6 +30,12 @@ _CACHE_TTL = 1800    # seconds; measurements update every ~1-2 min but we cache
                      # 30 min to avoid hammering ESO on every page load.
 
 
+# Sites whose ESO ASM LHATPRO radiometer publishes measured PWV (mm).
+PWV_SOURCES = {
+    "Paranal": {"table": "lhatpro_paranal"},
+}
+
+
 def _match_source(site_name):
     """Return the SOURCES entry whose key is a substring of site_name, or None."""
     if not site_name:
@@ -39,6 +45,55 @@ def _match_source(site_name):
         if key.lower() in low:
             return key, cfg
     return None
+
+
+def _fetch_eso_pwv(table):
+    """Latest measured PWV (mm) from an ESO LHATPRO table, as (pwv, timestamp)
+    or None. The CSV has PWV as the last (6th) column."""
+    end = datetime.utcnow()
+    start = end - timedelta(days=3)
+    rng = f"{start.strftime('%Y-%m-%d')}..{end.strftime('%Y-%m-%d')}"
+    r = requests.get(_ESO_BASE.format(table=table), params={
+        "wdbo": "csv/download", "max_rows_returned": 50000,
+        "tab_pwv0": "on", "start_date": rng, "order": "start_date",
+    }, timeout=_TIMEOUT)
+    r.raise_for_status()
+    latest = None
+    for line in r.text.splitlines():
+        if not line or line.startswith("#") or "Platform" in line \
+                or line.startswith("Date"):
+            continue
+        parts = line.split(",")
+        if len(parts) >= 6:
+            try:
+                val = float(parts[5])
+            except ValueError:
+                continue
+            if val > 0:
+                latest = (val, parts[1])
+    return latest
+
+
+def get_live_pwv(site_name):
+    """Measured PWV (mm) for `site_name` as (mm, timestamp), or None if no
+    radiometer feed / the fetch fails. Cached per site."""
+    if not site_name:
+        return None
+    low = site_name.lower()
+    key = next((k for k in PWV_SOURCES if k.lower() in low), None)
+    if not key:
+        return None
+    ckey = ("pwv", key)
+    now = datetime.utcnow().timestamp()
+    cached = _CACHE.get(ckey)
+    if cached and (now - cached[0]) < _CACHE_TTL:
+        return cached[1]
+    try:
+        result = _fetch_eso_pwv(PWV_SOURCES[key]["table"])
+    except Exception:
+        result = None
+    _CACHE[ckey] = (now, result)
+    return result
 
 
 def _fetch_eso_dimm(table):

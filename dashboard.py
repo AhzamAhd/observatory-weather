@@ -2306,28 +2306,37 @@ if selected_page == "Atmospheric Analysis":
     # value beside GOWC's model --- a measurement beats a model. Others use the
     # physics model and are labelled as such.
     try:
-        from live_dimm import get_live_seeing, SOURCES
+        from live_dimm import get_live_seeing, get_live_pwv, SOURCES
         _live = []
         for _key in SOURCES:
             _res = get_live_seeing(_key)
             if _res:
                 _model_row = atm_df[atm_df["observatory"].str.contains(
                     _key, case=False, na=False)]
-                _model = (_model_row.iloc[0]["seeing_arcsec"]
-                          if not _model_row.empty else None)
-                _live.append((_key, _res[0], _res[1], _model))
+                _s_model = (_model_row.iloc[0]["seeing_arcsec"]
+                            if not _model_row.empty else None)
+                _p_model = (_model_row.iloc[0]["pwv_mm"]
+                            if not _model_row.empty else None)
+                _pwv = get_live_pwv(_key)      # measured PWV, where available
+                _live.append((_key, _res[0], _res[1], _s_model, _pwv, _p_model))
         if _live:
-            st.markdown("#### 📡 Live measured seeing (DIMM)")
-            st.caption("Real seeing measured by on-site Differential Image "
-                       "Motion Monitors, shown alongside GOWC's model for the "
-                       "same site. A measurement is ground truth; the model is "
-                       "used everywhere a monitor is not available.")
+            st.markdown("#### 📡 Live measured conditions (on-site monitors)")
+            st.caption("Real seeing (DIMM) and precipitable water vapour "
+                       "(LHATPRO radiometer) measured on site, shown beside "
+                       "GOWC's model for the same site. A measurement is ground "
+                       "truth; the model is used everywhere a monitor is "
+                       "unavailable.")
             _lc = st.columns(len(_live))
-            for _i, (_nm, _meas, _ts, _mdl) in enumerate(_live):
+            for _i, (_nm, _sm, _ts, _smod, _pwv, _pmod) in enumerate(_live):
                 with _lc[_i]:
-                    _delta = (f"model {_mdl}\"" if _mdl is not None else None)
-                    st.metric(f"{_nm} — measured", f"{_meas}\"",
-                              delta=_delta, delta_color="off")
+                    st.markdown(f"**{_nm}**")
+                    st.metric("Seeing — measured", f"{_sm}\"",
+                              delta=(f"model {_smod}\"" if _smod is not None
+                                     else None), delta_color="off")
+                    if _pwv:
+                        st.metric("PWV — measured", f"{_pwv[0]} mm",
+                                  delta=(f"model {_pmod} mm" if _pmod is not None
+                                         else None), delta_color="off")
                     st.caption(f"as of {_ts} UTC")
             st.markdown("---")
     except Exception:
