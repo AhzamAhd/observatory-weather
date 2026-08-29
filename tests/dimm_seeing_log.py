@@ -55,8 +55,10 @@ def log_seeing():
         r = query_df(f"""
             SELECT o.name, o.altitude_m, o.latitude, w.temperature_c,
                    w.humidity_pct, w.wind_speed_ms, w.surface_pressure,
-                   w.temp_850hpa, w.temp_500hpa, w.geopot_850hpa,
-                   w.geopot_500hpa, w.wind_850hpa, w.jet_stream_ms
+                   w.temp_850hpa, w.temp_700hpa, w.temp_600hpa, w.temp_500hpa,
+                   w.geopot_850hpa, w.geopot_700hpa, w.geopot_600hpa,
+                   w.geopot_500hpa, w.wind_850hpa, w.wind_700hpa, w.wind_600hpa,
+                   w.wind_500hpa, w.jet_stream_ms
             FROM weather_readings w JOIN observatories o ON o.id = w.observatory_id
             WHERE o.name ILIKE '{pat}'
               AND w.fetch_date = (SELECT MAX(fetch_date) FROM weather_readings)
