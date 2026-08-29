@@ -138,33 +138,44 @@ def _stats(gv, dv):
     return n, corr, ratio, bias, rms
 
 
-def compare(quantity="seeing"):
-    """Compare GOWC forecasts to measured archive data for `quantity`
-    ('seeing' or 'pwv'). Reports matched-pair stats when overlapping dates exist,
-    and always reports a distribution comparison (works immediately on a large
-    historical download, before matched pairs accumulate)."""
+def compare(quantity="seeing", site="Paranal", measured_file=None):
+    """Compare GOWC forecasts to measured archive data for one site.
+
+    quantity : 'seeing' or 'pwv'
+    site     : which logged site to compare (e.g. 'Paranal', 'La Silla')
+    measured_file : path to the downloaded archive CSV (defaults per quantity)
+
+    Reports a distribution comparison (works immediately on a large historical
+    download) and, where dates overlap, matched-pair stats + a scatter plot."""
     gowc_rows = _read_csv(LOG_PATH)
     if not gowc_rows:
         print("No GOWC log yet. Run 'log' first (it runs automatically in CI).")
         return
 
     if quantity == "pwv":
-        gcol, measured_path = "gowc_pwv", PWV_PATH
+        gcol, default_path = "gowc_pwv", PWV_PATH
         vkinds, unit, label = ("pwv", "water vapour", "precip"), "mm", "PWV"
     else:
-        gcol, measured_path = "gowc_seeing", DIMM_PATH
+        gcol, default_path = "gowc_seeing", DIMM_PATH
         vkinds, unit, label = ("seeing", "fwhm"), "\"", "seeing"
+    measured_path = measured_file or default_path
 
     measured = _load_measured(measured_path, vkinds)
     if measured is None:
-        print(f"No measured file. Download the archive data to {measured_path}.")
+        print(f"No measured file at {measured_path}. Download the archive data "
+              "there (or pass its path as the 3rd argument).")
         return
     if not measured:
         return
 
-    # GOWC values by date (daily mean across log entries)
+    print(f"  Site: {site}   |   quantity: {label}   |   "
+          f"measured file: {os.path.basename(measured_path)}")
+
+    # GOWC values by date for THIS site only (daily mean across log entries)
     gowc_by_date = {}
     for g in gowc_rows:
+        if g.get("site", "").strip().lower() != site.strip().lower():
+            continue
         v = g.get(gcol)
         if v in (None, "", "None"):
             continue
@@ -234,6 +245,10 @@ if __name__ == "__main__":
         log_seeing()
     elif cmd == "compare":
         quantity = sys.argv[2] if len(sys.argv) > 2 else "seeing"
-        compare(quantity)
+        site = sys.argv[3] if len(sys.argv) > 3 else "Paranal"
+        mfile = sys.argv[4] if len(sys.argv) > 4 else None
+        compare(quantity, site, mfile)
     else:
-        print("Usage: python tests/dimm_seeing_log.py [log | compare [seeing|pwv]]")
+        print("Usage: python tests/dimm_seeing_log.py log")
+        print("       python tests/dimm_seeing_log.py compare "
+              "[seeing|pwv] [site] [measured_file.csv]")
