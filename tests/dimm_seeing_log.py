@@ -35,6 +35,7 @@ from atmospheric import get_full_atmospheric_analysis  # noqa: E402
 
 LOG_PATH = os.path.join(os.path.dirname(__file__), "gowc_seeing_log.csv")
 DIMM_PATH = os.path.join(os.path.dirname(__file__), "dimm_measured.csv")
+PWV_PATH = os.path.join(os.path.dirname(__file__), "pwv_measured.csv")
 PLOT_PATH = os.path.join(os.path.dirname(__file__), "dimm_validation.png")
 
 # DIMM-equipped sites with public archives (name pattern -> short label).
@@ -65,19 +66,21 @@ def log_seeing():
             continue
         rec = dict(r.iloc[0])
         rec["altitude_m"] = rec.get("altitude_m") or 0
-        seeing = get_full_atmospheric_analysis(rec).get("seeing_arcsec")
+        a = get_full_atmospheric_analysis(rec)
+        seeing = a.get("seeing_arcsec")
+        pwv = a.get("pwv_mm")
         if seeing is not None:
-            rows.append((now, label, seeing))
+            rows.append((now, label, seeing, pwv))
 
     new_file = not os.path.exists(LOG_PATH)
     with open(LOG_PATH, "a", newline="") as f:
         wr = csv.writer(f)
         if new_file:
-            wr.writerow(["datetime_utc", "site", "gowc_seeing"])
+            wr.writerow(["datetime_utc", "site", "gowc_seeing", "gowc_pwv"])
         wr.writerows(rows)
     print(f"Logged {len(rows)} site(s) at {now}")
-    for _, label, s in rows:
-        print(f"  {label:14} GOWC seeing = {s}\"")
+    for _, label, s, p in rows:
+        print(f"  {label:14} GOWC seeing = {s}\"  PWV = {p} mm")
 
 
 def _read_csv(path):
@@ -87,41 +90,44 @@ def _read_csv(path):
         return list(csv.DictReader(f))
 
 
-def compare_to_dimm():
-    """Match logged GOWC forecasts to measured DIMM values and report stats."""
-    gowc = _read_csv(LOG_PATH)
-    dimm = _read_csv(DIMM_PATH)
-    if not gowc:
-        print("No GOWC log yet. Run 'log' daily first.")
-        return
-    if not dimm:
-        print(f"No DIMM data. Download it and save to {DIMM_PATH} "
-              "(columns: datetime_utc, site, dimm_seeing).")
-        return
+def _find_col(fieldnames, *candidates):
+    """Find the first column whose name contains any candidate (case-insensitive)."""
+    low = {c.lower(): c for c in fieldnames}
+    for cand in candidates:
+        for lc, orig in low.items():
+            if cand in lc:
+                return orig
+    return None
 
-    # Match by (site, date) --- forecasts and DIMM rarely share the exact minute.
-    def key(row):
-        return (row["site"].strip().lower(), row["datetime_utc"][:10])
 
-    dimm_map = {}
-    for d in dimm:
-        dimm_map.setdefault(key(d), []).append(float(d["dimm_seeing"]))
+def _load_measured(path, value_kinds):
+    """Load an observatory-archive CSV. Auto-detects the timestamp column and the
+    value column (seeing or PWV) by name. Returns list of (date10, value)."""
+    if not os.path.exists(path):
+        return None
+    rows = _read_csv(path)
+    if not rows:
+        return []
+    fn = rows[0].keys()
+    tcol = _find_col(fn, "date", "time", "mjd", "night")
+    vcol = _find_col(fn, *value_kinds)
+    if not tcol or not vcol:
+        print(f"  Could not auto-detect columns in {os.path.basename(path)}.")
+        print(f"  Columns found: {list(fn)}")
+        return []
+    out = []
+    for r in rows:
+        try:
+            val = float(r[vcol])
+        except (ValueError, TypeError, KeyError):
+            continue
+        out.append((str(r[tcol])[:10], val))
+    return out
 
-    pairs = []
-    for g in gowc:
-        k = key(g)
-        if k in dimm_map:
-            measured = sum(dimm_map[k]) / len(dimm_map[k])  # daily mean DIMM
-            pairs.append((g["site"], float(g["gowc_seeing"]), measured))
 
-    if not pairs:
-        print("No matched (site, date) pairs yet --- keep logging / add DIMM data.")
-        return
-
+def _stats(gv, dv):
     import statistics
-    gv = [p[1] for p in pairs]
-    dv = [p[2] for p in pairs]
-    n = len(pairs)
+    n = len(gv)
     bias = statistics.mean(gv[i] - dv[i] for i in range(n))
     rms = (sum((gv[i] - dv[i]) ** 2 for i in range(n)) / n) ** 0.5
     ratio = statistics.median(gv[i] / dv[i] for i in range(n) if dv[i] > 0)
@@ -129,30 +135,95 @@ def compare_to_dimm():
         corr = statistics.correlation(gv, dv) if n >= 2 else float("nan")
     except Exception:
         corr = float("nan")
+    return n, corr, ratio, bias, rms
 
-    print(f"\n  GOWC vs measured DIMM seeing  (N = {n} matched pairs)")
-    print("  " + "-" * 44)
-    print(f"  correlation r : {corr:.2f}")
-    print(f"  median ratio  : {ratio:.2f}  (GOWC / DIMM)")
-    print(f"  bias          : {bias:+.2f}\"  (GOWC - DIMM)")
-    print(f"  RMS           : {rms:.2f}\"")
-    print("  " + "-" * 44)
 
+def compare(quantity="seeing"):
+    """Compare GOWC forecasts to measured archive data for `quantity`
+    ('seeing' or 'pwv'). Reports matched-pair stats when overlapping dates exist,
+    and always reports a distribution comparison (works immediately on a large
+    historical download, before matched pairs accumulate)."""
+    gowc_rows = _read_csv(LOG_PATH)
+    if not gowc_rows:
+        print("No GOWC log yet. Run 'log' first (it runs automatically in CI).")
+        return
+
+    if quantity == "pwv":
+        gcol, measured_path = "gowc_pwv", PWV_PATH
+        vkinds, unit, label = ("pwv", "water vapour", "precip"), "mm", "PWV"
+    else:
+        gcol, measured_path = "gowc_seeing", DIMM_PATH
+        vkinds, unit, label = ("seeing", "fwhm"), "\"", "seeing"
+
+    measured = _load_measured(measured_path, vkinds)
+    if measured is None:
+        print(f"No measured file. Download the archive data to {measured_path}.")
+        return
+    if not measured:
+        return
+
+    # GOWC values by date (daily mean across log entries)
+    gowc_by_date = {}
+    for g in gowc_rows:
+        v = g.get(gcol)
+        if v in (None, "", "None"):
+            continue
+        gowc_by_date.setdefault(g["datetime_utc"][:10], []).append(float(v))
+    measured_by_date = {}
+    for d10, val in measured:
+        measured_by_date.setdefault(d10, []).append(val)
+
+    gvals = [v for vs in gowc_by_date.values() for v in vs]
+    mvals = [v for vs in measured_by_date.values() for v in vs]
+
+    # 1) Distribution comparison (always available)
+    import statistics
+    print(f"\n  GOWC vs measured {label} --- DISTRIBUTION")
+    print("  " + "-" * 46)
+    print(f"  GOWC     : median {statistics.median(gvals):.2f}{unit}  "
+          f"mean {statistics.mean(gvals):.2f}  (N={len(gvals)})")
+    print(f"  measured : median {statistics.median(mvals):.2f}{unit}  "
+          f"mean {statistics.mean(mvals):.2f}  (N={len(mvals)})")
+    print(f"  median ratio (GOWC/measured): "
+          f"{statistics.median(gvals)/statistics.median(mvals):.2f}")
+
+    # 2) Matched-pair comparison (needs overlapping dates)
+    pairs_g, pairs_m = [], []
+    for d10, gv in gowc_by_date.items():
+        if d10 in measured_by_date:
+            pairs_g.append(sum(gv) / len(gv))
+            pairs_m.append(sum(measured_by_date[d10]) / len(measured_by_date[d10]))
+    if pairs_g:
+        n, corr, ratio, bias, rms = _stats(pairs_g, pairs_m)
+        print(f"\n  GOWC vs measured {label} --- MATCHED PAIRS  (N={n})")
+        print("  " + "-" * 46)
+        print(f"  correlation r : {corr:.2f}")
+        print(f"  median ratio  : {ratio:.2f}")
+        print(f"  bias          : {bias:+.2f}{unit}")
+        print(f"  RMS           : {rms:.2f}{unit}")
+        _plot(pairs_m, pairs_g, label, unit, corr, quantity)
+    else:
+        print("\n  (No matched dates yet --- the forward log needs to overlap the "
+              "measured range. Distribution comparison above is usable now.)")
+
+
+def _plot(mv, gv, label, unit, corr, quantity):
     try:
         import matplotlib
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
-        lim = max(max(gv), max(dv)) * 1.1
+        lim = max(max(gv), max(mv)) * 1.1
         plt.figure(figsize=(5, 5))
-        plt.scatter(dv, gv, s=18, alpha=0.7)
+        plt.scatter(mv, gv, s=18, alpha=0.7)
         plt.plot([0, lim], [0, lim], "k--", lw=1, label="1:1")
-        plt.xlabel("Measured DIMM seeing (arcsec)")
-        plt.ylabel("GOWC forecast seeing (arcsec)")
-        plt.title(f"GOWC vs DIMM  (N={n}, r={corr:.2f})")
+        plt.xlabel(f"Measured {label} ({unit})")
+        plt.ylabel(f"GOWC forecast {label} ({unit})")
+        plt.title(f"GOWC vs measured {label}  (N={len(gv)}, r={corr:.2f})")
         plt.xlim(0, lim); plt.ylim(0, lim)
         plt.legend(); plt.tight_layout()
-        plt.savefig(PLOT_PATH, dpi=130)
-        print(f"  Plot -> {PLOT_PATH}")
+        out = PLOT_PATH.replace("validation", f"validation_{quantity}")
+        plt.savefig(out, dpi=130)
+        print(f"  Plot -> {out}")
     except ImportError:
         print("  (install matplotlib for a scatter plot)")
 
@@ -162,6 +233,7 @@ if __name__ == "__main__":
     if cmd == "log":
         log_seeing()
     elif cmd == "compare":
-        compare_to_dimm()
+        quantity = sys.argv[2] if len(sys.argv) > 2 else "seeing"
+        compare(quantity)
     else:
-        print("Usage: python tests/dimm_seeing_log.py [log|compare]")
+        print("Usage: python tests/dimm_seeing_log.py [log | compare [seeing|pwv]]")
