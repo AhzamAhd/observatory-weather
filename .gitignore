@@ -9,8 +9,11 @@ __pycache__/
 data/bronze/
 subscriptions.json
 .claude/
-# Downloaded DIMM/PWV archive data (large, fetched locally for validation)
+# Downloaded DIMM/PWV/MASS archive data (large, fetched locally for validation)
 dimm_measured*.csv
 tests/dimm_measured*.csv
 tests/pwv_measured*.csv
 tests/dimm_validation*.png
+tests/dimm_paranal_*.csv
+tests/mass_paranal_*.csv
+tests/dimm_mass_*.png
