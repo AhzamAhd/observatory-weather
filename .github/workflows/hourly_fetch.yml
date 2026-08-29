@@ -53,3 +53,21 @@ jobs:
           SUPABASE_DB_USER: ${{ secrets.SUPABASE_DB_USER }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+
+      # Log GOWC's seeing forecast for the DIMM-equipped sites, building a
+      # forward record to validate against measured DIMM seeing over time.
+      - name: Log DIMM-site seeing
+        run: python tests/dimm_seeing_log.py log
+        env:
+          SUPABASE_DB_HOST: ${{ secrets.SUPABASE_DB_HOST }}
+          SUPABASE_DB_USER: ${{ secrets.SUPABASE_DB_USER }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+
+      - name: Commit seeing log
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add tests/gowc_seeing_log.csv
+          git diff --staged --quiet || git commit -m "auto: DIMM seeing log $(date -u '+%Y-%m-%d %H:%M')"
+          git push
