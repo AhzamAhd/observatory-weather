@@ -115,6 +115,14 @@ def calculate_seeing_tatarski(t_850_c, t_500_c, geopot_850_m, geopot_500_m,
     cn2_factor = 79e-6 * pressure_hpa / (temp_k ** 2)
     cn2 = (cn2_factor ** 2) * ct2
 
+    # The single 850-500 hPa gradient stands in for a turbulent layer of
+    # effective thickness layer_thickness_m (500 m). This is the one genuinely
+    # unconstrained parameter in the chain and the main reason the absolute
+    # free-atmosphere seeing is coarse: validation against ~421k archived DIMM
+    # measurements at Paranal and La Silla shows the model over-predicts by
+    # ~1.5-1.9x here. We keep the raw physics uncalibrated (see the paper's
+    # validation section) and instead display MEASURED DIMM seeing directly for
+    # the few sites that publish it -- measurement beats a tuned model.
     cn2_integral = cn2 * layer_thickness_m
     if cn2_integral <= 0:
         return None
