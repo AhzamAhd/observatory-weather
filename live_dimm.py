@@ -13,14 +13,15 @@ or the query fails --- callers then fall back to the modelled seeing.
 import requests
 from datetime import datetime, timedelta
 
-# ESO ASM DIMM query endpoints (legacy wdb interface, returns CSV).
-# Matched to a GOWC observatory by a name substring. Only Paranal exposes a
-# programmatic DIMM-seeing table (dimm_paranal); La Silla's DIMM is not available
-# through the query API (only its meteo table is), so it is not listed here and
-# falls back to the model. Add more sites as public seeing APIs are found.
+# Public DIMM feeds, matched to a GOWC observatory by a name substring. Each has
+# a `kind` selecting the fetch method. Only sites with a genuinely fetchable feed
+# are listed --- La Silla's DIMM is not API-exposed, and Gemini/TNG/Rubin render
+# their seeing in JavaScript or keep it internal, so those fall back to the model.
 _ESO_BASE = "http://archive.eso.org/wdb/wdb/asm/{table}/query"
+_MKWC_URL = "http://mkwc.ifa.hawaii.edu/current/seeing/"
 SOURCES = {
-    "Paranal": {"table": "dimm_paranal"},
+    "Paranal":  {"kind": "eso", "table": "dimm_paranal"},
+    "Maunakea": {"kind": "mkwc"},
 }
 
 _TIMEOUT = 20
@@ -72,9 +73,27 @@ def _fetch_eso_dimm(table):
     return latest
 
 
+def _fetch_mkwc_dimm():
+    """Scrape the Maunakea Weather Center 'current seeing' page for the latest
+    DIMM value. Returns (seeing_arcsec, timestamp) or None."""
+    import re
+    r = requests.get(_MKWC_URL, timeout=_TIMEOUT,
+                     headers={"User-Agent": "Mozilla/5.0"})
+    r.raise_for_status()
+    flat = re.sub(r"<[^>]+>", " ", r.text)
+    m = re.search(r"DIMM\s+([A-Za-z]+ \d+, \d+ - [\d:]+ HST)\s+([\d.]+)\s*arcsec",
+                  flat)
+    if not m:
+        return None
+    val = float(m.group(2))
+    if val <= 0:
+        return None
+    return (val, m.group(1))
+
+
 def get_live_seeing(site_name):
-    """Measured DIMM seeing for `site_name` as (arcsec, timestamp_utc), or None
-    if the site has no public monitor or the fetch fails. Cached per site."""
+    """Measured DIMM seeing for `site_name` as (arcsec, timestamp), or None if
+    the site has no public monitor or the fetch fails. Cached per site."""
     src = _match_source(site_name)
     if not src:
         return None
@@ -86,9 +105,14 @@ def get_live_seeing(site_name):
         return cached[1]
 
     try:
-        result = _fetch_eso_dimm(cfg["table"])
+        if cfg["kind"] == "eso":
+            result = _fetch_eso_dimm(cfg["table"])
+        elif cfg["kind"] == "mkwc":
+            result = _fetch_mkwc_dimm()
+        else:
+            result = None
     except Exception:
-        result = None                     # network/ESO error -> fall back to model
+        result = None                     # network/source error -> use the model
     # Cache even a None so a transient failure doesn't retry on every call.
     _CACHE[key] = (now, result)
     return result
