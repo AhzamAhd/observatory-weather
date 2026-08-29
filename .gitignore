@@ -16,4 +16,7 @@ tests/pwv_measured*.csv
 tests/dimm_validation*.png
 tests/dimm_paranal_*.csv
 tests/mass_paranal_*.csv
+tests/dimm_lasilla_*.csv
 tests/dimm_mass_*.png
+tests/profile_*.json
+tests/hfa_*.json

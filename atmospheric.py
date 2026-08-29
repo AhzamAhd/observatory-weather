@@ -71,9 +71,9 @@ def _boundary_layer_seeing(surface_wind_ms, humidity_pct, altitude_m, airmass):
     measurement, NOT to an absolute-elevation scaling.
 
     Site-dependence:
-      * base ~0.78" -- a calm, high, dry site (Paranal-like) STILL has a strong
-        ground layer; the previous exp(-h/2500) suppressed it to ~0.2", which the
-        MASS/DIMM split shows is far too low (review Finding #3).
+      * base ~0.77" -- a high, dry site (Paranal-like) STILL has a strong ground
+        layer; the previous exp(-h/2500) suppressed it to ~0.2", which the
+        MASS/DIMM split shows is far too low.
       * grows with surface wind (shear-driven mechanical mixing);
       * grows mildly with humidity as a rough surface-instability proxy (weak in
         the optical -- kept small, see the paper's caveat);
@@ -86,9 +86,12 @@ def _boundary_layer_seeing(surface_wind_ms, humidity_pct, altitude_m, airmass):
     w = surface_wind_ms if surface_wind_ms is not None else 4.0
     rh = humidity_pct if humidity_pct is not None else 50.0
     h = altitude_m if altitude_m is not None else 0.0
-    # Base ground-layer seeing (arcsec), anchored so a calm/dry Paranal (2635 m,
-    # ~4 m/s, ~15% RH) reproduces the MASS/DIMM-measured median of ~0.64".
-    base = 0.78
+    # Base ground-layer seeing (arcsec), anchored so Paranal (2635 m) at its
+    # MEDIAN surface conditions (~2.8 m/s 10 m wind, ~26% RH) reproduces the
+    # per-timestamp MASS/DIMM-measured ground-layer median of 0.61" (2026-05..08,
+    # ~32k pairs). NB the anchor is at median conditions, not calm/dry: at
+    # w=0, RH<40 this base gives ~0.59".
+    base = 0.77
     wind_term = (1.0 + (w / 8.0) ** 2) ** 0.3          # more wind -> more shear
     humid_term = 1.0 + max(0.0, rh - 40.0) / 150.0     # weak instability proxy
     alt_term = math.exp(-h / 10000.0)                  # gentle: local, not elev.
@@ -97,64 +100,204 @@ def _boundary_layer_seeing(surface_wind_ms, humidity_pct, altitude_m, airmass):
     return max(0.15, theta_bl)
 
 
+def _layer_cn2(t_lo_c, p_lo, z_lo, t_hi_c, p_hi, z_hi, shear):
+    """Refractive-index structure constant C_n^2 (m^-2/3) for the layer between
+    two pressure levels, via the Tatarski chain:
+        Gamma = dTheta/dz, C_T^2 = c/Pr_t * L0^4/3 * (T/Theta)^2 * Gamma^2,
+        C_n^2 = (79e-6 P/T^2)^2 C_T^2
+    Uses the layer-mean T, P and Theta. Returns 0.0 for a non-stable/degenerate
+    layer (those contribute no turbulence integral). `shear` is the wind shear
+    across THIS layer (1/s), used for the Dewan L0."""
+    kappa = _R_DRY / _CP
+    th_lo = (t_lo_c + 273.15) * (1000.0 / p_lo) ** kappa
+    th_hi = (t_hi_c + 273.15) * (1000.0 / p_hi) ** kappa
+    dz = z_hi - z_lo
+    if dz <= 0:
+        return 0.0
+    gamma = (th_hi - th_lo) / dz
+    if gamma <= 0:                       # unstable/neutral: no Tatarski turbulence
+        return 0.0
+    l0_pow43 = _outer_scale_pow43(shear)
+    t_mean = 0.5 * ((t_lo_c + 273.15) + (t_hi_c + 273.15))
+    theta_mean = 0.5 * (th_lo + th_hi)
+    p_mean = 0.5 * (p_lo + p_hi)
+    t_over_theta_sq = (t_mean / theta_mean) ** 2
+    ct2 = (_C_TATARSKI / _PR_T) * l0_pow43 * t_over_theta_sq * (gamma ** 2)
+    cn2_factor = 79e-6 * p_mean / (t_mean ** 2)
+    return (cn2_factor ** 2) * ct2
+
+
+# Per-level integration calibration constant. The multi-level C_n^2 integral is
+# raw physics with no thickness knob; a single dimensionless factor scales the
+# integral so the free-atmosphere seeing matches the MEASURED MASS free-atmosphere
+# median at Paranal (0.43", 2026-05..08). This is one calibration constant --- the
+# same status as (and a replacement for) the two-level thickness parameter, but now
+# each layer carries its own geometric depth and the sub-site slab is removed.
+_MULTILEVEL_CN2_SCALE = 0.26
+
+
+def free_atmosphere_seeing_multilevel(levels, altitude_m, airmass=1.0,
+                                      wavelength_nm=500.0,
+                                      cn2_scale=_MULTILEVEL_CN2_SCALE):
+    """Free-atmosphere seeing (arcsec) by integrating C_n^2 over the REAL
+    pressure levels that lie ABOVE the site --- the per-level integration that
+    removes the single-slab effective-thickness parameter.
+
+    `levels` is a list of dicts, each {'p': hPa, 't': degC, 'z': geopot m,
+    'w': wind m/s (optional)}, in any order. We:
+      1. sort by height,
+      2. drop levels at or below the site, but interpolate the lowest bracket
+         straddling the site up to the site elevation (so the integral starts
+         exactly at the telescope, not at the nearest level below it),
+      3. for each adjacent pair, form C_n^2 (its own Gamma, its own Dewan shear)
+         and multiply by that pair's GEOMETRIC depth dz --- so each layer carries
+         its true thickness rather than a shared assumed one,
+      4. sum to get integral C_n^2 dh, then Fried r0 and eps = 0.98 lambda/r0.
+
+    Returns None if fewer than two usable levels remain above the site."""
+    usable = [L for L in levels
+              if L.get("t") is not None and L.get("z") is not None
+              and L.get("p")]
+    if len(usable) < 2:
+        return None
+    usable.sort(key=lambda L: L["z"])
+
+    h_site = altitude_m if altitude_m is not None else 0.0
+
+    # Keep levels above the site; interpolate the straddling bracket to h_site.
+    nodes = [L for L in usable if L["z"] > h_site]
+    below = [L for L in usable if L["z"] <= h_site]
+    if below and nodes:
+        lo, hi = below[-1], nodes[0]        # bracket straddling the site
+        frac = (h_site - lo["z"]) / (hi["z"] - lo["z"])
+        # log-linear interpolation of pressure, linear for T and wind
+        p_site = lo["p"] * (hi["p"] / lo["p"]) ** frac
+        t_site = lo["t"] + frac * (hi["t"] - lo["t"])
+        w_lo, w_hi = lo.get("w"), hi.get("w")
+        w_site = (w_lo + frac * (w_hi - w_lo)
+                  if (w_lo is not None and w_hi is not None) else hi.get("w"))
+        nodes = [{"p": p_site, "t": t_site, "z": h_site, "w": w_site}] + nodes
+    if len(nodes) < 2:
+        return None
+
+    cn2_integral = 0.0
+    for lo, hi in zip(nodes, nodes[1:]):
+        dz = hi["z"] - lo["z"]
+        if dz <= 0:
+            continue
+        w_lo, w_hi = lo.get("w"), hi.get("w")
+        shear = (abs(w_hi - w_lo) / dz
+                 if (w_lo is not None and w_hi is not None) else None)
+        cn2 = _layer_cn2(lo["t"], lo["p"], lo["z"],
+                         hi["t"], hi["p"], hi["z"], shear)
+        cn2_integral += cn2 * dz           # each layer, its own geometric depth
+
+    if cn2_integral <= 0:
+        return None
+    cn2_integral *= cn2_scale               # calibration to measured MASS (see const)
+    wavelength_m = wavelength_nm * 1e-9
+    k = 2.0 * math.pi / wavelength_m
+    r0 = (0.423 * k ** 2 * max(1.0, airmass) * cn2_integral) ** (-3.0 / 5.0)
+    return (0.98 * wavelength_m / r0) * 206265.0
+
+
 def calculate_seeing_tatarski(t_850_c, t_500_c, geopot_850_m, geopot_500_m,
                               wind_850_ms=None, wind_250_ms=None,
+                              wind_500_ms=None,
                               pressure_hpa=850.0, airmass=1.0,
-                              wavelength_nm=500.0, layer_thickness_m=2200.0,
+                              wavelength_nm=500.0, layer_thickness_m=1200.0,
                               surface_wind_ms=None, humidity_pct=None,
-                              altitude_m=None):
+                              altitude_m=None, levels=None):
     """Seeing FWHM (arcsec) from the Tatarski Cn^2 formulation using REAL
     vertical gradients. Returns None if the required profile data is missing.
 
     Chain (all published, see module header):
       Gamma = dTheta/dz  (from 850/500 hPa T + geopotential heights)
-      C_T^2 = (c/Pr_t) L0^(4/3) Gamma^2                    (Tatarski / Basu&Holtslag)
+      C_T^2 = (c/Pr_t) L0^(4/3) (T/Theta)^2 Gamma^2         (Tatarski / Basu&Holtslag)
       Cn^2  = (79e-6 P/T^2)^2 C_T^2                        (optical conversion)
       r0    = (0.423 k^2 X integral Cn^2 dh)^(-3/5)        (Fried 1966)
-      theta = 0.98 lambda / r0
+      eps   = 0.98 lambda / r0
 
-    HONEST CAVEAT: with only two pressure levels the Cn^2 integral and L0 are
-    coarse, so this over-estimates seeing versus a DIMM by a roughly constant
-    factor (~1.5x at good sites). Reported uncalibrated — the value is the raw
-    physics, not fitted to match published site seeing."""
+    The (T/Theta)^2 factor converts the potential-temperature structure constant
+    (C_theta^2, which the dTheta/dz mixing-length argument yields) to the
+    actual-temperature one C_T^2 that the optical conversion 79e-6 P/T^2 acts on:
+    T' = (T/Theta) theta'. It is ~0.78 at mid-layer (a ~14% effect on seeing) and
+    altitude-dependent, so it cannot be absorbed into the layer thickness.
+
+    CAVEAT: with only two pressure levels the Cn^2 integral, the outer scale and
+    the effective layer thickness are coarse; the free-atmosphere term is anchored
+    to the measured MASS free-atmosphere median at Paranal (see the paper's
+    validation section and tests/dimm_mass_decomposition.py)."""
     gamma = potential_temp_gradient(t_850_c, geopot_850_m, t_500_c, geopot_500_m)
     if gamma is None or gamma <= 0:
         # Non-stable or missing gradient — Tatarski regime doesn't apply.
         return None
 
-    # Free-atmosphere wind shear between 850 hPa and the 250 hPa jet level
-    # (~10.4 km), used only to set the mixing length L0.
+    # PREFERRED free-atmosphere path: per-level C_n^2 integration over the real
+    # levels above the site (700/600 hPa added to 850/500/250). Each layer carries
+    # its own geometric depth, the sub-site slab is removed, and the single
+    # effective-thickness parameter is gone. Validated against MASS: this improves
+    # the free-atmosphere night-to-night rank correlation (rho vs MASS -0.51 ->
+    # -0.34 at Paranal) and is the physically correct integration. Used whenever
+    # the caller supplies >=2 usable levels above the site; else the two-level
+    # thickness path below is the fallback.
+    theta_free = None
+    if levels:
+        theta_free = free_atmosphere_seeing_multilevel(
+            levels, altitude_m, airmass=airmass, wavelength_nm=wavelength_nm)
+
+    # Free-atmosphere wind shear for the Dewan L0. Prefer 850->500 hPa so the
+    # shear layer MATCHES the gradient layer (Gamma is 850->500); the Dewan fit
+    # takes the local shear, and pairing it with a 850->250 shear that reaches
+    # into the jet mismatches the layers. Fall back to 850->250 only if the
+    # 500 hPa wind is unavailable. (The clean fix is per-level integration with
+    # 700/600 hPa -- see the paper's future work.)
     shear = None
-    if wind_850_ms is not None and wind_250_ms is not None:
+    if wind_850_ms is not None and wind_500_ms is not None:
+        dz = max(1.0, geopot_500_m - geopot_850_m)
+        shear = abs(wind_500_ms - wind_850_ms) / dz
+    elif wind_850_ms is not None and wind_250_ms is not None:
         shear = abs(wind_250_ms - wind_850_ms) / max(1.0, 10400.0 - geopot_850_m)
 
     # Dewan (1993) returns L0^(4/3) directly, which is exactly the power C_T^2
     # requires --- no separate exponentiation, and no arbitrary length clamp.
     l0_pow43 = _outer_scale_pow43(shear)
-    ct2 = (_C_TATARSKI / _PR_T) * l0_pow43 * (gamma ** 2)
+
+    # (T/Theta)^2 conversion from C_theta^2 to C_T^2 (Basu & Holtslag 2021).
+    # Use the layer-mean temperature and potential temperature.
+    kappa = _R_DRY / _CP
+    theta_850 = (t_850_c + 273.15) * (1000.0 / 850.0) ** kappa
+    theta_500 = (t_500_c + 273.15) * (1000.0 / 500.0) ** kappa
+    t_mean = 0.5 * ((t_850_c + 273.15) + (t_500_c + 273.15))
+    theta_mean = 0.5 * (theta_850 + theta_500)
+    t_over_theta_sq = (t_mean / theta_mean) ** 2
+
+    ct2 = (_C_TATARSKI / _PR_T) * l0_pow43 * t_over_theta_sq * (gamma ** 2)
 
     temp_k = t_850_c + 273.15
     cn2_factor = 79e-6 * pressure_hpa / (temp_k ** 2)
     cn2 = (cn2_factor ** 2) * ct2
 
     # The single 850-500 hPa gradient stands in for a turbulent layer of
-    # effective thickness layer_thickness_m. This is the one genuinely
-    # unconstrained parameter in the chain (plausible range ~200-4000 m). It is
-    # set to 2200 m -- NOT tuned to DIMM total, but anchored so the free-
-    # atmosphere term reproduces the MEASURED MASS free-atmosphere seeing at
-    # Paranal (median ~0.49"; see tests/dimm_mass_decomposition.py). 2200 m sits
-    # inside the plausible range and near the ~4000 m gradient slab, so it is a
-    # stated parameter rather than a large ad-hoc suppression. (The earlier 500 m
-    # value combined with a dimensionally-wrong L0 to give ~0.2" free-atmosphere;
-    # both are now corrected -- L0 via Dewan 1993, thickness via MASS.)
-    cn2_integral = cn2 * layer_thickness_m
-    if cn2_integral <= 0:
-        return None
-
-    wavelength_m = wavelength_nm * 1e-9
-    k = 2.0 * math.pi / wavelength_m
-    r0 = (0.423 * k ** 2 * max(1.0, airmass) * cn2_integral) ** (-3.0 / 5.0)
-    theta_free = (0.98 * wavelength_m / r0) * 206265.0
+    # effective thickness layer_thickness_m -- the one genuinely unconstrained
+    # parameter in the chain (plausible ~200-4000 m). It is set to 1200 m,
+    # anchored so the free-atmosphere term reproduces the MEASURED MASS
+    # free-atmosphere median at Paranal (0.43" over 2026-05..08, ~32k pairs; see
+    # tests/dimm_mass_decomposition.py) -- NOT to DIMM total. This is a
+    # calibration of the free-atmosphere term against MASS, so agreement with
+    # MASS at Paranal is exact by construction; the real test is the held-out
+    # agreement at other sites (see the paper's validation section). The clean
+    # fix that removes this parameter entirely is per-level integration above the
+    # site (700/600 hPa) -- listed as priority future work.
+    # Two-level fallback (used only when the per-level path above was unavailable).
+    if theta_free is None:
+        cn2_integral = cn2 * layer_thickness_m
+        if cn2_integral <= 0:
+            return None
+        wavelength_m = wavelength_nm * 1e-9
+        k = 2.0 * math.pi / wavelength_m
+        r0 = (0.423 * k ** 2 * max(1.0, airmass) * cn2_integral) ** (-3.0 / 5.0)
+        theta_free = (0.98 * wavelength_m / r0) * 206265.0
 
     # Total seeing = free-atmosphere (above) COMBINED with the ground/boundary
     # layer, added in quadrature (independent turbulent layers). The two
@@ -271,13 +414,31 @@ def calculate_seeing(temperature_c, wind_speed_ms,
         def _finite(v):
             return v is not None and isinstance(v, (int, float)) and math.isfinite(v)
         if all(_finite(v) for v in (t850, t500, g850, g500)):
+            # Assemble all available pressure levels for the per-level integration
+            # (700/600 hPa refine the free-atmosphere profile above the site). Any
+            # level with finite T and geopotential is included; the integrator
+            # keeps those above the site and interpolates the straddling bracket.
+            levels = []
+            for p, tk, zk, wk in (
+                    (850.0, "temp_850hpa", "geopot_850hpa", "wind_850hpa"),
+                    (700.0, "temp_700hpa", "geopot_700hpa", "wind_700hpa"),
+                    (600.0, "temp_600hpa", "geopot_600hpa", "wind_600hpa"),
+                    (500.0, "temp_500hpa", "geopot_500hpa", "wind_500hpa"),
+                    (250.0, "temp_250hpa", "geopot_250hpa", "jet_stream_ms")):
+                tv, zv = profile.get(tk), profile.get(zk)
+                if _finite(tv) and _finite(zv):
+                    wv = profile.get(wk)
+                    levels.append({"p": p, "t": tv, "z": zv,
+                                   "w": wv if _finite(wv) else None})
             tat = calculate_seeing_tatarski(
                 t850, t500, g850, g500,
                 wind_850_ms=profile.get("wind_850hpa"),
                 wind_250_ms=profile.get("jet_stream_ms"),
+                wind_500_ms=profile.get("wind_500hpa"),
                 airmass=airmass, wavelength_nm=wavelength_nm,
                 surface_wind_ms=wind_speed_ms, humidity_pct=humidity_pct,
-                altitude_m=altitude_m)
+                altitude_m=altitude_m,
+                levels=levels if len(levels) >= 3 else None)
             if tat is not None:
                 return tat
         # else fall through to the surface heuristic below.

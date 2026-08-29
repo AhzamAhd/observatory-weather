@@ -75,12 +75,22 @@ def fetch_weather(observatory):
         # fetch time. temp/geopotential at 850 & 500 hPa give dTheta/dz; wind at
         # 850 & 250 hPa gives free-atmosphere shear + the jet.
         "hourly": [
+            # Full pressure-level set for the per-level C_n^2 integration above
+            # the site (700/600 hPa refine the free-atmosphere profile between
+            # 850 and 500; 250 hPa supplies the jet). Each level: temperature +
+            # geopotential height (for dTheta/dz) and wind (for the Dewan shear).
             "temperature_850hPa",
             "temperature_700hPa",
+            "temperature_600hPa",
             "temperature_500hPa",
             "geopotential_height_850hPa",
+            "geopotential_height_700hPa",
+            "geopotential_height_600hPa",
             "geopotential_height_500hPa",
             "wind_speed_850hPa",
+            "wind_speed_700hPa",
+            "wind_speed_600hPa",
+            "wind_speed_500hPa",
             "wind_speed_250hPa",
             "relative_humidity_850hPa",
             "relative_humidity_500hPa",
@@ -126,13 +136,19 @@ def fetch_weather(observatory):
                 "dewpoint_c":       current.get("dewpoint_2m"),
                 "wind_speed_80m":   current.get("windspeed_80m"),
                 "wind_speed_120m":  current.get("windspeed_120m"),
-                # Vertical profile (for the Tatarski seeing model):
+                # Vertical profile (for the per-level Tatarski seeing model):
                 "temp_850hpa":      prof.get("temperature_850hPa"),
                 "temp_700hpa":      prof.get("temperature_700hPa"),
+                "temp_600hpa":      prof.get("temperature_600hPa"),
                 "temp_500hpa":      prof.get("temperature_500hPa"),
                 "geopot_850hpa":    prof.get("geopotential_height_850hPa"),
+                "geopot_700hpa":    prof.get("geopotential_height_700hPa"),
+                "geopot_600hpa":    prof.get("geopotential_height_600hPa"),
                 "geopot_500hpa":    prof.get("geopotential_height_500hPa"),
                 "wind_850hpa":      prof.get("wind_speed_850hPa"),
+                "wind_700hpa":      prof.get("wind_speed_700hPa"),
+                "wind_600hpa":      prof.get("wind_speed_600hPa"),
+                "wind_500hpa":      prof.get("wind_speed_500hPa"),
                 "rh_850hpa":        prof.get("relative_humidity_850hPa"),
                 "rh_500hpa":        prof.get("relative_humidity_500hPa"),
                 "pwv_column":       prof.get("total_column_integrated_water_vapour"),
