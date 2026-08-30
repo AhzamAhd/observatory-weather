@@ -782,6 +782,7 @@ def load_atmospheric():
             "rh_850hpa":        row.get("rh_850hpa"),
             "rh_500hpa":        row.get("rh_500hpa"),
             "pwv_column":       row.get("pwv_column"),
+            "model_elevation_m": row.get("model_elevation_m"),
         })
         results.append({
             "observatory":  row["observatory"],
@@ -831,6 +832,7 @@ def load_data():
             w.rh_850hpa,
             w.rh_500hpa,
             w.pwv_column,
+            w.model_elevation_m,
             ROUND(GREATEST(0,
                 100
                 - (w.cloud_cover_pct * 0.50)

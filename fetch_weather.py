@@ -152,6 +152,10 @@ def fetch_weather(observatory):
                 "rh_850hpa":        prof.get("relative_humidity_850hPa"),
                 "rh_500hpa":        prof.get("relative_humidity_500hPa"),
                 "pwv_column":       prof.get("total_column_integrated_water_vapour"),
+                # Model grid-cell terrain height. Open-Meteo integrates the PWV
+                # column from THIS surface, not sea level, so the site-altitude
+                # correction must use (h_site - model_elevation), not h_site.
+                "model_elevation_m": payload.get("elevation"),
                 # 250 hPa wind is the jet-stream proxy at that level.
                 "jet_stream_ms":    prof.get("wind_speed_250hPa"),
             }

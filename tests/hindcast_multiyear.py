@@ -100,7 +100,7 @@ def gowc_hourly(site):
             wind_250_ms=g("wind_speed_250hPa"),
             airmass=1.0, surface_wind_ms=(g("wind_speed_10m") or 0) / 3.6,
             humidity_pct=g("relative_humidity_850hPa"), altitude_m=alt,
-            levels=levels)
+            levels=levels)   # uses the single calibrated constant (0.77)
         if s is not None:
             out[datetime.fromisoformat(ts[:19])] = s
     return out
@@ -264,8 +264,56 @@ def wind_test(site):
         print(f"    (literature expects POSITIVE: strong jet -> worse free-atm seeing)")
 
 
+def baselines(site):
+    """Benchmark GOWC against the predictors an observer already has (review R5):
+    a monthly-deseasonalised GOWC correlation, persistence (last night's measured
+    DIMM), and surface wind alone. Nightly medians throughout."""
+    from collections import defaultdict
+    import json as _json
+    pred = gowc_hourly(site)
+    dimm = measured_hourly(SITES[site]["dimm"], "seeing")
+    pn, dn = nightly_medians(pred), nightly_medians(dimm)
+    cn = sorted(set(pn) & set(dn))
+    print(f"\n  BASELINES ({site}, N={len(cn)} nights):")
+    print(f"  GOWC vs DIMM          rho = {spearman([pn[d] for d in cn], [dn[d] for d in cn]):+.3f}")
+
+    # deseasonalise: subtract each series' monthly-climatological median
+    def deseason(series):
+        bym = defaultdict(list)
+        for d in cn:
+            bym[d.month].append(series[d])
+        med = {m: statistics.median(v) for m, v in bym.items()}
+        return {d: series[d] - med[d.month] for d in cn}
+    pa, da = deseason(pn), deseason(dn)
+    print(f"  GOWC vs DIMM (deseas.) rho = {spearman([pa[d] for d in cn], [da[d] for d in cn]):+.3f}")
+
+    # persistence: last night's DIMM -> tonight
+    cs = sorted(cn)
+    pp = [(dn[cs[i - 1]], dn[cs[i]]) for i in range(1, len(cs))
+          if (cs[i] - cs[i - 1]).days == 1]
+    if pp:
+        print(f"  persistence (DIMM t-1) rho = {spearman([p[0] for p in pp], [p[1] for p in pp]):+.3f}  (N={len(pp)})")
+
+    # surface wind alone
+    try:
+        h = _json.load(open(fetch_profile.__self__ if False else
+                            os.path.join(HERE, f"hfa_{site.replace(' ', '')}.json")))
+        sw = {}
+        for i, ts in enumerate(h["time"]):
+            v = h.get("wind_speed_10m", [])
+            if i < len(v) and v[i] is not None:
+                sw[datetime.fromisoformat(ts[:19])] = v[i]
+        swn = nightly_medians(sw)
+        cw = [d for d in cn if d in swn]
+        if len(cw) > 10:
+            print(f"  surface wind alone     rho = {spearman([swn[d] for d in cw], [dn[d] for d in cw]):+.3f}  (N={len(cw)})")
+    except (OSError, ValueError):
+        pass
+
+
 if __name__ == "__main__":
     random.seed(1)
     for s in SITES:
         analyse(s)
         wind_test(s)
+        baselines(s)

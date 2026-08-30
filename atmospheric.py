@@ -75,27 +75,30 @@ def _boundary_layer_seeing(surface_wind_ms, humidity_pct, altitude_m, airmass):
         layer; the previous exp(-h/2500) suppressed it to ~0.2", which the
         MASS/DIMM split shows is far too low.
       * grows with surface wind (shear-driven mechanical mixing);
-      * grows mildly with humidity as a rough surface-instability proxy (weak in
-        the optical -- kept small, see the paper's caveat);
       * a GENTLE altitude term (scale height 10000 m) -- the ground layer is a
         local surface phenomenon set by topography and heating, only weakly tied
         to absolute elevation, so only the very highest sites see a modest
         reduction.
+    (An earlier version also carried a humidity factor; a ranking test against DIMM
+    showed it subtracted skill, so it was removed -- see the comment below.)
     Scaled by airmass^0.6 for the slant path. Still a parametrisation, not a
     per-site DIMM fit -- see the honest caveat in calculate_seeing_tatarski."""
     w = surface_wind_ms if surface_wind_ms is not None else 4.0
-    rh = humidity_pct if humidity_pct is not None else 50.0
     h = altitude_m if altitude_m is not None else 0.0
     # Base ground-layer seeing (arcsec), anchored so Paranal (2635 m) at its
-    # MEDIAN surface conditions (~2.8 m/s 10 m wind, ~26% RH) reproduces the
-    # per-timestamp MASS/DIMM-measured ground-layer median of 0.61" (2026-05..08,
-    # ~32k pairs). NB the anchor is at median conditions, not calm/dry: at
-    # w=0, RH<40 this base gives ~0.59".
+    # MEDIAN surface conditions (~2.8 m/s 10 m wind) reproduces the per-timestamp
+    # MASS/DIMM-measured ground-layer median of 0.61" (2026-05..08, ~32k pairs).
+    #
+    # An earlier version multiplied in a humidity factor 1 + max(0, RH-40)/150 as a
+    # rough surface-instability proxy. A ranking test against DIMM showed it
+    # subtracted skill (eps_bl alone rose from +0.28 to +0.33 without it, and the
+    # full-model rho rose +0.34 -> +0.36), consistent with humidity's link to
+    # OPTICAL turbulence being weak; it was removed. (The Paranal anchor is
+    # unaffected: at its median RH ~26% the old factor was already 1.0.)
     base = 0.77
     wind_term = (1.0 + (w / 8.0) ** 2) ** 0.3          # more wind -> more shear
-    humid_term = 1.0 + max(0.0, rh - 40.0) / 150.0     # weak instability proxy
     alt_term = math.exp(-h / 10000.0)                  # gentle: local, not elev.
-    theta_bl = base * wind_term * humid_term * alt_term
+    theta_bl = base * wind_term * alt_term
     theta_bl *= max(1.0, airmass) ** 0.6               # slant path
     return max(0.15, theta_bl)
 
@@ -133,7 +136,17 @@ def _layer_cn2(t_lo_c, p_lo, z_lo, t_hi_c, p_hi, z_hi, shear):
 # median at Paranal (0.43", 2026-05..08). This is one calibration constant --- the
 # same status as (and a replacement for) the two-level thickness parameter, but now
 # each layer carries its own geometric depth and the sub-site slab is removed.
-_MULTILEVEL_CN2_SCALE = 0.26
+#
+# Calibrated so the free-atmosphere seeing matches the MEASURED MASS median at
+# Paranal (0.43") over the SAME window the MASS data span. An earlier version used a
+# smaller value (0.26) fit by comparing the full-baseline free-atmosphere median to
+# the MASS median measured in a different (higher-seeing) window -- a window-matching
+# error that under-calibrated it. Both the live and historical Open-Meteo products
+# give essentially the same free-atmosphere seeing at matched dates (0.43 vs 0.41"),
+# so a single constant serves both. In terms of the identifiable effective Tatarski
+# coefficient, C = 0.77 gives c_eff = c*C = 2.8*0.77 = 2.16, inside the published
+# 2.1-3.2 range.
+_MULTILEVEL_CN2_SCALE = 0.77
 
 
 def free_atmosphere_seeing_multilevel(levels, altitude_m, airmass=1.0,
@@ -207,7 +220,8 @@ def calculate_seeing_tatarski(t_850_c, t_500_c, geopot_850_m, geopot_500_m,
                               pressure_hpa=850.0, airmass=1.0,
                               wavelength_nm=500.0, layer_thickness_m=1200.0,
                               surface_wind_ms=None, humidity_pct=None,
-                              altitude_m=None, levels=None):
+                              altitude_m=None, levels=None,
+                              cn2_scale=_MULTILEVEL_CN2_SCALE):
     """Seeing FWHM (arcsec) from the Tatarski Cn^2 formulation using REAL
     vertical gradients. Returns None if the required profile data is missing.
 
@@ -244,7 +258,8 @@ def calculate_seeing_tatarski(t_850_c, t_500_c, geopot_850_m, geopot_500_m,
     theta_free = None
     if levels:
         theta_free = free_atmosphere_seeing_multilevel(
-            levels, altitude_m, airmass=airmass, wavelength_nm=wavelength_nm)
+            levels, altitude_m, airmass=airmass, wavelength_nm=wavelength_nm,
+            cn2_scale=cn2_scale)
 
     # Free-atmosphere wind shear for the Dewan L0. Prefer 850->500 hPa so the
     # shear layer MATCHES the gradient layer (Gamma is 850->500); the Dewan fit
@@ -342,15 +357,16 @@ def turbulence_integral(wind_speed_ms, humidity_pct, altitude_m):
     v_wind = 5.0 + wind_speed_ms
     high = 1.2e-13 * (v_wind / 12.0) ** 2
 
-    # Boundary-layer / surface term. Ground turbulence dominates
-    # real seeing; grows with wind shear and humidity (moist,
-    # unstable surface layer), and is suppressed at high, thin sites
-    # which sit above much of the surface layer.
+    # Boundary-layer / surface term. Ground turbulence dominates real seeing;
+    # grows with wind shear and is suppressed at high, thin sites which sit above
+    # much of the surface layer. (A humidity factor was dropped here too, for
+    # consistency with the per-level path, after a DIMM ranking test showed
+    # humidity subtracts skill -- see _boundary_layer_seeing.) This fallback runs
+    # only when a site has no pressure-level profile at all.
     surface_strength = 9.0e-13
     wind_term   = 1.0 + (wind_speed_ms / 8.0) ** 2
-    humid_term  = 1.0 + max(0.0, humidity_pct - 40.0) / 60.0
     column_term = math.exp(-altitude_m / 2500.0)
-    surface = surface_strength * wind_term * humid_term * column_term
+    surface = surface_strength * wind_term * column_term
 
     cn2_integral = high + surface
     return max(1e-14, cn2_integral)
@@ -511,17 +527,31 @@ def calculate_pwv(surface_pressure, humidity_pct,
 
     FALLBACK PATH: the previous single-level scale-height approximation.
     """
-    # MOST PREFERRED: the model's own total-column PWV (Open-Meteo), scaled to
+    # MOST PREFERRED: the model's own total-column PWV (Open-Meteo), corrected to
     # the site altitude. This is a proper radiative-transfer product and far more
-    # reliable than deriving PWV from 2-3 coarse humidity nodes. The provider
-    # gives the sea-level column; water vapour falls as exp(-h/H_w) with scale
-    # height H_w ~ 2000 m, so the column ABOVE a site at height h is
-    # PWV(h) = PWV(0) * exp(-h/H_w). This removes the water below the telescope.
+    # reliable than deriving PWV from 2-3 coarse humidity nodes.
+    #
+    # IMPORTANT: Open-Meteo integrates the column from the MODEL GRID CELL's
+    # terrain surface, not from sea level. That terrain height (the "elevation"
+    # field, stored as model_elevation_m) is usually within ~100 m of the site, so
+    # only the residual water between the model terrain and the telescope must be
+    # removed: PWV(site) = PWV_model * exp(-(h_site - h_model)/H_w), H_w ~ 2000 m.
+    # (An earlier version scaled from sea level, exp(-h_site/H_w), which removed the
+    # sub-site column a SECOND time and biased PWV ~3x low, worsening with altitude
+    # across the whole catalogue -- see the LHATPRO validation in the paper.)
     if profile is not None:
         pwv_col = profile.get("pwv_column")
         if pwv_col is not None and pwv_col >= 0:
-            h = altitude_m or 0.0
-            pwv_site = pwv_col * math.exp(-h / 2000.0)
+            h_site = altitude_m or 0.0
+            h_model = profile.get("model_elevation_m")
+            if h_model is None:
+                # Without the model terrain height, assume the cell already sits
+                # near the site (true for the targeted-coordinate query) and apply
+                # no double correction. A small residual default guards low sites.
+                dz = 0.0
+            else:
+                dz = max(0.0, h_site - h_model)
+            pwv_site = pwv_col * math.exp(-dz / 2000.0)
             return round(max(0.1, min(60.0, pwv_site)), 2)
 
     # PREFERRED (fallback): layered integration over the humidity profile.
