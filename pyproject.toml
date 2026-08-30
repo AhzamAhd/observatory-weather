@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gowc"
+version = "1.0.0"
+description = "Global Observing-conditions Weather Catalogue: observing-conditions prediction and observation planning across ~2,600 observatory sites"
+readme = "Readme.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Ahzam Ahmed", email = "ahzamahd641@gmail.com" }]
+dependencies = [
+    "numpy",
+    "pandas",
+    "astropy",
+    "requests",
+]
+
+[project.urls]
+Homepage = "https://gowcastroclimate.com"
+Repository = "https://github.com/AhzamAhd/observatory-weather"
+
+[tool.setuptools]
+py-modules = ["atmospheric", "airmass_calculator", "snr_calculator", "observing_engine", "object_visibility"]
