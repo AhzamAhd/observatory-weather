@@ -84,18 +84,21 @@ def _boundary_layer_seeing(surface_wind_ms, humidity_pct, altitude_m, airmass):
     Scaled by airmass^0.6 for the slant path. Still a parametrisation, not a
     per-site DIMM fit -- see the honest caveat in calculate_seeing_tatarski."""
     w = surface_wind_ms if surface_wind_ms is not None else 4.0
-    rh = humidity_pct if humidity_pct is not None else 50.0
     h = altitude_m if altitude_m is not None else 0.0
     # Base ground-layer seeing (arcsec), anchored so Paranal (2635 m) at its
-    # MEDIAN surface conditions (~2.8 m/s 10 m wind, ~26% RH) reproduces the
-    # per-timestamp MASS/DIMM-measured ground-layer median of 0.61" (2026-05..08,
-    # ~32k pairs). NB the anchor is at median conditions, not calm/dry: at
-    # w=0, RH<40 this base gives ~0.59".
+    # MEDIAN surface conditions (~2.8 m/s 10 m wind) reproduces the per-timestamp
+    # MASS/DIMM-measured ground-layer median of 0.61" (2026-05..08, ~32k pairs).
+    #
+    # An earlier version multiplied in a humidity factor 1 + max(0, RH-40)/150 as a
+    # rough surface-instability proxy. A ranking test against DIMM showed it
+    # subtracted skill (eps_bl alone rose from +0.28 to +0.33 without it, and the
+    # full-model rho rose +0.34 -> +0.36), consistent with humidity's link to
+    # OPTICAL turbulence being weak; it was removed. (The Paranal anchor is
+    # unaffected: at its median RH ~26% the old factor was already 1.0.)
     base = 0.77
     wind_term = (1.0 + (w / 8.0) ** 2) ** 0.3          # more wind -> more shear
-    humid_term = 1.0 + max(0.0, rh - 40.0) / 150.0     # weak instability proxy
     alt_term = math.exp(-h / 10000.0)                  # gentle: local, not elev.
-    theta_bl = base * wind_term * humid_term * alt_term
+    theta_bl = base * wind_term * alt_term
     theta_bl *= max(1.0, airmass) ** 0.6               # slant path
     return max(0.15, theta_bl)
 
