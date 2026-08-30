@@ -100,7 +100,10 @@ def gowc_hourly(site):
             wind_250_ms=g("wind_speed_250hPa"),
             airmass=1.0, surface_wind_ms=(g("wind_speed_10m") or 0) / 3.6,
             humidity_pct=g("relative_humidity_850hPa"), altitude_m=alt,
-            levels=levels)
+            levels=levels,
+            # This hindcast runs on the Historical Forecast API, whose gradients
+            # differ from the live Forecast API, so use the HFA-fitted constant.
+            cn2_scale=a._MULTILEVEL_CN2_SCALE_HFA)
         if s is not None:
             out[datetime.fromisoformat(ts[:19])] = s
     return out

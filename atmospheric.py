@@ -133,7 +133,16 @@ def _layer_cn2(t_lo_c, p_lo, z_lo, t_hi_c, p_hi, z_hi, shear):
 # median at Paranal (0.43", 2026-05..08). This is one calibration constant --- the
 # same status as (and a replacement for) the two-level thickness parameter, but now
 # each layer carries its own geometric depth and the sub-site slab is removed.
-_MULTILEVEL_CN2_SCALE = 0.26
+#
+# The constant is ARCHIVE-SPECIFIC: Open-Meteo's live Forecast API and its
+# Historical Forecast API have systematically different pressure-level gradients
+# (the same physics gives free-atm 0.44" on live vs 0.22" on historical at
+# Paranal), so a constant fit on one does not transfer to the other. The live app
+# runs on the live Forecast API -> 0.26; the multi-year hindcast validation runs
+# on the Historical Forecast API -> 0.77. calculate_seeing() uses the live value;
+# the hindcast passes cn2_scale=_MULTILEVEL_CN2_SCALE_HFA explicitly.
+_MULTILEVEL_CN2_SCALE = 0.26          # live Forecast API (the deployed default)
+_MULTILEVEL_CN2_SCALE_HFA = 0.77      # Historical Forecast API (paper hindcast)
 
 
 def free_atmosphere_seeing_multilevel(levels, altitude_m, airmass=1.0,
@@ -207,7 +216,8 @@ def calculate_seeing_tatarski(t_850_c, t_500_c, geopot_850_m, geopot_500_m,
                               pressure_hpa=850.0, airmass=1.0,
                               wavelength_nm=500.0, layer_thickness_m=1200.0,
                               surface_wind_ms=None, humidity_pct=None,
-                              altitude_m=None, levels=None):
+                              altitude_m=None, levels=None,
+                              cn2_scale=_MULTILEVEL_CN2_SCALE):
     """Seeing FWHM (arcsec) from the Tatarski Cn^2 formulation using REAL
     vertical gradients. Returns None if the required profile data is missing.
 
@@ -244,7 +254,8 @@ def calculate_seeing_tatarski(t_850_c, t_500_c, geopot_850_m, geopot_500_m,
     theta_free = None
     if levels:
         theta_free = free_atmosphere_seeing_multilevel(
-            levels, altitude_m, airmass=airmass, wavelength_nm=wavelength_nm)
+            levels, altitude_m, airmass=airmass, wavelength_nm=wavelength_nm,
+            cn2_scale=cn2_scale)
 
     # Free-atmosphere wind shear for the Dewan L0. Prefer 850->500 hPa so the
     # shear layer MATCHES the gradient layer (Gamma is 850->500); the Dewan fit
@@ -511,17 +522,31 @@ def calculate_pwv(surface_pressure, humidity_pct,
 
     FALLBACK PATH: the previous single-level scale-height approximation.
     """
-    # MOST PREFERRED: the model's own total-column PWV (Open-Meteo), scaled to
+    # MOST PREFERRED: the model's own total-column PWV (Open-Meteo), corrected to
     # the site altitude. This is a proper radiative-transfer product and far more
-    # reliable than deriving PWV from 2-3 coarse humidity nodes. The provider
-    # gives the sea-level column; water vapour falls as exp(-h/H_w) with scale
-    # height H_w ~ 2000 m, so the column ABOVE a site at height h is
-    # PWV(h) = PWV(0) * exp(-h/H_w). This removes the water below the telescope.
+    # reliable than deriving PWV from 2-3 coarse humidity nodes.
+    #
+    # IMPORTANT: Open-Meteo integrates the column from the MODEL GRID CELL's
+    # terrain surface, not from sea level. That terrain height (the "elevation"
+    # field, stored as model_elevation_m) is usually within ~100 m of the site, so
+    # only the residual water between the model terrain and the telescope must be
+    # removed: PWV(site) = PWV_model * exp(-(h_site - h_model)/H_w), H_w ~ 2000 m.
+    # (An earlier version scaled from sea level, exp(-h_site/H_w), which removed the
+    # sub-site column a SECOND time and biased PWV ~3x low, worsening with altitude
+    # across the whole catalogue -- see the LHATPRO validation in the paper.)
     if profile is not None:
         pwv_col = profile.get("pwv_column")
         if pwv_col is not None and pwv_col >= 0:
-            h = altitude_m or 0.0
-            pwv_site = pwv_col * math.exp(-h / 2000.0)
+            h_site = altitude_m or 0.0
+            h_model = profile.get("model_elevation_m")
+            if h_model is None:
+                # Without the model terrain height, assume the cell already sits
+                # near the site (true for the targeted-coordinate query) and apply
+                # no double correction. A small residual default guards low sites.
+                dz = 0.0
+            else:
+                dz = max(0.0, h_site - h_model)
+            pwv_site = pwv_col * math.exp(-dz / 2000.0)
             return round(max(0.1, min(60.0, pwv_site)), 2)
 
     # PREFERRED (fallback): layered integration over the humidity profile.

@@ -38,9 +38,16 @@ def fig_ranking():
 
     fig, ax = plt.subplots(figsize=(4.6, 4.4))
     ax.scatter(x, y, s=9, alpha=0.35, edgecolors="none", color="#2b6cb0")
-    lim = [0.3, max(max(x), max(y)) * 1.02]
+    lim = [0.4, 3.2]
     ax.plot(lim, lim, "k--", lw=0.8, label="1:1")
+    ax.set_xscale("log"); ax.set_yscale("log")
     ax.set_xlim(lim); ax.set_ylim(lim)
+    from matplotlib.ticker import NullFormatter, FixedLocator, FixedFormatter
+    ticks = [0.5, 0.7, 1.0, 1.5, 2.0, 3.0]
+    for axis in (ax.xaxis, ax.yaxis):
+        axis.set_major_locator(FixedLocator(ticks))
+        axis.set_major_formatter(FixedFormatter([str(t) for t in ticks]))
+        axis.set_minor_formatter(NullFormatter())
     ax.set_xlabel("Measured DIMM seeing, nightly median (arcsec)")
     ax.set_ylabel("GOWC seeing, nightly median (arcsec)")
     ax.set_title(f"Paranal, {len(cn)} nights\n"
@@ -103,7 +110,7 @@ def fig_decomp():
     ax.hist(gl, bins=bins, alpha=0.55, label=f"Ground layer (med {statistics.median(gl):.2f}\")",
             color="#1d9e75")
     ax.set_xlabel("Seeing (arcsec)")
-    ax.set_ylabel("Nights (hourly-matched samples)")
+    ax.set_ylabel("Hourly-matched samples")
     ax.set_title(f"Paranal MASS/DIMM decomposition (N={len(fmap)})", fontsize=10)
     ax.legend(fontsize=8, frameon=False)
     ax.set_xlim(0, 1.8)
