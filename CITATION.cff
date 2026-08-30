@@ -1,0 +1,30 @@
+cff-version: 1.2.0
+title: "GOWC — Global Observatory Weather Tracker"
+message: "If you use this software, please cite it using these metadata."
+type: software
+authors:
+  - given-names: Ahzam
+    family-names: Ahmed
+    email: ahzamahd641@gmail.com
+repository-code: "https://github.com/AhzamAhd/observatory-weather"
+url: "https://gowcastroclimate.com"
+abstract: >-
+  GOWC is an open tool for observing-conditions prediction and observation
+  planning across ~2,600 catalogued observatory sites. It computes seeing,
+  airmass, atmospheric extinction, precipitable water vapour, sky brightness and
+  signal-to-noise ratio from live Open-Meteo meteorology, validated against ESO
+  Astronomical Site Monitor DIMM/MASS/LHATPRO data and the ING SIGNAL ETC.
+license: MIT
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.22170119
+    description: Zenodo archive of the released version
+preferred-citation:
+  type: article
+  title: >-
+    GOWC: An Open Tool for Observing-Conditions Prediction and Observation
+    Planning, Validated Against Site Monitors and an ETC
+  authors:
+    - given-names: Ahzam
+      family-names: Ahmed
+  year: 2026
