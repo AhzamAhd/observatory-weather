@@ -134,15 +134,16 @@ def _layer_cn2(t_lo_c, p_lo, z_lo, t_hi_c, p_hi, z_hi, shear):
 # same status as (and a replacement for) the two-level thickness parameter, but now
 # each layer carries its own geometric depth and the sub-site slab is removed.
 #
-# The constant is ARCHIVE-SPECIFIC: Open-Meteo's live Forecast API and its
-# Historical Forecast API have systematically different pressure-level gradients
-# (the same physics gives free-atm 0.44" on live vs 0.22" on historical at
-# Paranal), so a constant fit on one does not transfer to the other. The live app
-# runs on the live Forecast API -> 0.26; the multi-year hindcast validation runs
-# on the Historical Forecast API -> 0.77. calculate_seeing() uses the live value;
-# the hindcast passes cn2_scale=_MULTILEVEL_CN2_SCALE_HFA explicitly.
-_MULTILEVEL_CN2_SCALE = 0.26          # live Forecast API (the deployed default)
-_MULTILEVEL_CN2_SCALE_HFA = 0.77      # Historical Forecast API (paper hindcast)
+# Calibrated so the free-atmosphere seeing matches the MEASURED MASS median at
+# Paranal (0.43") over the SAME window the MASS data span. An earlier version used a
+# smaller value (0.26) fit by comparing the full-baseline free-atmosphere median to
+# the MASS median measured in a different (higher-seeing) window -- a window-matching
+# error that under-calibrated it. Both the live and historical Open-Meteo products
+# give essentially the same free-atmosphere seeing at matched dates (0.43 vs 0.41"),
+# so a single constant serves both. In terms of the identifiable effective Tatarski
+# coefficient, C = 0.77 gives c_eff = c*C = 2.8*0.77 = 2.16, inside the published
+# 2.1-3.2 range.
+_MULTILEVEL_CN2_SCALE = 0.77
 
 
 def free_atmosphere_seeing_multilevel(levels, altitude_m, airmass=1.0,
