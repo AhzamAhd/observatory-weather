@@ -75,12 +75,12 @@ def _boundary_layer_seeing(surface_wind_ms, humidity_pct, altitude_m, airmass):
         layer; the previous exp(-h/2500) suppressed it to ~0.2", which the
         MASS/DIMM split shows is far too low.
       * grows with surface wind (shear-driven mechanical mixing);
-      * grows mildly with humidity as a rough surface-instability proxy (weak in
-        the optical -- kept small, see the paper's caveat);
       * a GENTLE altitude term (scale height 10000 m) -- the ground layer is a
         local surface phenomenon set by topography and heating, only weakly tied
         to absolute elevation, so only the very highest sites see a modest
         reduction.
+    (An earlier version also carried a humidity factor; a ranking test against DIMM
+    showed it subtracted skill, so it was removed -- see the comment below.)
     Scaled by airmass^0.6 for the slant path. Still a parametrisation, not a
     per-site DIMM fit -- see the honest caveat in calculate_seeing_tatarski."""
     w = surface_wind_ms if surface_wind_ms is not None else 4.0
@@ -357,15 +357,16 @@ def turbulence_integral(wind_speed_ms, humidity_pct, altitude_m):
     v_wind = 5.0 + wind_speed_ms
     high = 1.2e-13 * (v_wind / 12.0) ** 2
 
-    # Boundary-layer / surface term. Ground turbulence dominates
-    # real seeing; grows with wind shear and humidity (moist,
-    # unstable surface layer), and is suppressed at high, thin sites
-    # which sit above much of the surface layer.
+    # Boundary-layer / surface term. Ground turbulence dominates real seeing;
+    # grows with wind shear and is suppressed at high, thin sites which sit above
+    # much of the surface layer. (A humidity factor was dropped here too, for
+    # consistency with the per-level path, after a DIMM ranking test showed
+    # humidity subtracts skill -- see _boundary_layer_seeing.) This fallback runs
+    # only when a site has no pressure-level profile at all.
     surface_strength = 9.0e-13
     wind_term   = 1.0 + (wind_speed_ms / 8.0) ** 2
-    humid_term  = 1.0 + max(0.0, humidity_pct - 40.0) / 60.0
     column_term = math.exp(-altitude_m / 2500.0)
-    surface = surface_strength * wind_term * humid_term * column_term
+    surface = surface_strength * wind_term * column_term
 
     cn2_integral = high + surface
     return max(1e-14, cn2_integral)
