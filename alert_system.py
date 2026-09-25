@@ -115,7 +115,7 @@ def build_email_html(observatory, score,
           </h1>
           <p style="margin: 8px 0 0; color: white;
                     opacity: 0.9; font-size: 14px;">
-            Global Observatory Weather Tracker
+            Global Observing-conditions Weather Catalogue
           </p>
         </div>
 
@@ -221,7 +221,7 @@ def build_email_html(observatory, score,
             with a threshold of {threshold}/100.
           </p>
           <p style="margin: 8px 0 0;">
-            Global Observatory Weather Tracker ·
+            Global Observing-conditions Weather Catalogue ·
             Data from Open-Meteo ·
             {datetime.utcnow().strftime('%Y-%m-%d')} UTC
           </p>
@@ -242,7 +242,7 @@ def send_email(to_email, subject, html_body):
     msg                    = MIMEMultipart("alternative")
     msg["Subject"]         = subject
     msg["From"]            = (
-        f"Observatory Weather Tracker <{SENDER_EMAIL}>")
+        f"GOWC Observing Conditions <{SENDER_EMAIL}>")
     msg["To"]              = to_email
     msg.attach(MIMEText(html_body, "html"))
 

@@ -1,6 +1,6 @@
 # GOWC — Tab Guide & Methodology
 
-A complete reference for every page in the Global Observatory Weather Tracker:
+A complete reference for every page in the Global Observing-conditions Weather Catalogue:
 what it does, and the maths/physics behind it. All formulas below reflect the
 actual implementation in the codebase.
 

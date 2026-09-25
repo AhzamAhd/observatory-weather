@@ -29,7 +29,7 @@ from routers import (observatories, observe, transients_api, literature,  # noqa
 app = FastAPI(
     title="GOWC API",
     version="0.1.0",
-    description="JSON API for the Global Observatory Weather Tracker. Wraps "
+    description="JSON API for the Global Observing-conditions Weather Catalogue. Wraps "
                 "GOWC's existing engine, ADS search, transient catalogue and "
                 "observatory data.",
 )

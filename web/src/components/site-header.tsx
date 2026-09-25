@@ -28,7 +28,7 @@ export function SiteHeader() {
           <div>
             <h1 className="text-lg font-semibold leading-tight">GOWC</h1>
             <p className="hidden text-xs text-muted-foreground sm:block">
-              Global Observatory Weather Tracker
+              Global Observing-conditions Weather Catalogue
             </p>
           </div>
         </Link>

@@ -99,7 +99,7 @@ from precompute import load_precomputed, load_precomputed_raw
 from PIL import Image as _Image
 _favicon = _Image.open("gowc_logo.png")
 st.set_page_config(
-    page_title="GOWC - Observatory Weather Tracker",
+    page_title="GOWC - Global Observing-conditions Weather Catalogue",
     page_icon=_favicon,
     layout="wide",
     initial_sidebar_state="expanded"
@@ -145,7 +145,7 @@ _icon192 = _img_to_b64("assets/icons/icon-192.png")
 _icon512 = _img_to_b64("assets/icons/icon-512.png")
 
 _manifest = f"""{{
-  "name": "GOWC — Global Observatory Weather Tracker",
+  "name": "GOWC — Global Observing-conditions Weather Catalogue",
   "short_name": "GOWC",
   "description": "Real-time weather intelligence for astronomers worldwide",
   "start_url": "/",
@@ -177,14 +177,14 @@ _HEAD_TAGS = [
     ("meta", {"name": "description", "content": "Real-time weather intelligence for astronomers worldwide — observing conditions, seeing, airmass and SNR for 1,163 observatories."}),
     ("meta", {"property": "og:type", "content": "website"}),
     ("meta", {"property": "og:site_name", "content": "GOWC"}),
-    ("meta", {"property": "og:title", "content": "GOWC — Global Observatory Weather Tracker"}),
+    ("meta", {"property": "og:title", "content": "GOWC — Global Observing-conditions Weather Catalogue"}),
     ("meta", {"property": "og:description", "content": "Real-time weather intelligence for astronomers worldwide — observing conditions, seeing, airmass and SNR for 1,163 observatories."}),
     ("meta", {"property": "og:url", "content": "https://gowcastroclimate.com"}),
     ("meta", {"property": "og:image", "content": _OG_IMG}),
     ("meta", {"property": "og:image:width", "content": "1243"}),
     ("meta", {"property": "og:image:height", "content": "357"}),
     ("meta", {"name": "twitter:card", "content": "summary_large_image"}),
-    ("meta", {"name": "twitter:title", "content": "GOWC — Global Observatory Weather Tracker"}),
+    ("meta", {"name": "twitter:title", "content": "GOWC — Global Observing-conditions Weather Catalogue"}),
     ("meta", {"name": "twitter:description", "content": "Real-time observing conditions, seeing, airmass and SNR for 1,163 observatories worldwide."}),
     ("meta", {"name": "twitter:image", "content": _OG_IMG}),
 ]
@@ -1362,7 +1362,7 @@ if _is_admin and st.sidebar.button("Fetch Live Data", use_container_width=True):
 
 st.sidebar.markdown("---")
 st.sidebar.caption(
-    "Global Observatory Weather Tracker · "
+    "Global Observing-conditions Weather Catalogue · "
     "Built by Ahzam Ahmed"
 )
 
@@ -8333,7 +8333,7 @@ st.markdown(f"""
             justify-content:center;font-size:0.74rem;color:{TEXT2};">
   <span style="font-weight:700;color:{TEXT};letter-spacing:0.04em;">GOWC</span>
   <span>·</span>
-  <span>Global Observatory Weather Tracker</span>
+  <span>Global Observing-conditions Weather Catalogue</span>
   <span>·</span>
   <span>Weather data: <a href="https://open-meteo.com" target="_blank"
         style="color:{ACCENT};text-decoration:none;">Open-Meteo</a></span>

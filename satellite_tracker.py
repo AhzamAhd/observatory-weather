@@ -8,7 +8,7 @@ from datetime import datetime, timezone, timedelta
 def fetch_tle(url):
     """Fetch TLE data from Celestrak with proper headers."""
     try:
-        headers  = {"User-Agent": "Observatory-Weather-Tracker/1.0"}
+        headers  = {"User-Agent": "GOWC/1.0"}
         response = requests.get(url, timeout=15, headers=headers)
         response.raise_for_status()
         return response.text

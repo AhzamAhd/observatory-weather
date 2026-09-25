@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
 <Document>
-  <name>Global Observatory Weather Tracker</name>
+  <name>Global Observing-conditions Weather Catalogue</name>
   <description>Live observation quality for 1208 observatories worldwide. Generated 2026-05-03 20:09 UTC</description>
 
   <!-- Styles -->

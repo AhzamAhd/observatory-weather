@@ -25,7 +25,7 @@ def generate_kml(df):
         '<?xml version="1.0" encoding="UTF-8"?>',
         '<kml xmlns="http://www.opengis.net/kml/2.2">',
         '<Document>',
-        f'  <name>Global Observatory Weather Tracker</name>',
+        f'  <name>Global Observing-conditions Weather Catalogue</name>',
         f'  <description>Live observation quality for {len(df)} observatories worldwide. Generated {datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")}</description>',
         '',
         '  <!-- Styles -->',

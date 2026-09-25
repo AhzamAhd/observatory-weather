@@ -1,4 +1,4 @@
-# GOWC — Global Observatory Weather Tracker
+# GOWC — Global Observing-conditions Weather Catalogue
 
 ### Real-time weather intelligence for astronomers worldwide
 

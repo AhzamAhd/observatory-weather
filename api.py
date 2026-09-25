@@ -8,9 +8,9 @@ from atmospheric import get_full_atmospheric_analysis
 
 # ── App setup ─────────────────────────────────────────────────────
 app = FastAPI(
-    title="Global Observatory Weather API",
+    title="Global Observing-conditions Weather Catalogue API",
     description="""
-## 🔭 Global Observatory Weather Tracker API
+## 🔭 Global Observing-conditions Weather Catalogue API
 
 Live atmospheric conditions and observation quality scores
 for 95 professional observatories worldwide.
@@ -125,7 +125,7 @@ def root():
     return """
     <html>
     <head>
-        <title>Observatory Weather API</title>
+        <title>GOWC API</title>
         <style>
             body { font-family: Arial, sans-serif;
                    background: #0E1117; color: #FAFAFA;
@@ -141,7 +141,7 @@ def root():
         </style>
     </head>
     <body>
-        <h1>🔭 Global Observatory Weather API</h1>
+        <h1>🔭 Global Observing-conditions Weather Catalogue API</h1>
         <p>Live atmospheric conditions for 95 professional
            observatories worldwide.</p>
         <h2>Quick start</h2>
