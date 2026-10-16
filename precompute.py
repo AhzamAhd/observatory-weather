@@ -96,7 +96,8 @@ def precompute_all():
         obs_score = observing_quality_score(
             row.get("cloud_cover_pct"), row.get("humidity_pct"),
             row.get("wind_speed_ms"), row.get("precipitation_mm"),
-            atm["seeing_arcsec"], atm["jet_impact"])
+            atm["seeing_arcsec"], atm["jet_impact"],
+            row.get("temperature_c"), row.get("dewpoint_c"))
         atm_results.append({
             "observatory":    row["observatory"],
             "country":        row["country"],

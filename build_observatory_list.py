@@ -3,6 +3,40 @@ from bs4 import BeautifulSoup
 import json
 import os
 import math
+import re
+
+from geo_country import country_for
+
+# MPC line: code, longitude, rho*cos(phi), rho*sin(phi), name. The columns are
+# whitespace-separated but NOT at fixed offsets (sin may carry 5 or 6 decimals),
+# so slicing at fixed columns cut the last digit of sin into the name
+# ("8  Armagh") and truncated the latitude. Parse by fields instead.
+_MPC_LINE = re.compile(
+    r"^(\S{3})\s+(-?[\d.]+)\s+(-?[\d.]+)\s+([+-]?[\d.]+)\s+(\S.*?)\s*$")
+
+_A_M = 6378137.0                 # WGS84 equatorial radius (m)
+_E2 = 6.69437999014e-3           # WGS84 first eccentricity squared
+
+
+def parallax_to_geodetic(rho_cos, rho_sin):
+    """Geodetic latitude (deg) and ellipsoidal height (m) from the MPC parallax
+    constants rho*cos(phi') and rho*sin(phi') (units of the equatorial radius).
+
+    atan2(rho_sin, rho_cos) is the GEOCENTRIC latitude phi', which differs from
+    the geographic latitude by up to ~0.19 deg (~20 km) at mid-latitudes. Iterate
+    the standard geocentric-to-geodetic conversion instead."""
+    p, z = rho_cos * _A_M, rho_sin * _A_M
+    if math.hypot(rho_cos, rho_sin) < 0.9:
+        raise ValueError("not a surface site")   # geocentre / bad entry
+    phi = math.atan2(z, p * (1.0 - _E2))
+    h = 0.0
+    for _ in range(6):
+        n = _A_M / math.sqrt(1.0 - _E2 * math.sin(phi) ** 2)
+        if abs(math.cos(phi)) > 1e-9:
+            h = p / math.cos(phi) - n
+        phi = math.atan2(z, p * (1.0 - _E2 * n / (n + h)))
+    return math.degrees(phi), h
+
 
 def fetch_mpc_observatories():
     print("\n Fetching observatory list from MPC...\n")
@@ -25,22 +59,15 @@ def fetch_mpc_observatories():
 
     for line in lines[2:]:
         try:
-            if len(line) < 30:
-                continue
-            code    = line[0:3].strip()
-            lon_str = line[4:13].strip()
-            cos_str = line[13:21].strip()
-            sin_str = line[21:30].strip()
-            name    = line[30:].strip()
-
-            if not lon_str or not cos_str or not sin_str or not name:
-                continue
+            m = _MPC_LINE.match(line)
+            if not m:
+                continue                      # no coordinates (space-based etc.)
+            code, lon_str, cos_str, sin_str, name = m.groups()
 
             lon     = float(lon_str)
             cos_phi = float(cos_str)
             sin_phi = float(sin_str)
-            lat     = math.degrees(
-                math.atan2(sin_phi, cos_phi))
+            lat, _h = parallax_to_geodetic(cos_phi, sin_phi)
 
             if lon > 180:
                 lon = lon - 360
@@ -200,7 +227,7 @@ def remove_duplicates(observatories):
 def save_list(observatories):
     os.makedirs("data", exist_ok=True)
     path = "data/observatory_list.json"
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(observatories, f, indent=2)
     print(f"\n  Saved {len(observatories)} "
           f"observatories → {path}\n")
@@ -213,7 +240,7 @@ def main():
     # Assign country and telescope type
     print("  Assigning countries and telescope types...")
     for obs in all_obs:
-        obs["country"]       = assign_country(
+        obs["country"]       = country_for(
             obs["latitude"], obs["longitude"])
         obs["telescope_type"] = assign_telescope_type(
             obs["name"], obs["latitude"])

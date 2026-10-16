@@ -45,12 +45,37 @@ def _nearest_hour_profile(hourly):
 
 
 def load_observatories():
+    """Locations to fetch, one per distinct (lat, lon) to 3 decimals.
+
+    The `observatories` table is the source of truth: it includes hand-added
+    flagship sites and any corrected coordinates that the local JSON list lacks,
+    so readings always match a site exactly. Co-located sites share one forecast
+    grid cell, so a single request per location serves all of them (the loader
+    writes the reading to every site there). Falls back to the JSON list when
+    the database is unavailable."""
+    try:
+        from db import query_df
+        df = query_df("""
+            SELECT DISTINCT ON (ROUND(latitude::numeric, 3),
+                                ROUND(longitude::numeric, 3))
+                   name, country, latitude, longitude, altitude_m,
+                   mpc_code AS code
+            FROM observatories
+            ORDER BY ROUND(latitude::numeric, 3),
+                     ROUND(longitude::numeric, 3), id
+        """)
+        if not df.empty:
+            print(f"  Loaded {len(df)} distinct locations from the database")
+            return df.to_dict("records")
+    except Exception as e:
+        print(f"  [WARN] Database unavailable ({e}); using local JSON list")
+
     path = "data/observatory_list.json"
     if not os.path.exists(path):
         print("  [ERROR] data/observatory_list.json not found.")
         print("  Run build_observatory_list.py first.")
         return []
-    with open(path, "r") as f:
+    with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
 def fetch_weather(observatory):

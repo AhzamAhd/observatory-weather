@@ -21,3 +21,6 @@ tests/dimm_mass_*.png
 tests/profile_*.json
 tests/hfa_*.json
 tests/lhatpro_paranal_*.csv
+
+# DB snapshots from one-off repairs (contain subscriber data)
+backups/

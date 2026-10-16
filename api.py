@@ -4,7 +4,8 @@ from fastapi.responses import HTMLResponse
 import sqlite3
 import pandas as pd
 from datetime import datetime
-from atmospheric import get_full_atmospheric_analysis
+from atmospheric import (get_full_atmospheric_analysis,
+                          observing_quality_score, observing_condition)
 
 # ── App setup ─────────────────────────────────────────────────────
 app = FastAPI(
@@ -56,6 +57,40 @@ app.add_middleware(
 # ── Database helper ───────────────────────────────────────────────
 from db import query_df
 
+def _add_real_scores(df):
+    """Replace the placeholder query ordering with the genuine, physics-based
+    observing_quality_score (same multiplicative model the dashboard shows --
+    clarity/dryness/dew/wind/seeing/jet/precipitation -- atmospheric.py). The
+    SQL in scores_query() no longer computes a score at all; this is the one
+    place observation_score/condition are produced, so the API and dashboard
+    can never again disagree on what a site's score is.
+    """
+    if df.empty:
+        df["observation_score"] = []
+        df["condition"] = []
+        return df
+
+    def _score_row(r):
+        atm = get_full_atmospheric_analysis({
+            "temperature_c":    r.get("temperature_c"),
+            "wind_speed_ms":    r.get("wind_speed_ms"),
+            "humidity_pct":     r.get("humidity_pct"),
+            "altitude_m":       r.get("altitude_m", 0),
+            "surface_pressure": r.get("surface_pressure"),
+            "jet_stream_ms":    r.get("jet_stream_ms"),
+            "latitude":         r.get("latitude", 0),
+        })
+        return observing_quality_score(
+            r.get("cloud_cover_pct"), r.get("humidity_pct"),
+            r.get("wind_speed_ms"), r.get("precipitation_mm"),
+            atm["seeing_arcsec"], atm["jet_impact"],
+            r.get("temperature_c"), r.get("dewpoint_c"))
+
+    df["observation_score"] = df.apply(_score_row, axis=1)
+    df["condition"] = df["observation_score"].apply(observing_condition)
+    return df.sort_values("observation_score", ascending=False)
+
+
 def scores_query(extra_where="", extra_params=None,
                  limit=None):
     params = extra_params or []
@@ -74,50 +109,19 @@ def scores_query(extra_where="", extra_params=None,
             w.humidity_pct,
             w.wind_speed_ms,
             w.temperature_c,
+            w.dewpoint_c,
             w.precipitation_mm,
             w.surface_pressure,
-            w.jet_stream_ms,
-            ROUND(GREATEST(0,
-                100
-                - (w.cloud_cover_pct * 0.50)
-                - (CASE WHEN w.humidity_pct > 85
-                   THEN (w.humidity_pct - 85) * 2.0
-                   ELSE 0 END)
-                - (CASE WHEN w.wind_speed_ms > 15
-                   THEN (w.wind_speed_ms - 15) * 2.0
-                   ELSE 0 END)
-            )::numeric, 1) AS observation_score,
-            CASE
-                WHEN (100 - (w.cloud_cover_pct * 0.50)
-                    - (CASE WHEN w.humidity_pct > 85
-                       THEN (w.humidity_pct-85)*2 ELSE 0 END)
-                    - (CASE WHEN w.wind_speed_ms > 15
-                       THEN (w.wind_speed_ms-15)*2 ELSE 0 END)
-                ) >= 80 THEN 'Excellent'
-                WHEN (100 - (w.cloud_cover_pct * 0.50)
-                    - (CASE WHEN w.humidity_pct > 85
-                       THEN (w.humidity_pct-85)*2 ELSE 0 END)
-                    - (CASE WHEN w.wind_speed_ms > 15
-                       THEN (w.wind_speed_ms-15)*2 ELSE 0 END)
-                ) >= 60 THEN 'Good'
-                WHEN (100 - (w.cloud_cover_pct * 0.50)
-                    - (CASE WHEN w.humidity_pct > 85
-                       THEN (w.humidity_pct-85)*2 ELSE 0 END)
-                    - (CASE WHEN w.wind_speed_ms > 15
-                       THEN (w.wind_speed_ms-15)*2 ELSE 0 END)
-                ) >= 40 THEN 'Marginal'
-                ELSE 'Poor'
-            END AS condition
+            w.jet_stream_ms
         FROM weather_readings w
         JOIN observatories o ON w.observatory_id = o.id
         WHERE w.fetch_date = (
             SELECT MAX(fetch_date) FROM weather_readings
         )
         {extra_where}
-        ORDER BY observation_score DESC
-        {f'LIMIT {limit}' if limit else ''}
     """
-    return query_df(sql, params)
+    df = _add_real_scores(query_df(sql, params))
+    return df.head(limit) if limit else df
 
 # ── Root endpoint ─────────────────────────────────────────────────
 @app.get("/", response_class=HTMLResponse, tags=["Info"])
@@ -226,18 +230,13 @@ def get_best_observatories(
     Get the best observatories right now,
     optionally filtered by minimum score.
     """
-    df = scores_query(
-        extra_where=f"""
-            WHERE (100
-                - (w.cloud_cover_pct * 0.50)
-                - (CASE WHEN w.humidity_pct > 85
-                   THEN (w.humidity_pct-85)*2 ELSE 0 END)
-                - (CASE WHEN w.wind_speed_ms > 15
-                   THEN (w.wind_speed_ms-15)*2 ELSE 0 END)
-            ) >= {min_score}
-        """,
-        limit=limit
-    )
+    # min_score filters on the genuine observing_quality_score, which
+    # scores_query() now computes in Python after the SQL fetch -- so filter
+    # here rather than pushing a (now nonexistent) score column into SQL.
+    df = scores_query()
+    df = df[df["observation_score"] >= min_score]
+    if limit:
+        df = df.head(limit)
     return {
         "count":      len(df),
         "limit":      limit,
@@ -311,32 +310,11 @@ def get_by_condition(
             detail=f"Invalid condition. "
                    f"Use: Excellent, Good, Marginal, Poor"
         )
-    df = scores_query(
-        extra_where=f"""
-            WHERE (CASE
-                WHEN (100-(w.cloud_cover_pct*0.50)
-                    -(CASE WHEN w.humidity_pct>85
-                      THEN (w.humidity_pct-85)*2 ELSE 0 END)
-                    -(CASE WHEN w.wind_speed_ms>15
-                      THEN (w.wind_speed_ms-15)*2 ELSE 0 END)
-                ) >= 80 THEN 'Excellent'
-                WHEN (100-(w.cloud_cover_pct*0.50)
-                    -(CASE WHEN w.humidity_pct>85
-                      THEN (w.humidity_pct-85)*2 ELSE 0 END)
-                    -(CASE WHEN w.wind_speed_ms>15
-                      THEN (w.wind_speed_ms-15)*2 ELSE 0 END)
-                ) >= 60 THEN 'Good'
-                WHEN (100-(w.cloud_cover_pct*0.50)
-                    -(CASE WHEN w.humidity_pct>85
-                      THEN (w.humidity_pct-85)*2 ELSE 0 END)
-                    -(CASE WHEN w.wind_speed_ms>15
-                      THEN (w.wind_speed_ms-15)*2 ELSE 0 END)
-                ) >= 40 THEN 'Marginal'
-                ELSE 'Poor'
-            END) = ?
-        """,
-        extra_params=[condition.capitalize()]
-    )
+    # Filter on the genuine condition (derived from observing_quality_score
+    # in Python by scores_query()) rather than a duplicated SQL CASE on the
+    # old placeholder formula.
+    df = scores_query()
+    df = df[df["condition"] == condition.capitalize()]
     return {
         "condition":  condition.capitalize(),
         "count":      len(df),

@@ -174,18 +174,18 @@ _HEAD_TAGS = [
     ("meta", {"name": "theme-color", "content": "#00b4d8"}),
     ("meta", {"name": "application-name", "content": "GOWC"}),
     ("link", {"rel": "apple-touch-icon", "href": f"data:image/png;base64,{_icon192}"}),
-    ("meta", {"name": "description", "content": "Real-time weather intelligence for astronomers worldwide — observing conditions, seeing, airmass and SNR for 1,163 observatories."}),
+    ("meta", {"name": "description", "content": "Real-time weather intelligence for astronomers worldwide — observing conditions, seeing, airmass and SNR for 2,600+ observatory sites."}),
     ("meta", {"property": "og:type", "content": "website"}),
     ("meta", {"property": "og:site_name", "content": "GOWC"}),
     ("meta", {"property": "og:title", "content": "GOWC — Global Observing-conditions Weather Catalogue"}),
-    ("meta", {"property": "og:description", "content": "Real-time weather intelligence for astronomers worldwide — observing conditions, seeing, airmass and SNR for 1,163 observatories."}),
+    ("meta", {"property": "og:description", "content": "Real-time weather intelligence for astronomers worldwide — observing conditions, seeing, airmass and SNR for 2,600+ observatory sites."}),
     ("meta", {"property": "og:url", "content": "https://gowcastroclimate.com"}),
     ("meta", {"property": "og:image", "content": _OG_IMG}),
     ("meta", {"property": "og:image:width", "content": "1243"}),
     ("meta", {"property": "og:image:height", "content": "357"}),
     ("meta", {"name": "twitter:card", "content": "summary_large_image"}),
     ("meta", {"name": "twitter:title", "content": "GOWC — Global Observing-conditions Weather Catalogue"}),
-    ("meta", {"name": "twitter:description", "content": "Real-time observing conditions, seeing, airmass and SNR for 1,163 observatories worldwide."}),
+    ("meta", {"name": "twitter:description", "content": "Real-time observing conditions, seeing, airmass and SNR for 2,600+ observatory sites worldwide."}),
     ("meta", {"name": "twitter:image", "content": _OG_IMG}),
 ]
 components.html(
@@ -798,7 +798,9 @@ def load_atmospheric():
 def load_data():
     from db import query_df
     # DISTINCT ON keeps only the latest reading per observatory,
-    # reducing result set from 1163 to ~300 rows (22x faster).
+    # one row per site. The window spans the latest TWO fetch dates so a
+    # partially-completed morning run does not drop sites that were
+    # fetched the previous evening (the newest reading still wins).
     _df = query_df("""
         SELECT DISTINCT ON (o.id)
             o.name         AS observatory,
@@ -866,9 +868,9 @@ def load_data():
             END AS condition
         FROM weather_readings w
         JOIN observatories o ON w.observatory_id = o.id
-        WHERE w.fetch_date = (
+        WHERE w.fetch_date >= (
             SELECT MAX(fetch_date) FROM weather_readings
-        )
+        ) - 1
         ORDER BY o.id, w.fetch_datetime DESC, observation_score DESC
     """)
 
@@ -911,7 +913,8 @@ def load_data():
         return observing_quality_score(
             r.get("cloud_cover_pct"), r.get("humidity_pct"),
             r.get("wind_speed_ms"), r.get("precipitation_mm"),
-            seeing, jet_impact)
+            seeing, jet_impact,
+            r.get("temperature_c"), r.get("dewpoint_c"))
 
     _df["observation_score"] = _df.apply(_quality_row, axis=1)
     _df["condition"] = _df["observation_score"].apply(observing_condition)
@@ -1402,7 +1405,7 @@ if selected_page == "Home":
     Real-time weather intelligence for astronomers worldwide
   </div>
   <div style="font-size:1rem;color:#a8bfd4;max-width:780px;margin:0 auto;line-height:1.7;">
-    GOWC monitors <strong style="color:#00d4ff;">1,163 professional observatories</strong> across the globe,
+    GOWC monitors <strong style="color:#00d4ff;">2,600+ catalogued observatory sites</strong> across the globe,
     delivering live weather conditions, atmospheric quality scores, and multi-day forecasts —
     so you always know where and when the sky is clearest.
   </div>
@@ -1536,12 +1539,13 @@ index — the same approach used by ClearDarkSky and Meteoblue astronomy indices
 factor is a 0–1 fraction and they multiply, so a single show-stopper (thick cloud,
 rain, terrible seeing) correctly drags the whole night down regardless of the rest:
 
-$$Q = \text{clarity}\times\text{dryness}\times\text{wind}\times\text{seeing}\times\text{jet}\times\text{precip gate}$$
+$$Q = \text{clarity}\times\text{dryness}\times\text{dew}\times\text{wind}\times\text{seeing}\times\text{jet}\times\text{precip gate}$$
 
 | Factor | Behaviour |
 |---|---|
 | **Clarity** | $(1-\text{cloud})^{1.5}$ — non-linear; even light cloud bites |
 | **Dryness** | 1.0 below 70% RH, falling toward 0.5 near saturation |
+| **Dew margin** | 1.0 when air is ≥3 °C above the dew point, falling to 0.2 at it (condensation on optics) |
 | **Wind stability** | 1.0 below ~8 m/s, degrading toward 0.2 in gales |
 | **Seeing** | 1.0 at ≤0.7″, falling to ~0.25 by ~3″ (Fried-based) |
 | **Jet stream** | 1.0 (negligible) down to 0.5 (severe turbulence aloft) |
@@ -1573,17 +1577,42 @@ where $h$ is the apparent altitude in degrees.
     st.subheader("Astronomical Seeing")
     st.markdown(r"""
 Seeing — the blurring of point sources by atmospheric turbulence — is computed from
-the **Fried parameter** $r_0$, not a heuristic. The turbulence strength $\int C_n^2\,dh$
-is modelled with a Hufnagel–Valley-style decomposition into a free-atmosphere term
-(driven by upper-level wind) and a boundary-layer term (driven by ground wind shear
-and humidity, suppressed at high sites that sit above the surface layer). Then:
+the **Tatarski $C_n^2$ chain** driven by the real vertical temperature and wind profile
+above each site, in two independent parts combined in quadrature,
+$\varepsilon = \sqrt{\varepsilon_{\text{free}}^2 + \varepsilon_{\text{ground}}^2}$.
 
-$$r_0 = \left(0.423\,k^2\,X \int C_n^2\,dh\right)^{-3/5} \qquad \theta_{\mathrm{FWHM}} = 0.98\,\lambda / r_0$$
+**Free atmosphere.** For every pressure-level layer *above the telescope*
+(850/700/600/500 hPa, the lowest interpolated to the site elevation) GOWC forms the
+potential-temperature gradient $\Gamma = d\theta/dz$, the Dewan (1993) outer scale from
+that layer's wind shear, and
 
-where $k = 2\pi/\lambda$ and $X$ is the airmass. The model is calibrated so the best
-sites reproduce their published median seeing — for example a high, dry 4200 m peak
-yields $r_0 \approx 20$ cm (seeing ≈ 0.5″), a 2600 m site ≈ 0.8″, and a 2300 m site
-≈ 0.9″ — with each observatory's value driven by its own altitude and live weather.
+$$C_T^2 = \tfrac{c}{\mathrm{Pr}_t}\,L_0^{4/3}\,(T/\theta)^2\,\Gamma^2, \qquad C_n^2 = \left(\frac{79\times10^{-6}P}{T^2}\right)^2 C_T^2$$
+
+then integrates over each layer's own depth and converts to seeing via the Fried parameter:
+
+$$r_0 = \left(0.423\,k^2\,X \int C_n^2\,dh\right)^{-3/5} \qquad \varepsilon_{\text{free}} = 0.98\,\lambda / r_0$$
+
+with $k = 2\pi/\lambda$ ($\lambda$ = 500 nm) and $X$ the airmass.
+
+**Ground layer.** The lowest few hundred metres dominate real seeing and are not
+resolved by the pressure levels, so they are a calibrated surface parametrisation that
+grows with surface wind and depends only gently on altitude.
+
+**Calibration and validation.** One constant in each term is calibrated to the ESO
+MASS/DIMM monitors at Paranal (free atmosphere 0.43″, ground layer 0.61″). Against
+20 months of ESO DIMM data the model ranks good and poor nights with a real but modest
+skill (Spearman ρ ≈ +0.36 at Paranal, +0.31 at La Silla). Where a site monitor publishes
+live seeing (ESO Paranal, Maunakea), GOWC shows the **measured** value instead.
+""")
+
+    st.subheader("Precipitable Water Vapour (PWV)")
+    st.markdown(r"""
+PWV uses the forecast model's total-column water vapour, corrected only for the water
+between the model's terrain height and the telescope:
+$\mathrm{PWV}_{\text{site}} = \mathrm{PWV}_{\text{model}}\,e^{-(h_{\text{site}}-h_{\text{model}})/2000\,\text{m}}$.
+Against the ESO LHATPRO radiometer at Paranal it tracks night-to-night variation
+closely (ρ ≈ +0.95) but reads about 40% wet in absolute terms. Where LHATPRO data
+exist, the measured value is shown.
 """)
 
     st.subheader("Atmospheric Extinction")
@@ -1612,13 +1641,14 @@ $$\mathrm{SNR} = \frac{N_{\star}}{\sqrt{N_{\star} + N_{\mathrm{sky}} + N_{\mathr
 
 where $N_\star$ is source counts, $N_{\mathrm{sky}}$ sky-background counts,
 $N_{\mathrm{dark}}$ dark current, $N_{\mathrm{read}}$ read noise, and
-$N_{\mathrm{scint}}$ scintillation noise.
+$N_{\mathrm{scint}}$ scintillation noise (Osborn et al. 2015). It reproduces the ING
+**SIGNAL** exposure-time calculator to a median 2% across a magnitude–airmass grid on
+two instruments (WHT/ACAM and INT/WFC).
 
 The same SNR and airmass/extinction physics feed several pages: **Object Visibility**
 ranks sites by atmospheric transmission $10^{-kX/2.5}$, **Peak Observing Time** picks
-the hour of maximum SNR for a target, and the **Observing Proposal Planner** solves the
-exposure time needed to reach a target SNR (organised around a professional 11-section
-proposal).
+the hour of maximum SNR for a target, and the **Plan an Observation** wizard solves
+the exposure time needed to reach a target SNR.
 """)
 
     st.subheader("Data Sources & References")
@@ -1627,6 +1657,10 @@ proposal).
 - **Ephemerides** — [PyEphem](https://rhodesmill.org/pyephem/)
 - **Airmass** — Pickering, K. A. (2002), *The Southern Limits of the Ancient Star Catalog*
 - **Extinction** — King (1985); ESO Paranal site monitoring; ORM La Palma
+- **Seeing** — Tatarski (1971); Basu & Holtslag (2022); Dewan et al. (1993); Fried (1966)
+- **Validation data** — ESO Astronomical Site Monitor (DIMM, MASS, LHATPRO); ING SIGNAL ETC
+- **Sky brightness** — Krisciunas & Schaefer (1991)
+- **Scintillation** — Osborn et al. (2015)
 - **SFR / Hα methodology** — Kennicutt (1998)
 """)
 

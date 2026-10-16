@@ -56,7 +56,8 @@ def get_current_scores():
             r.get("jet_stream_ms"), r.get("latitude", 0))
         return observing_quality_score(
             r.get("cloud_cover_pct"), r.get("humidity_pct"),
-            r.get("wind_speed_ms"), r.get("precipitation_mm"), seeing, jet)
+            r.get("wind_speed_ms"), r.get("precipitation_mm"), seeing, jet,
+            r.get("temperature_c"), r.get("dewpoint_c"))
 
     df["score"] = df.apply(_score, axis=1)
     return df

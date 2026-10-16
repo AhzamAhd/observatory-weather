@@ -1,0 +1,19 @@
+-- Enable Row Level Security on observatory_suggestions.
+--
+-- This table was added after migration 004 and so was missed by the
+-- original RLS pass, which the Supabase linter now flags
+-- (rls_disabled_in_public) as an error: the table is in the public
+-- schema and therefore auto-exposed through PostgREST, reachable over
+-- HTTP with the project's anon key.
+--
+-- As with migration 004, the app never touches this table through the
+-- anon/REST path: both the Streamlit app and the FastAPI backend connect
+-- as the `postgres` role (BYPASSRLS) via db.py, and the Next.js web app
+-- uses the Supabase anon client for authentication only, never for table
+-- queries (all its data comes from the FastAPI backend). The web login
+-- flow does not read or write observatory_suggestions.
+--
+-- Enabling RLS with NO policies therefore closes the public API for this
+-- table while leaving every legitimate code path unaffected — the same
+-- posture as migrations 004 and 006.
+ALTER TABLE public.observatory_suggestions ENABLE ROW LEVEL SECURITY;

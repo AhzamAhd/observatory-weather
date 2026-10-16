@@ -16,7 +16,8 @@ def _genuine_score(row):
     return observing_quality_score(
         row.get("cloud_cover_pct"), row.get("humidity_pct"),
         row.get("wind_speed_ms"), row.get("precipitation_mm"),
-        seeing, jet_impact)
+        seeing, jet_impact,
+        row.get("temperature_c"), row.get("dewpoint_c"))
 
 def get_site_data(observatory_names, days=30):
     placeholders = ",".join(["%s"] * len(observatory_names))

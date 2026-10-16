@@ -29,6 +29,7 @@ from snr_calculator import (OBJECT_MAGNITUDES, PHOTOMETRIC_FILTERS,
                             get_sky_brightness)
 from instruments import (list_facilities, list_instruments, list_filters,
                          get_instrument_config)
+from observing_engine import W_AIRMASS, W_WEATHER, W_ALT, MIN_ALT_DEG
 
 
 def _step_header(n, total, title):
@@ -170,6 +171,31 @@ def render_planning_wizard(df, utcnow, load_atmospheric_cached):
     cc1.metric("Seeing", f"{seeing:.2f}\"")
     cc2.metric("Sky brightness", f"{sky_mag} mag/arcsec²")
     cc3.metric("PWV", f"{pwv:.1f} mm" if pwv else "—")
+
+    # Target-weighted score: this target, this site, this night -- distinct
+    # from the site's plain weather score (which doesn't know what you're
+    # observing). Reuses rank_sites()'s exact formula/weights (observing_engine.py)
+    # so the wizard and the observing-assistant chatbot never disagree on what
+    # "good for this target" means. Shown alongside the raw airmass/seeing/SNR
+    # numbers above and below, not instead of them -- the components are more
+    # informative than one blended number, this is just a summary of them.
+    weather_score = (float(site_atm.iloc[0]["weather_score"])
+                      if not site_atm.empty else 50.0)
+    _airmass_term = max(0.0, min(1.0, (2.5 - best_airmass) / 1.5))
+    _alt_term = max(0.0, min(1.0, (best_alt - MIN_ALT_DEG) / 60.0))
+    target_score = round(100.0 * (W_AIRMASS * _airmass_term
+                                  + W_WEATHER * (weather_score / 100.0)
+                                  + W_ALT * _alt_term), 1)
+    st.markdown("---")
+    st.metric(f"Target-weighted score — {target} at {site}",
+              f"{target_score:.0f}/100",
+              help="Combines this target's airmass and altitude on this "
+                   "specific night with the site's weather score, using the "
+                   "same weighting as the observing-assistant chatbot "
+                   f"(airmass {W_AIRMASS:.0%}, weather {W_WEATHER:.0%}, "
+                   f"altitude {W_ALT:.0%}). Different from the site's plain "
+                   "weather score shown elsewhere in GOWC, which does not "
+                   "depend on what you're observing.")
 
     # ══ STEP 7 — SNR / exposure ═══════════════════════════════════
     st.markdown("---")

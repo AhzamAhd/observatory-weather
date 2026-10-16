@@ -3,6 +3,7 @@ import sys
 import json
 import glob
 from datetime import datetime, timezone
+from decimal import Decimal, ROUND_HALF_UP
 from db import execute_many, fetch_one, query_df
 from dotenv import load_dotenv
 
@@ -57,24 +58,37 @@ def load_bronze_data():
 # ── Build coordinate lookup cache ─────────────────────────────────
 _coord_cache = {}
 
+def _coord_key(lat, lon):
+    """(lat, lon) to 3 decimals, rounding halves AWAY from zero to match
+    Postgres ROUND(x::numeric, 3) (Python's float round() does not), so keys
+    built here agree with the SQL that groups locations in fetch_weather."""
+    q = Decimal("0.001")
+    return tuple(float(Decimal(str(float(v))).quantize(q, ROUND_HALF_UP))
+                 for v in (lat, lon))
+
 def get_obs_by_coords(lat, lon):
     """
-    Find observatory ID by matching coordinates.
+    Find ALL observatories at these coordinates (a list of {id, name}).
     Cached for performance.
+
+    Several catalogue sites share a location to 3 decimals (e.g. the many
+    telescopes on Siding Spring). They sit in the same forecast grid cell, so
+    one reading applies to all of them; returning only one id left the others
+    with no weather data ever.
     """
-    key = (round(float(lat), 3), round(float(lon), 3))
+    key = _coord_key(lat, lon)
     if key in _coord_cache:
         return _coord_cache[key]
 
-    obs = fetch_one("""
+    obs = query_df("""
         SELECT id, name FROM observatories
         WHERE ROUND(latitude::numeric, 3)  = %s
         AND   ROUND(longitude::numeric, 3) = %s
-        LIMIT 1
     """, [key[0], key[1]])
 
-    _coord_cache[key] = obs
-    return obs
+    _coord_cache[key] = [
+        {"id": r["id"], "name": r["name"]} for _, r in obs.iterrows()]
+    return _coord_cache[key]
 
 def build_coord_cache():
     """
@@ -87,15 +101,13 @@ def build_coord_cache():
         "FROM observatories"
     )
     for _, row in all_obs.iterrows():
-        key = (
-            round(float(row["latitude"]),  3),
-            round(float(row["longitude"]), 3)
-        )
-        _coord_cache[key] = {
+        key = _coord_key(row["latitude"], row["longitude"])
+        _coord_cache.setdefault(key, []).append({
             "id":   row["id"],
             "name": row["name"]
-        }
-    print(f"  Cache built: {len(_coord_cache)} entries")
+        })
+    print(f"  Cache built: {len(_coord_cache)} locations, "
+          f"{len(all_obs)} observatories")
 
 def upsert_weather_readings(data, now):
     """
@@ -115,15 +127,15 @@ def upsert_weather_readings(data, now):
         if lat is None or lon is None:
             continue
 
-        obs = get_obs_by_coords(lat, lon)
-        if not obs:
+        matches = get_obs_by_coords(lat, lon)
+        if not matches:
             not_found += 1
             continue
 
         cloud = record.get("cloud_cover_pct") or 0
         humid = record.get("humidity_pct")    or 0
         wind  = record.get("wind_speed_ms")   or 0
-        rows.append((
+        rows.extend((
             obs["id"],     fetch_date,
             fetch_time,    fetch_datetime,
             cloud,         humid,
@@ -150,7 +162,7 @@ def upsert_weather_readings(data, now):
             record.get("rh_500hpa"),
             record.get("pwv_column"),
             record.get("model_elevation_m"),
-        ))
+        ) for obs in matches)
 
     # Several list entries can resolve to the same observatory_id (near-duplicate
     # coordinates), which would make the same (observatory_id, fetch_date) key
@@ -232,15 +244,15 @@ def insert_weather_history(data, now):
         if lat is None or lon is None:
             continue
 
-        obs = get_obs_by_coords(lat, lon)
-        if not obs:
+        matches = get_obs_by_coords(lat, lon)
+        if not matches:
             not_found += 1
             continue
 
         cloud = record.get("cloud_cover_pct") or 0
         humid = record.get("humidity_pct")    or 0
         wind  = record.get("wind_speed_ms")   or 0
-        rows.append((
+        rows.extend((
             obs["id"],    fetch_date,
             cloud,        humid,
             wind,         record.get("temperature_c"),
@@ -249,7 +261,7 @@ def insert_weather_history(data, now):
             record.get("jet_stream_ms"),
             record.get("dewpoint_c"),
             calculate_score(cloud, humid, wind),
-        ))
+        ) for obs in matches)
 
     # Dedupe on the conflict key for the same reason as weather_readings —
     # in-batch duplicate (observatory_id, fetch_date) keys break ON CONFLICT.

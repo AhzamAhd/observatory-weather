@@ -66,7 +66,7 @@ def _boundary_layer_seeing(surface_wind_ms, humidity_pct, altitude_m, airmass):
     The two pressure levels see only the free atmosphere, but the ground layer
     (lowest ~few hundred m) dominates real seeing at most sites. A MASS/DIMM
     decomposition of the Paranal ASM archive (this repo, tests/) puts the median
-    ground layer at ~0.64" -- about two-thirds of the total turbulence variance,
+    ground layer at ~0.61" -- about two-thirds of the total turbulence variance,
     consistent with the site literature -- so this term is anchored to that
     measurement, NOT to an absolute-elevation scaling.
 
@@ -662,7 +662,8 @@ def jet_stream_color(impact):
 
 def observing_quality_score(cloud_cover_pct, humidity_pct,
                             wind_speed_ms, precipitation_mm,
-                            seeing_arcsec, jet_impact):
+                            seeing_arcsec, jet_impact,
+                            temperature_c=None, dewpoint_c=None):
     """
     Genuine observing-quality index (0–100), blending the factors that
     actually limit ground-based observing into a single number — in the
@@ -676,6 +677,15 @@ def observing_quality_score(cloud_cover_pct, humidity_pct,
     Factors:
       • clarity      — cloud cover, non-linear (first cloud hurts most)
       • dryness      — humidity (gradual; condensation risk when high)
+      • dew_fac      — dew-point depression (temp - dewpoint): a
+                       DISTINCT condensation risk from relative humidity.
+                       Two nights can share the same RH but very different
+                       dew margins if the air temperature itself differs;
+                       RH alone can miss a close approach to the dew
+                       point. Optional (temperature_c/dewpoint_c) --
+                       neutral (1.0) when either is unavailable, so this
+                       does not change the score for existing callers
+                       that don't yet supply them.
       • wind_stab    — wind (gradual; vibration/tracking above ~8 m/s)
       • seeing_fac   — atmospheric turbulence (Fried-based seeing)
       • jet_fac      — jet-stream turbulence aloft
@@ -695,6 +705,24 @@ def observing_quality_score(cloud_cover_pct, humidity_pct,
         dryness = 1.0
     else:
         dryness = max(0.3, 1.0 - (rh - 70) / 60.0)   # 70%→1.0, 100%→0.5
+
+    # Dew-point depression (temp - dewpoint) — condensation risk that RH
+    # alone can miss: two nights at the same RH can sit at very different
+    # distances from saturation depending on air temperature. Fine above
+    # ~3 degC margin, sharp penalty as the margin closes toward 0 degC
+    # (condensation onset on optics near the dew point itself). Neutral
+    # (1.0) whenever either input is missing, so callers that don't yet
+    # supply temperature_c/dewpoint_c are unaffected.
+    if temperature_c is None or dewpoint_c is None:
+        dew_fac = 1.0
+    else:
+        dew_margin = temperature_c - dewpoint_c
+        if dew_margin >= 3.0:
+            dew_fac = 1.0
+        elif dew_margin <= 0.0:
+            dew_fac = 0.2                            # at/below dew point
+        else:
+            dew_fac = 0.2 + 0.8 * (dew_margin / 3.0)  # 0degC->0.2, 3degC->1.0
 
     # Wind stability — fine below ~8 m/s, degrades, poor by ~25 m/s.
     if wind <= 8:
@@ -719,7 +747,7 @@ def observing_quality_score(cloud_cover_pct, humidity_pct,
     # Precipitation hard gate — any measurable precip closes the dome.
     precip_gate = 1.0 if precip < 0.1 else 0.05
 
-    quality = (clarity * dryness * wind_stab *
+    quality = (clarity * dryness * dew_fac * wind_stab *
                seeing_fac * jet_fac * precip_gate)
     return round(max(0.0, min(1.0, quality)) * 100, 1)
 

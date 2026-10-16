@@ -45,7 +45,8 @@ def get_historical_data(days=30):
         return observing_quality_score(
             r.get("cloud_cover_pct"), r.get("humidity_pct"),
             r.get("wind_speed_ms"), r.get("precipitation_mm"),
-            seeing, jet_impact)
+            seeing, jet_impact,
+            r.get("temperature_c"), r.get("dewpoint_c"))
 
     df["daily_score"] = df.apply(_daily, axis=1)
     return df

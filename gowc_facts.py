@@ -7,7 +7,7 @@ aren't here. Keep this in sync with the app when features change.
 
 GOWC_FACTS = """
 GOWC (Global Observing-conditions Weather Catalogue) is a web app that reports real-time
-observing conditions for 1,163+ professional observatories worldwide and helps
+observing conditions for 2,600+ catalogued observatory sites worldwide and helps
 astronomers plan observations. Weather data comes from Open-Meteo. It is built
 by Ahzam Ahmed.
 
