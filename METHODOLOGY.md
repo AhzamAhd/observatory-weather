@@ -131,8 +131,8 @@ better; professional observations usually stay below airmass ≈ 2.
 ### 🌫️ Atmospheric Analysis
 **Does:** Seeing, PWV and jet-stream impact for every site.
 **Maths:**
-- **Seeing** — Hufnagel–Valley-style `∫Cₙ²dh` → Fried parameter `r₀` → `seeing = 0.98·λ/r₀`.
-- **PWV** — Magnus saturation vapour pressure scaled by altitude.
+- **Seeing** — Tatarski chain integrated per pressure layer above the site (850/700/600/500 hPa): `Γ = dθ/dz` → `C_T² = (c/Pr_t)·L₀^{4/3}·(T/θ)²·Γ²` (Dewan 1993 `L₀`) → `Cₙ²` → Fried parameter `r₀` → `ε_free = 0.98·λ/r₀`, combined in quadrature with a calibrated ground-layer term `ε_bl = 0.77″·(1+(w/8)²)^0.3·e^(−h/10000)·X^0.6`.
+- **PWV** — model total-column water vapour corrected to the site, `PWV_model·e^(−(h_site − h_model)/2000)`; Magnus-based layered integration only as a fallback.
 - **Jet stream** — impact scaled by latitude (strongest at 30–60°).
 **Physics:** Seeing is turbulence-induced blurring (the key sharpness metric); PWV is
 water vapour that absorbs infrared/sub-mm; a jet stream overhead means turbulence aloft

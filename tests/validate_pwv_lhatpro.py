@@ -1,10 +1,14 @@
 """
 PWV validation: GOWC model-column PWV vs measured LHATPRO radiometer at Paranal.
 
-GOWC scales the provider's total-column water vapour to the site by a fixed
-2000 m exponential, PWV(h) = PWV(0) exp(-h/2000). This tests that against the ESO
-LHATPRO radiometer over the full DIMM baseline -- a second quantitative validation
-against a real instrument, and a test of the exponential-scaling assumption.
+Open-Meteo integrates the total column from the MODEL GRID CELL's terrain height
+(its `elevation` field, 2617 m for the Paranal cell), so GOWC removes only the
+residual water between that terrain and the telescope:
+PWV(site) = PWV_model exp(-(h_site - h_model)/2000). This tests that against the
+ESO LHATPRO radiometer over the full DIMM baseline -- a second quantitative
+validation against a real instrument. The earlier sea-level scaling,
+exp(-h_site/2000), which removed the sub-site column twice, is also printed as a
+diagnostic (paper S4.2).
 
 Model column comes from the Historical Forecast API (total_column_integrated_
 water_vapour); measured PWV from the ESO ASM LHATPRO archive (mm, last CSV column).
@@ -25,6 +29,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 LAT, LON, ALT = -24.6275, -70.4044, 2635.0
 START, END = "2025-01-01", "2026-08-28"
 HW = 2000.0   # GOWC water-vapour scale height (m)
+H_MODEL = 2617.0  # Open-Meteo model-cell terrain height at Paranal (`elevation`)
 
 
 def fetch_model_pwv():
@@ -80,14 +85,17 @@ def fetch_lhatpro():
     return {t: statistics.mean(v) for t, v in bins.items()}
 
 
-def model_pwv_series():
+def model_pwv_series(legacy=False):
+    """Model PWV at the site. legacy=True reproduces the old sea-level scaling
+    (the double-count bug) for comparison."""
     h = fetch_model_pwv()
+    dz = ALT if legacy else max(0.0, ALT - H_MODEL)
     out = {}
     for i, ts in enumerate(h["time"]):
         col = h["total_column_integrated_water_vapour"][i]
         if col is None:
             continue
-        pwv_site = col * math.exp(-ALT / HW)   # GOWC's altitude scaling
+        pwv_site = col * math.exp(-dz / HW)   # GOWC's altitude correction
         out[datetime.fromisoformat(ts[:19])] = pwv_site
     return out
 
@@ -132,15 +140,24 @@ def main():
     lo, hi = fisher_ci(rho, len(common))
     r_pearson = statistics.correlation(mv, dv)
     bias = statistics.median(mv[i] / dv[i] for i in range(len(mv)) if dv[i] > 0)
+    med_ratio = statistics.median(mv) / statistics.median(dv)
     abserr = statistics.median(abs(mv[i] - dv[i]) for i in range(len(mv)))
-    print(f"PWV: GOWC model column (x exp(-h/2000)) vs LHATPRO, Paranal")
+    print(f"PWV: GOWC model column (x exp(-(h_site-h_model)/2000)) vs LHATPRO, Paranal")
     print(f"  nights N          = {len(common)}")
     print(f"  median GOWC PWV   = {statistics.median(mv):.2f} mm")
     print(f"  median LHATPRO    = {statistics.median(dv):.2f} mm")
     print(f"  Spearman rho      = {rho:+.3f}  [{lo:+.3f}, {hi:+.3f}]")
     print(f"  Pearson r         = {r_pearson:+.3f}")
-    print(f"  median bias ratio = {bias:.2f}x")
+    print(f"  ratio of medians  = {med_ratio:.2f}x  ({(med_ratio - 1) * 100:+.0f}% wet bias)")
+    print(f"  median bias ratio = {bias:.2f}x  (per-night)")
     print(f"  median |error|    = {abserr:.2f} mm")
+
+    legacy = nightly(model_pwv_series(legacy=True))
+    lv = [legacy[d] for d in common if d in legacy]
+    print(f"\n  Legacy sea-level scaling exp(-h_site/2000) (the double-count bug):")
+    print(f"  median GOWC PWV   = {statistics.median(lv):.2f} mm  "
+          f"({statistics.median(mv) / statistics.median(lv):.1f}x below corrected, "
+          f"{statistics.median(dv) / statistics.median(lv):.1f}x below LHATPRO)")
 
 
 if __name__ == "__main__":

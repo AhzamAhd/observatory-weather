@@ -10,7 +10,7 @@
 
 ## What is GOWC?
 
-GOWC is a real-time weather and observing-conditions platform for **~2,600 professional observatories** worldwide. It pulls live atmospheric data, scores each site for observing quality, models the physics that actually matters to telescopes (seeing, airmass, atmospheric extinction, precipitable water vapour, sky brightness, signal-to-noise), and presents it all through an interactive dashboard. Its photometric SNR calculator is **validated against the ING SIGNAL exposure-time calculator** to within a few percent on two independent instruments.
+GOWC is a real-time weather and observing-conditions platform for **~2,600 catalogued observatory sites** worldwide (the IAU Minor Planet Center list, from major facilities to small and amateur stations). It pulls live atmospheric data, scores each site for observing quality, models the physics that actually matters to telescopes (seeing, airmass, atmospheric extinction, precipitable water vapour, sky brightness, signal-to-noise), and presents it all through an interactive dashboard. Its photometric SNR calculator is **validated against the ING SIGNAL exposure-time calculator** to within a few percent on two independent instruments.
 
 It's built for astronomers, researchers, and observatory operators who need to answer one question quickly: **where and when is the sky clearest tonight?**
 
@@ -42,15 +42,15 @@ It's built for astronomers, researchers, and observatory operators who need to a
 
 GOWC uses real, citable astronomy physics rather than arbitrary scoring. Every model comes from the published literature, and the calculations are validated where ground truth exists.
 
-- **Seeing** uses the **Tatarski C<sub>n</sub><sup>2</sup> formulation** driven by a real vertical temperature gradient from the 850/500 hPa pressure levels (θ → C<sub>T</sub>² → C<sub>n</sub>² → Fried parameter r₀ → θ = 0.98λ/r₀), combined in quadrature with a ground/boundary-layer term. Refs: Tatarski (1971), Basu & Holtslag (2021), Fried (1966).
+- **Seeing** uses the **Tatarski C<sub>n</sub><sup>2</sup> formulation** integrated layer by layer over the real pressure levels above each site (850/700/600/500 hPa; θ → C<sub>T</sub>² → C<sub>n</sub>² → Fried parameter r₀ → ε = 0.98λ/r₀, Dewan 1993 outer scale), combined in quadrature with a calibrated ground-layer term. Calibrated to ESO MASS/DIMM at Paranal; against 20 months of ESO DIMM data it ranks nights with real but modest skill (Spearman ρ = +0.36 Paranal, +0.31 La Silla). Refs: Tatarski (1971), Basu & Holtslag (2022), Dewan et al. (1993), Fried (1966).
 - **Airmass** uses the **Pickering (2002)** interpolative formula, more accurate near the horizon than plane-parallel `sec(z)`. Validated against the Kasten & Young (1989) tables to **< 0.34 %**.
-- **Atmospheric extinction** follows the Bouguer law with primary and secondary (colour-dependent) coefficients, `k = k₁ + k₂(B−V)`, anchored to published La Palma / Paranal values (King 1985). Matches published site coefficients to **~0.01 mag/airmass**.
-- **Precipitable water vapour** uses Open-Meteo's model-computed total-column water vapour, scaled to each site's altitude (`PWV(h) = PWV(0)·e^(−h/2000)`). Matches published site medians to **~30 %**.
+- **Atmospheric extinction** follows the Bouguer law with primary and secondary (colour-dependent) coefficients, `k = k₁ + k₂(B−V)`, anchored to published La Palma / Paranal values (King 1985). Matches published Paranal coefficients to **≤0.01 mag/airmass** in BVRI (0.02 in U).
+- **Precipitable water vapour** uses Open-Meteo's model-computed total-column water vapour, corrected for the residual water between the model terrain and the telescope (`PWV = PWV_model·e^(−(h_site − h_model)/2000)`). Tracks the ESO LHATPRO radiometer at Paranal night-to-night (**ρ = +0.95**) with a **+40 %** absolute wet bias.
 - **Sky brightness** uses the **Krisciunas & Schaefer (1991)** moonlight model, folding in lunar phase, the Moon's and target's airmasses, and — the dominant term — the Moon–target angular separation.
 - **Signal-to-noise** uses the standard CCD equation `SNR = N_source / √(N_source + N_sky + N_dark + N_read² + σ_scint²)` with the **Osborn et al. (2015)** scintillation term, per-band Vega zero-points (Bessell 1998), and a small catalogue of **real instruments** (INT/WFC, WHT/ACAM, VLT/FORS2, Keck/LRIS, Gemini/GMOS, pt5m). **Validated against the ING SIGNAL ETC** on two instruments (WHT/ACAM ~1 %, INT/WFC ~3 %). Reports magnitude uncertainty σ_m = 1.0857/SNR.
-- **Observation-quality score (0–100)** is a *multiplicative* index of clarity, dryness, wind, seeing, jet-stream and a precipitation gate — a night is only as good as its worst limiting factor.
+- **Observation-quality score (0–100)** is a *multiplicative* index of clarity, dryness, dew-point margin, wind, seeing, jet-stream and a precipitation gate — a night is only as good as its worst limiting factor.
 
-> **Scope & disclaimer:** GOWC implements the *forward (predictive)* half of the photometric pipeline (target → expected counts and SNR); it does not perform data reduction. It provides forecasts and physics-based estimates for *observation planning*, not a substitute for on-site measurements or official observatory conditions. Absolute seeing is reported uncalibrated and is indicative; relative rankings are reliable.
+> **Scope & disclaimer:** GOWC implements the *forward (predictive)* half of the photometric pipeline (target → expected counts and SNR); it does not perform data reduction. It provides forecasts and physics-based estimates for *observation planning*, not a substitute for on-site measurements or official observatory conditions. Forecast seeing is calibrated at Paranal and shows modest night-to-night ranking skill at a fixed site; it is not validated for ranking one site's seeing against another's. Where a site monitor publishes measured seeing or PWV, GOWC shows that instead.
 
 ---
 
