@@ -21,15 +21,7 @@ def calculate_live_conditions(obs_row, when=None):
     w_score = float(obs_row["observation_score"])
 
     # ── Atmospheric analysis ──────────────────────────────
-    atm = get_full_atmospheric_analysis({
-        "temperature_c":    obs_row.get("temperature_c"),
-        "wind_speed_ms":    obs_row.get("wind_speed_ms"),
-        "humidity_pct":     obs_row.get("humidity_pct"),
-        "altitude_m":       alt,
-        "surface_pressure": obs_row.get("surface_pressure"),
-        "jet_stream_ms":    obs_row.get("jet_stream_ms"),
-        "latitude":         lat
-    })
+    atm = get_full_atmospheric_analysis(obs_row)
 
     # ── Observing window (single site, for the chosen date) ──
     try:

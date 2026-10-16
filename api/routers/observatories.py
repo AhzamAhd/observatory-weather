@@ -10,7 +10,8 @@ from fastapi import APIRouter, HTTPException, Query
 
 import db
 from atmospheric import (calculate_seeing, calculate_jet_stream_impact,
-                        observing_quality_score, observing_condition)
+                        observing_quality_score, observing_condition,
+                        profile_from_record)
 
 
 def _clean(row: dict) -> dict:
@@ -39,10 +40,16 @@ _LATEST_SQL = """
         o.altitude_m, o.mpc_code,
         w.fetch_datetime, w.cloud_cover_pct, w.humidity_pct, w.wind_speed_ms,
         w.temperature_c, w.precipitation_mm, w.surface_pressure, w.jet_stream_ms,
-        w.temp_850hpa, w.temp_500hpa, w.geopot_850hpa, w.geopot_500hpa, w.wind_850hpa
+        w.dewpoint_c,
+        w.temp_850hpa, w.temp_700hpa, w.temp_600hpa, w.temp_500hpa,
+        w.geopot_850hpa, w.geopot_700hpa, w.geopot_600hpa, w.geopot_500hpa,
+        w.wind_850hpa, w.wind_700hpa, w.wind_600hpa, w.wind_500hpa,
+        w.rh_850hpa, w.rh_500hpa, w.pwv_column, w.model_elevation_m
     FROM weather_readings w
     JOIN observatories o ON w.observatory_id = o.id
-    WHERE w.fetch_date = (SELECT MAX(fetch_date) FROM weather_readings)
+    -- latest two fetch dates, newest reading wins (a partially-completed run
+    -- must not drop sites fetched the previous evening)
+    WHERE w.fetch_date >= (SELECT MAX(fetch_date) FROM weather_readings) - 1
     ORDER BY o.id, w.fetch_datetime DESC
 """
 
@@ -50,15 +57,8 @@ _LATEST_SQL = """
 def _real_score(r):
     """GOWC's genuine multiplicative observing-quality index — identical to
     the Streamlit app's headline score (atmospheric.observing_quality_score).
-    Passes the vertical profile so seeing uses the Tatarski model when present."""
-    profile = {
-        "temp_850hpa":   r.get("temp_850hpa"),
-        "temp_500hpa":   r.get("temp_500hpa"),
-        "geopot_850hpa": r.get("geopot_850hpa"),
-        "geopot_500hpa": r.get("geopot_500hpa"),
-        "wind_850hpa":   r.get("wind_850hpa"),
-        "jet_stream_ms": r.get("jet_stream_ms"),
-    }
+    Passes the full pressure-level profile, so seeing is the per-level model."""
+    profile = profile_from_record(r)
     seeing = calculate_seeing(
         r.get("temperature_c"), r.get("wind_speed_ms"),
         r.get("humidity_pct"), r.get("altitude_m") or 0,
@@ -68,7 +68,8 @@ def _real_score(r):
     return observing_quality_score(
         r.get("cloud_cover_pct"), r.get("humidity_pct"),
         r.get("wind_speed_ms"), r.get("precipitation_mm"),
-        seeing, jet_impact)
+        seeing, jet_impact,
+        r.get("temperature_c"), r.get("dewpoint_c"))
 
 
 @router.get("")
@@ -99,7 +100,11 @@ _ONE_SQL = """
         o.altitude_m, o.mpc_code,
         w.fetch_datetime, w.cloud_cover_pct, w.humidity_pct, w.wind_speed_ms,
         w.temperature_c, w.precipitation_mm, w.surface_pressure, w.jet_stream_ms,
-        w.temp_850hpa, w.temp_500hpa, w.geopot_850hpa, w.geopot_500hpa, w.wind_850hpa
+        w.dewpoint_c,
+        w.temp_850hpa, w.temp_700hpa, w.temp_600hpa, w.temp_500hpa,
+        w.geopot_850hpa, w.geopot_700hpa, w.geopot_600hpa, w.geopot_500hpa,
+        w.wind_850hpa, w.wind_700hpa, w.wind_600hpa, w.wind_500hpa,
+        w.rh_850hpa, w.rh_500hpa, w.pwv_column, w.model_elevation_m
     FROM weather_readings w
     JOIN observatories o ON w.observatory_id = o.id
     WHERE o.id = %s

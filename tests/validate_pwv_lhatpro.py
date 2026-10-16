@@ -100,10 +100,15 @@ def model_pwv_series(legacy=False):
     return out
 
 
-def nightly(hourly):
+def nightly(hourly, hours=None):
+    """{night: median}, nights keyed noon-to-noon in Chilean local time
+    (UTC-4): (t - 16 h).date(). With `hours`, only those hours are used, so the
+    model is sampled exactly when LHATPRO measured."""
     byn = {}
     for t, v in hourly.items():
-        n = (t - timedelta(hours=4)).date()
+        if hours is not None and t not in hours:
+            continue
+        n = (t - timedelta(hours=16)).date()
         byn.setdefault(n, []).append(v)
     return {d: statistics.median(vs) for d, vs in byn.items()}
 
@@ -131,8 +136,9 @@ def fisher_ci(rho, n):
 
 
 def main():
-    model = nightly(model_pwv_series())
-    meas = nightly(fetch_lhatpro())
+    lhat = fetch_lhatpro()
+    model = nightly(model_pwv_series(), hours=lhat)
+    meas = nightly(lhat)
     common = sorted(set(model) & set(meas))
     mv = [model[d] for d in common]
     dv = [meas[d] for d in common]
@@ -152,7 +158,16 @@ def main():
     print(f"  median bias ratio = {bias:.2f}x  (per-night)")
     print(f"  median |error|    = {abserr:.2f} mm")
 
-    legacy = nightly(model_pwv_series(legacy=True))
+    dry = [i for i in range(len(dv)) if dv[i] < 1.5]
+    if dry:
+        print(f"  dry nights (LHATPRO < 1.5 mm): N={len(dry)}  "
+              f"ratio of medians {statistics.median(mv[i] for i in dry) / statistics.median(dv[i] for i in dry):.2f}x")
+    wet = [i for i in range(len(dv)) if dv[i] >= 4.0]
+    if wet:
+        print(f"  wet nights (LHATPRO >= 4 mm): N={len(wet)}  "
+              f"ratio of medians {statistics.median(mv[i] for i in wet) / statistics.median(dv[i] for i in wet):.2f}x")
+
+    legacy = nightly(model_pwv_series(legacy=True), hours=lhat)
     lv = [legacy[d] for d in common if d in legacy]
     print(f"\n  Legacy sea-level scaling exp(-h_site/2000) (the double-count bug):")
     print(f"  median GOWC PWV   = {statistics.median(lv):.2f} mm  "

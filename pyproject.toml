@@ -7,7 +7,7 @@ name = "gowc"
 version = "1.0.0"
 description = "Global Observing-conditions Weather Catalogue: observing-conditions prediction and observation planning across ~2,600 observatory sites"
 readme = "Readme.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"   # statistics.correlation
 license = { text = "MIT" }
 authors = [{ name = "Ahzam Ahmed", email = "ahzamahd641@gmail.com" }]
 dependencies = [
@@ -23,4 +23,4 @@ Homepage = "https://gowcastroclimate.com"
 Repository = "https://github.com/AhzamAhd/observatory-weather"
 
 [tool.setuptools]
-py-modules = ["atmospheric", "airmass_calculator", "snr_calculator", "observing_engine", "object_visibility", "exoplanets", "transients"]
+py-modules = ["atmospheric", "airmass_calculator", "snr_calculator", "observing_engine", "object_visibility", "exoplanets", "transients", "instruments"]

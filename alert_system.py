@@ -21,7 +21,7 @@ from sheets_subscriptions import (
 def get_current_scores():
     from db import query_df
     from atmospheric import (calculate_seeing, calculate_jet_stream_impact,
-                             observing_quality_score)
+                             observing_quality_score, profile_from_record)
     df = query_df("""
         SELECT
             o.name          AS observatory,
@@ -36,7 +36,24 @@ def get_current_scores():
             w.wind_speed_ms,
             w.temperature_c,
             w.jet_stream_ms,
-            w.precipitation_mm
+            w.precipitation_mm,
+            w.dewpoint_c,
+            w.temp_850hpa,
+            w.temp_700hpa,
+            w.temp_600hpa,
+            w.temp_500hpa,
+            w.geopot_850hpa,
+            w.geopot_700hpa,
+            w.geopot_600hpa,
+            w.geopot_500hpa,
+            w.wind_850hpa,
+            w.wind_700hpa,
+            w.wind_600hpa,
+            w.wind_500hpa,
+            w.rh_850hpa,
+            w.rh_500hpa,
+            w.pwv_column,
+            w.model_elevation_m
         FROM weather_readings w
         JOIN observatories o ON w.observatory_id = o.id
         WHERE w.fetch_date = (
@@ -51,7 +68,8 @@ def get_current_scores():
     def _score(r):
         seeing = calculate_seeing(
             r.get("temperature_c"), r.get("wind_speed_ms"),
-            r.get("humidity_pct"), r.get("altitude_m", 0))
+            r.get("humidity_pct"), r.get("altitude_m", 0),
+            profile=profile_from_record(r))
         _, jet = calculate_jet_stream_impact(
             r.get("jet_stream_ms"), r.get("latitude", 0))
         return observing_quality_score(

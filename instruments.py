@@ -74,23 +74,31 @@ INSTRUMENTS = {
     "William Herschel Telescope (WHT)": {
         "aperture_m":   4.20,
         "altitude_m":   2344,
-        "obstruction":  0.24,          # EST
+        # Linear obstruction ratio chosen so the clear collecting area is
+        # SIGNAL's 12.47 m^2 for the WHT: pi*2.1^2*(1-0.316^2) = 12.47.
+        "obstruction":  0.316,
         "instruments": {
             "ACAM (imaging)": {
+                # Constants are ING's own SIGNAL ETC definition of ACAM, so the
+                # catalogue entry IS the configuration benchmarked in
+                # tests/snr_grid_compare.py. (An earlier published-ZP entry,
+                # ZP1_V = 27.0, read ~16% high against SIGNAL, whose counts imply
+                # ~26.7; it is replaced by the computed path.)
                 "detector":     "Auxiliary-port camera, deep-depletion CCD",
-                "pixel_scale":  0.253,
-                "read_noise":   3.3,       # e- (EST, typical)
-                "dark_current": 0.0002,    # e-/pix/s (EST)
+                "pixel_scale":  0.25,      # arcsec/pixel (SIGNAL)
+                "read_noise":   3.2,       # e- (SIGNAL)
+                "dark_current": 0.0,       # e-/pix/s (SIGNAL: negligible)
                 "gain":         1.0,
                 "full_well_e":  120000,
                 "quantum_efficiency": 0.85,
-                "throughput":   0.72,      # EST
-                "source": "Benn, Dee & Aguerri (2008); ING ACAM ETC",
+                "throughput":   0.72 * 0.71,   # tel x instr optics (SIGNAL ACAM)
+                "source": "ING SIGNAL ETC (ACAM); Benn, Dee & Aguerri (2008)",
                 "filters": {
-                    "B (blue)":   {"wavelength_nm": 440, "bandwidth_nm": 100, "band": "B", "zp_per_sec": 10**(26.8/2.5)},
-                    "V (visual)": {"wavelength_nm": 551, "bandwidth_nm": 88,  "band": "V", "zp_per_sec": 10**(27.0/2.5)},
-                    "R (red)":    {"wavelength_nm": 640, "bandwidth_nm": 150, "band": "R", "zp_per_sec": 10**(27.2/2.5)},
-                    "I (near-IR)":{"wavelength_nm": 810, "bandwidth_nm": 150, "band": "I", "zp_per_sec": 10**(26.4/2.5)},
+                    # Computed path (throughput x QE x Vega ZP), validated vs SIGNAL.
+                    "B (blue)":   {"wavelength_nm": 440, "bandwidth_nm": 100, "band": "B"},
+                    "V (visual)": {"wavelength_nm": 550, "bandwidth_nm": 86,  "band": "V"},
+                    "R (red)":    {"wavelength_nm": 640, "bandwidth_nm": 150, "band": "R"},
+                    "I (near-IR)":{"wavelength_nm": 810, "bandwidth_nm": 150, "band": "I"},
                 },
             },
         },

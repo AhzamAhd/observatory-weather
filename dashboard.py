@@ -1599,10 +1599,12 @@ resolved by the pressure levels, so they are a calibrated surface parametrisatio
 grows with surface wind and depends only gently on altitude.
 
 **Calibration and validation.** One constant in each term is calibrated to the ESO
-MASS/DIMM monitors at Paranal (free atmosphere 0.43″, ground layer 0.61″). Against
-20 months of ESO DIMM data the model ranks good and poor nights with a real but modest
-skill (Spearman ρ ≈ +0.36 at Paranal, +0.31 at La Silla). Where a site monitor publishes
-live seeing (ESO Paranal, Maunakea), GOWC shows the **measured** value instead.
+MASS/DIMM monitors at Paranal (free atmosphere 0.45″, ground layer 0.61″). The free-
+atmosphere term tracks MASS (ρ ≈ +0.35), but against 20 months of ESO DIMM data the full
+forecast ranks nights only weakly (Spearman ρ ≈ +0.24 at Paranal, +0.16 at La Silla) —
+no better than surface wind alone — and its absolute scale differs from site to site
+(e.g. +26% at La Palma). Treat forecast seeing as **indicative**. Where a site monitor
+publishes live seeing (ESO Paranal, Maunakea), GOWC shows the **measured** value instead.
 """)
 
     st.subheader("Precipitable Water Vapour (PWV)")
@@ -1611,7 +1613,7 @@ PWV uses the forecast model's total-column water vapour, corrected only for the 
 between the model's terrain height and the telescope:
 $\mathrm{PWV}_{\text{site}} = \mathrm{PWV}_{\text{model}}\,e^{-(h_{\text{site}}-h_{\text{model}})/2000\,\text{m}}$.
 Against the ESO LHATPRO radiometer at Paranal it tracks night-to-night variation
-closely (ρ ≈ +0.95) but reads about 40% wet in absolute terms. Where LHATPRO data
+closely (ρ ≈ +0.95) but reads about 43% wet in absolute terms. Where LHATPRO data
 exist, the measured value is shown.
 """)
 
@@ -1642,8 +1644,8 @@ $$\mathrm{SNR} = \frac{N_{\star}}{\sqrt{N_{\star} + N_{\mathrm{sky}} + N_{\mathr
 where $N_\star$ is source counts, $N_{\mathrm{sky}}$ sky-background counts,
 $N_{\mathrm{dark}}$ dark current, $N_{\mathrm{read}}$ read noise, and
 $N_{\mathrm{scint}}$ scintillation noise (Osborn et al. 2015). It reproduces the ING
-**SIGNAL** exposure-time calculator to a median 2% across a magnitude–airmass grid on
-two instruments (WHT/ACAM and INT/WFC).
+**SIGNAL** exposure-time calculator to a median 1.9% across a magnitude–airmass grid on
+two catalogued instruments (WHT/ACAM and INT/WFC).
 
 The same SNR and airmass/extinction physics feed several pages: **Object Visibility**
 ranks sites by atmospheric transmission $10^{-kX/2.5}$, **Peak Observing Time** picks

@@ -281,8 +281,11 @@ def moon_sky_brightness(moon_phase_pct, moon_alt_deg, target_alt_deg,
         return round(dark_sky_mag, 2)
     rho = max(1.0, min(179.0, moon_target_sep_deg or 60.0))
 
-    # Lunar phase angle alpha (deg): 0 = full, 180 = new.
-    alpha = (1.0 - (moon_phase_pct or 0) / 100.0) * 180.0
+    # Lunar phase angle alpha (deg): 0 = full, 180 = new. The illuminated
+    # fraction is f = (1 + cos alpha)/2, so alpha = arccos(2f - 1) -- not linear
+    # in f (a linear map is ~0.4 mag wrong in the gibbous phases).
+    frac = max(0.0, min(1.0, (moon_phase_pct or 0) / 100.0))
+    alpha = math.degrees(math.acos(2.0 * frac - 1.0))
     # Illuminance of the Moon outside the atmosphere (K&S Eq. 20). The +16.57
     # zero-point puts i_star on the scale that makes f(rho)*i_star come out in
     # nanoLamberts directly (K&S 1991).
@@ -381,12 +384,7 @@ def atmospheric_extinction(altitude_deg,
     """
     if altitude_deg is None or altitude_deg <= 0:
         return 0.5
-    if altitude_deg >= 90:
-        airmass = 1.0
-    elif altitude_deg < 1:
-        airmass = 40.0
-    else:
-        airmass = 1 / math.sin(math.radians(altitude_deg))
+    airmass = _pickering_airmass(altitude_deg)
 
     # Primary (colour-independent) coefficient.
     if extinction_coeff is None:
@@ -497,6 +495,18 @@ def flux_to_photons(flux_jy, aperture_m,
         flux_wm2 * area_m2 * throughput * qe
     ) / energy_per_photon
     return max(0, photon_rate)
+
+def _pickering_airmass(altitude_deg):
+    """Pickering (2002) airmass -- the single definition used across GOWC
+    (airmass_calculator.altitude_to_airmass); kept local to avoid importing the
+    heavier ephemeris module here. 40 below 1 deg, as before."""
+    if altitude_deg is None or altitude_deg < 1:
+        return 40.0
+    if altitude_deg >= 90:
+        return 1.0
+    return 1.0 / math.sin(math.radians(
+        altitude_deg + 244.0 / (165.0 + 47.0 * altitude_deg ** 1.1)))
+
 
 def scintillation_sigma(aperture_m, exposure_time_s, airmass=1.0,
                         site_altitude_m=2000.0, median_correction=1.5):
@@ -609,11 +619,8 @@ def calculate_snr(
             filter_band=filter_band,
             colour_bv=colour_bv)
         effective_throughput = throughput * ext_transmission
-        airmass = (
-            1 / math.sin(
-                math.radians(max(1, object_altitude_deg)))
-            if object_altitude_deg > 0 else 40
-        )
+        airmass = (_pickering_airmass(max(1, object_altitude_deg))
+                   if object_altitude_deg > 0 else 40.0)
     else:
         effective_throughput = throughput
         airmass              = 1.5
@@ -743,7 +750,7 @@ def calculate_snr(
     # ── Honest uncertainty band ───────────────────────────────────
     # The single SNR number hides real modelling uncertainty. The dominant
     # terms an observer cannot pin down from a forecast are: delivered seeing
-    # (GOWC's is ~1.5x high and uncalibrated -> sky/pixel count uncertain),
+    # (a forecast, calibrated only at Paranal -> sky/pixel count uncertain),
     # scintillation amplitude (C_Y scatter, ~+/-30%), and transparency (thin
     # cirrus). We propagate a seeing swing of x0.7..x1.5 through the sky term to
     # bracket the SNR, giving an optimistic/pessimistic pair rather than false
@@ -793,9 +800,13 @@ def calculate_snr(
 
     # Time to reach SNR targets
     def time_for_snr(target_snr):
-        a = source_rate ** 2 - (
-            target_snr ** 2 * source_rate)
+        # SNR^2 = S^2 t^2 / ((S + B) t + R)  =>
+        # S^2 t^2 - SNR^2 (S + B) t - SNR^2 R = 0. Source shot noise grows
+        # linearly in t, so it belongs in b, not a. (Scintillation, which grows
+        # as t^2 in the noise budget, is neglected here.)
+        a = source_rate ** 2
         b = -(target_snr ** 2) * (
+            source_rate +
             sky_rate_pixel * n_pixels +
             dark_current * n_pixels
         )

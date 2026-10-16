@@ -13,7 +13,8 @@ def altitude_to_airmass(altitude_deg):
 
     More accurate than the plain sec(z) = 1/sin(alt) near the horizon, and the
     single airmass definition used throughout GOWC. (Pickering, K.A. 2002, DIO
-    12; agrees with Kasten & Young 1989 to <0.1% away from the horizon.)
+    12; agrees with the Kasten & Young 1989 tables to <0.35% above 5 deg,
+    largest 0.34% at 10 deg -- tests/validate_airmass.py.)
     """
     if altitude_deg <= 0:
         return None
@@ -51,7 +52,7 @@ def airmass_color(airmass):
 # Reference extinction coefficients (mag/airmass) at the
 # 2000 m reference altitude, per filter band. Calibrated so
 # that the altitude scaling reproduces published mean
-# extinction at ORM La Palma (2326 m): U~0.46, B~0.22,
+# extinction at ORM La Palma (2360 m): U~0.46, B~0.22,
 # V~0.12, R~0.09, I~0.05 (King 1985; ORM site monitoring),
 # consistent with ESO Paranal (V~0.11) once scaled.
 EXTINCTION_REFERENCE = {

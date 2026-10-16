@@ -31,7 +31,7 @@ hm = importlib.util.module_from_spec(spec); spec.loader.exec_module(hm)
 def fig_ranking():
     pred = hm.gowc_hourly("Paranal")
     dimm = hm.measured_hourly(hm.SITES["Paranal"]["dimm"], "seeing")
-    pn = hm.nightly_medians(pred); dn = hm.nightly_medians(dimm)
+    pn = hm.nightly_medians(pred, hours=dimm); dn = hm.nightly_medians(dimm)
     cn = sorted(set(pn) & set(dn))
     x = [dn[d] for d in cn]; y = [pn[d] for d in cn]
     rho = hm.spearman(y, x); lo, hi = hm.fisher_ci(rho, len(cn))
@@ -149,8 +149,9 @@ def fig_pwv():
             continue
         pwv = col * math.exp(-max(0.0, vp.ALT - H_MODEL) / vp.HW)
         corr[datetime.fromisoformat(ts[:19])] = pwv
-    model = vp.nightly(corr)
-    meas = vp.nightly(vp.fetch_lhatpro())
+    lhat = vp.fetch_lhatpro()
+    model = vp.nightly(corr, hours=lhat)
+    meas = vp.nightly(lhat)
     cn = sorted(set(model) & set(meas))
     x = [meas[d] for d in cn]; y = [model[d] for d in cn]
     rho = vp.spearman(y, x); lo, hi = vp.fisher_ci(rho, len(cn))

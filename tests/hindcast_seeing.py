@@ -82,14 +82,20 @@ def gowc_seeing_series(site):
             continue
         seeing = calculate_seeing_tatarski(
             t850, t500, z850, z500,
-            wind_850_ms=g("wind_speed_850hPa"), wind_250_ms=g("wind_speed_250hPa"),
+            # The archive returns km/h; convert EVERY wind to m/s.
+            wind_850_ms=kmh(g("wind_speed_850hPa")), wind_250_ms=kmh(g("wind_speed_250hPa")),
             airmass=1.0,                       # zenith, to match DIMM normalisation
-            surface_wind_ms=(g("wind_speed_10m") or 0) / 3.6,  # km/h -> m/s
+            surface_wind_ms=kmh(g("wind_speed_10m")) or 0.0,
             humidity_pct=g("relative_humidity_850hPa"),
             altitude_m=alt)
         if seeing is not None:
             out[datetime.fromisoformat(tstr[:19])] = seeing
     return out
+
+
+def kmh(v):
+    """km/h -> m/s (None passes through)."""
+    return None if v is None else v / 3.6
 
 
 def dimm_hourly(site):

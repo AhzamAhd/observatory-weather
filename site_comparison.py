@@ -2,7 +2,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 from atmospheric import (get_full_atmospheric_analysis, calculate_seeing,
                          calculate_jet_stream_impact,
-                         observing_quality_score)
+                         observing_quality_score, profile_from_record)
 from db import query_df, fetch_one
 
 
@@ -10,7 +10,8 @@ def _genuine_score(row):
     """Multiplicative observing-quality index — matches the rest of GOWC."""
     seeing = calculate_seeing(
         row.get("temperature_c"), row.get("wind_speed_ms"),
-        row.get("humidity_pct"), row.get("altitude_m", 0))
+        row.get("humidity_pct"), row.get("altitude_m", 0),
+        profile=profile_from_record(row))
     _, jet_impact = calculate_jet_stream_impact(
         row.get("jet_stream_ms"), row.get("latitude", 0))
     return observing_quality_score(
@@ -40,6 +41,22 @@ def get_site_data(observatory_names, days=30):
             w.jet_stream_ms,
             w.dewpoint_c,
             w.precipitation_mm,
+            w.temp_850hpa,
+            w.temp_700hpa,
+            w.temp_600hpa,
+            w.temp_500hpa,
+            w.geopot_850hpa,
+            w.geopot_700hpa,
+            w.geopot_600hpa,
+            w.geopot_500hpa,
+            w.wind_850hpa,
+            w.wind_700hpa,
+            w.wind_600hpa,
+            w.wind_500hpa,
+            w.rh_850hpa,
+            w.rh_500hpa,
+            w.pwv_column,
+            w.model_elevation_m,
             ROUND(GREATEST(0,
                 100
                 - (w.cloud_cover_pct * 0.50)
@@ -76,6 +93,22 @@ def get_current_data(observatory_names):
             w.jet_stream_ms,
             w.dewpoint_c,
             w.precipitation_mm,
+            w.temp_850hpa,
+            w.temp_700hpa,
+            w.temp_600hpa,
+            w.temp_500hpa,
+            w.geopot_850hpa,
+            w.geopot_700hpa,
+            w.geopot_600hpa,
+            w.geopot_500hpa,
+            w.wind_850hpa,
+            w.wind_700hpa,
+            w.wind_600hpa,
+            w.wind_500hpa,
+            w.rh_850hpa,
+            w.rh_500hpa,
+            w.pwv_column,
+            w.model_elevation_m,
             ROUND(GREATEST(0,
                 100
                 - (w.cloud_cover_pct * 0.50)
@@ -118,15 +151,7 @@ def compare_sites(observatory_names, days=30):
 
         cur = cur_row.iloc[0]
 
-        atm = get_full_atmospheric_analysis({
-            "temperature_c":    cur.get("temperature_c"),
-            "wind_speed_ms":    cur.get("wind_speed_ms"),
-            "humidity_pct":     cur.get("humidity_pct"),
-            "altitude_m":       cur.get("altitude_m", 0),
-            "surface_pressure": cur.get("surface_pressure"),
-            "jet_stream_ms":    cur.get("jet_stream_ms"),
-            "latitude":         cur.get("latitude", 0)
-        })
+        atm = get_full_atmospheric_analysis(cur)
 
         # Genuine multiplicative observing-quality score for today.
         today_score = _genuine_score(cur)

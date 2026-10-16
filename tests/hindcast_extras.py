@@ -1,18 +1,18 @@
 """
-Supplementary hindcast statistics for the GOWC paper (S4.5, Table 4 caption).
+Supplementary hindcast statistics for the GOWC paper (S4.6, Table 4).
 
-Reproduces the numbers hindcast_multiyear.py does not print:
-  * per-calendar-year rho (2025 / 2026),
-  * rho on nights OUTSIDE the calibration window (2026-05-29 .. 08-29),
+Uses the conventions of hindcast_multiyear.py (winds in m/s, noon-to-noon
+nights, model sampled only at the hours DIMM measured). Reproduces:
+  * per-calendar-year rho and rho outside the calibration window,
   * rho under a stricter >=3-DIMM-hours-per-night filter,
-  * partial Spearman of GOWC vs DIMM controlling for persistence (last night's DIMM),
-  * marginal rho of the free-atmosphere and ground-layer terms separately, and the
-    partial of the free-atmosphere term controlling for surface wind,
+  * partial Spearman of GOWC vs DIMM controlling for persistence and for
+    surface wind,
+  * marginal rho of the free-atmosphere and ground-layer terms separately, and
+    the partial of the free-atmosphere term controlling for surface wind,
   * "will tonight be poor?" skill (DIMM > 1.0") at a rate-matched threshold,
-  * dynamic-range compression (spread of log10 model vs log10 DIMM).
+  * dynamic-range compression and the debiased log scatter.
 
-Uses the same cached Historical-Forecast-API profiles and ASM DIMM archives as
-hindcast_multiyear.py. Partial Spearman = partial Pearson on ranks.
+Partial Spearman = partial Pearson on ranks.
 
 Run:  python tests/hindcast_extras.py
 """
@@ -20,7 +20,7 @@ import os
 import sys
 import math
 import statistics
-from datetime import date, datetime
+from datetime import date
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -49,42 +49,16 @@ def partial_spearman(x, y, z):
     return (rxy - rxz * ryz) / math.sqrt((1 - rxz ** 2) * (1 - ryz ** 2))
 
 
-def components(site):
-    """Hourly free-atmosphere seeing, ground-layer seeing and 10 m wind (m/s)."""
-    h = H.fetch_profile(site)
+def ground_hourly(site):
     alt = H.SITES[site]["alt"]
-    free, bl, wind = {}, {}, {}
-    for i, ts in enumerate(h["time"]):
-        def g(k):
-            v = h.get(k, [])
-            return v[i] if i < len(v) else None
-        levels = [{"p": float(p), "t": g(f"temperature_{p}hPa"),
-                   "z": g(f"geopotential_height_{p}hPa"),
-                   "w": g(f"wind_speed_{p}hPa")} for p in (850, 700, 600, 500)]
-        levels = [L for L in levels if L["t"] is not None and L["z"] is not None]
-        t = datetime.fromisoformat(ts[:19])
-        w = (g("wind_speed_10m") or 0) / 3.6          # km/h -> m/s, as the hindcast
-        f = a.free_atmosphere_seeing_multilevel(levels, alt, airmass=1.0)
-        if f is not None:
-            free[t] = f
-        bl[t] = a._boundary_layer_seeing(w, None, alt, 1.0)
-        wind[t] = w
-    return free, bl, wind
-
-
-def night_counts(hourly):
-    """Number of hourly bins per observing night (same night key as the hindcast)."""
-    counts = {}
-    for t in hourly:
-        d = next(iter(H.nightly_medians({t: 0.0})))
-        counts[d] = counts.get(d, 0) + 1
-    return counts
+    return {t: a._boundary_layer_seeing(w, None, alt, 1.0)
+            for t, w in H.surface_wind_hourly(site).items()}
 
 
 def analyse(site):
     print(f"\n{'=' * 60}\n{site}\n{'=' * 60}")
-    pn = H.nightly_medians(H.gowc_hourly(site))
     dimm = H.measured_hourly(H.SITES[site]["dimm"], "seeing")
+    pn = H.nightly_medians(H.gowc_hourly(site), hours=dimm)
     dn = H.nightly_medians(dimm)
     cn = sorted(set(pn) & set(dn))
 
@@ -95,11 +69,17 @@ def analyse(site):
     for yr in (2025, 2026):
         c = [d for d in cn if d.year == yr]
         print(f"  {yr}                  N={len(c)}  rho={rho(c):+.3f}")
+    stray = [d for d in cn if d.year < 2025]
+    if stray:
+        print(f"  (+{len(stray)} night keyed {stray[0]}: the first UTC hours of 2025-01-01)")
     out = [d for d in cn if not (CALIB_LO <= d <= CALIB_HI)]
-    print(f"  outside calib window  N={len(out)}  rho={rho(out):+.3f}")
-    counts = night_counts(dimm)
+    print(f"  outside calib window  N={len(out)}  rho={rho(out):+.3f}  "
+          f"CI[{H.fisher_ci(rho(out), len(out))[0]:+.2f},{H.fisher_ci(rho(out), len(out))[1]:+.2f}]")
+    counts = {}
+    for t in dimm:
+        counts[H.night_of(t)] = counts.get(H.night_of(t), 0) + 1
     c3 = [d for d in cn if counts.get(d, 0) >= 3]
-    print(f"  >=3 DIMM bins/night   N={len(c3)}  rho={rho(c3):+.3f}")
+    print(f"  >=3 DIMM hours/night  N={len(c3)}  rho={rho(c3):+.3f}")
 
     trip = [(pn[cn[i]], dn[cn[i]], dn[cn[i - 1]]) for i in range(1, len(cn))
             if (cn[i] - cn[i - 1]).days == 1]
@@ -107,13 +87,16 @@ def analyse(site):
     print(f"\n  persistence rho       = {spearman(z, y):+.3f}  (N={len(trip)})")
     print(f"  partial(GOWC, DIMM | persistence) = {partial_spearman(x, y, z):+.3f}")
 
-    free, bl, wind = components(site)
-    fn, bn, wn = (H.nightly_medians(s) for s in (free, bl, wind))
-    c = [d for d in cn if d in fn and d in wn]
-    fv, bv, wv, dv = ([s[d] for d in c] for s in (fn, bn, wn, dn))
+    fn = H.nightly_medians(H.free_hourly(site), hours=dimm)
+    gn = H.nightly_medians(ground_hourly(site), hours=dimm)
+    wn = H.nightly_medians(H.surface_wind_hourly(site), hours=dimm)
+    c = [d for d in cn if d in fn and d in wn and d in gn]
+    fv, gv, wv, dv, pv = ([s[d] for d in c] for s in (fn, gn, wn, dn, pn))
     print(f"\n  free-atmosphere term rho = {spearman(fv, dv):+.3f}  (N={len(c)})")
-    print(f"  ground-layer term rho    = {spearman(bv, dv):+.3f}")
+    print(f"  ground-layer term rho    = {spearman(gv, dv):+.3f}")
+    print(f"  surface wind rho         = {spearman(wv, dv):+.3f}")
     print(f"  partial(free, DIMM | surface wind) = {partial_spearman(fv, dv, wv):+.3f}")
+    print(f"  partial(GOWC, DIMM | surface wind) = {partial_spearman(pv, dv, wv):+.3f}")
 
     xs = [pn[d] for d in cn]
     poor = [dn[d] > POOR for d in cn]
@@ -126,9 +109,16 @@ def analyse(site):
     print(f"  recall {tp / sum(poor):.1%}  false-alarm {fp / (len(poor) - sum(poor)):.1%}  "
           f"precision {tp / sum(flag):.1%}")
 
-    sm = statistics.pstdev([math.log10(v) for v in xs])
-    sd = statistics.pstdev([math.log10(dn[d]) for d in cn])
-    print(f"\n  spread log10: model {sm:.3f} dex, DIMM {sd:.3f} dex, ratio {sm / sd:.2f}")
+    lm = [math.log10(v) for v in xs]
+    ld = [math.log10(dn[d]) for d in cn]
+    sm, sd = statistics.pstdev(lm), statistics.pstdev(ld)
+    mx, my = statistics.fmean(ld), statistics.fmean(lm)
+    slope = (sum((u - mx) * (v - my) for u, v in zip(ld, lm))
+             / sum((u - mx) ** 2 for u in ld))
+    off = statistics.median(v - u for u, v in zip(ld, lm))
+    rms = math.sqrt(statistics.fmean((v - u - off) ** 2 for u, v in zip(ld, lm)))
+    print(f"\n  spread log10: model {sm:.3f} dex, DIMM {sd:.3f} dex, ratio {sm / sd:.2f};"
+          f" OLS slope {slope:.2f}; debiased RMS {rms:.2f} dex")
 
 
 if __name__ == "__main__":

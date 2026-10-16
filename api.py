@@ -14,7 +14,7 @@ app = FastAPI(
 ## 🔭 Global Observing-conditions Weather Catalogue API
 
 Live atmospheric conditions and observation quality scores
-for 95 professional observatories worldwide.
+for 2,600+ catalogued observatory sites worldwide.
 
 ### What you can do
 - Get current observation quality scores for all observatories
@@ -71,15 +71,7 @@ def _add_real_scores(df):
         return df
 
     def _score_row(r):
-        atm = get_full_atmospheric_analysis({
-            "temperature_c":    r.get("temperature_c"),
-            "wind_speed_ms":    r.get("wind_speed_ms"),
-            "humidity_pct":     r.get("humidity_pct"),
-            "altitude_m":       r.get("altitude_m", 0),
-            "surface_pressure": r.get("surface_pressure"),
-            "jet_stream_ms":    r.get("jet_stream_ms"),
-            "latitude":         r.get("latitude", 0),
-        })
+        atm = get_full_atmospheric_analysis(r)
         return observing_quality_score(
             r.get("cloud_cover_pct"), r.get("humidity_pct"),
             r.get("wind_speed_ms"), r.get("precipitation_mm"),
@@ -112,7 +104,23 @@ def scores_query(extra_where="", extra_params=None,
             w.dewpoint_c,
             w.precipitation_mm,
             w.surface_pressure,
-            w.jet_stream_ms
+            w.jet_stream_ms,
+            w.temp_850hpa,
+            w.temp_700hpa,
+            w.temp_600hpa,
+            w.temp_500hpa,
+            w.geopot_850hpa,
+            w.geopot_700hpa,
+            w.geopot_600hpa,
+            w.geopot_500hpa,
+            w.wind_850hpa,
+            w.wind_700hpa,
+            w.wind_600hpa,
+            w.wind_500hpa,
+            w.rh_850hpa,
+            w.rh_500hpa,
+            w.pwv_column,
+            w.model_elevation_m
         FROM weather_readings w
         JOIN observatories o ON w.observatory_id = o.id
         WHERE w.fetch_date = (
@@ -146,8 +154,7 @@ def root():
     </head>
     <body>
         <h1>🔭 Global Observing-conditions Weather Catalogue API</h1>
-        <p>Live atmospheric conditions for 95 professional
-           observatories worldwide.</p>
+        <p>Live atmospheric conditions for 2,600+ catalogued observatory sites worldwide.</p>
         <h2>Quick start</h2>
         <div class="endpoint">
             <code>GET /observatories/scores</code>
@@ -200,7 +207,7 @@ def get_all_observatories():
 def get_all_scores():
     """
     Get current observation quality scores
-    for all 95 observatories, ranked best to worst.
+    for all catalogued observatories, ranked best to worst.
     """
     df = scores_query()
     if df.empty:
@@ -218,8 +225,8 @@ def get_all_scores():
 @app.get("/observatories/best", tags=["Scores"])
 def get_best_observatories(
     limit: int = Query(
-        default=10, ge=1, le=95,
-        description="Number of results to return (1–95)"
+        default=10, ge=1, le=3000,
+        description="Number of results to return"
     ),
     min_score: float = Query(
         default=0, ge=0, le=100,
@@ -256,7 +263,7 @@ def search_observatories(
     Partial matches work — try 'mauna' or 'chile'.
     """
     df = scores_query(
-        extra_where="WHERE LOWER(o.name) LIKE LOWER(?)",
+        extra_where="AND LOWER(o.name) LIKE LOWER(%s)",
         extra_params=[f"%{name}%"]
     )
     if df.empty:
@@ -279,7 +286,7 @@ def get_by_country(country: str):
     Examples: Chile, USA, Spain, India, Australia
     """
     df = scores_query(
-        extra_where="WHERE LOWER(o.country) LIKE LOWER(?)",
+        extra_where="AND LOWER(o.country) LIKE LOWER(%s)",
         extra_params=[f"%{country}%"]
     )
     if df.empty:
@@ -334,15 +341,7 @@ def get_atmospheric_scores():
     results = []
 
     for _, row in df.iterrows():
-        atm = get_full_atmospheric_analysis({
-            "temperature_c":    row.get("temperature_c"),
-            "wind_speed_ms":    row.get("wind_speed_ms"),
-            "humidity_pct":     row.get("humidity_pct"),
-            "altitude_m":       row.get("altitude_m", 0),
-            "surface_pressure": row.get("surface_pressure"),
-            "jet_stream_ms":    row.get("jet_stream_ms"),
-            "latitude":         row.get("latitude", 0)
-        })
+        atm = get_full_atmospheric_analysis(row)
         results.append({
             "observatory":      row["observatory"],
             "country":          row["country"],
@@ -367,7 +366,7 @@ def get_atmospheric_scores():
 
 @app.get("/atmospheric/best-seeing", tags=["Atmospheric"])
 def get_best_seeing(
-    limit: int = Query(default=10, ge=1, le=95)
+    limit: int = Query(default=10, ge=1, le=3000)
 ):
     """
     Get observatories ranked by best atmospheric seeing.
@@ -377,15 +376,7 @@ def get_best_seeing(
     results = []
 
     for _, row in df.iterrows():
-        atm = get_full_atmospheric_analysis({
-            "temperature_c":    row.get("temperature_c"),
-            "wind_speed_ms":    row.get("wind_speed_ms"),
-            "humidity_pct":     row.get("humidity_pct"),
-            "altitude_m":       row.get("altitude_m", 0),
-            "surface_pressure": row.get("surface_pressure"),
-            "jet_stream_ms":    row.get("jet_stream_ms"),
-            "latitude":         row.get("latitude", 0)
-        })
+        atm = get_full_atmospheric_analysis(row)
         if atm["seeing_arcsec"] is not None:
             results.append({
                 "observatory":   row["observatory"],
@@ -406,7 +397,7 @@ def get_best_seeing(
 
 @app.get("/atmospheric/best-pwv", tags=["Atmospheric"])
 def get_best_pwv(
-    limit: int = Query(default=10, ge=1, le=95)
+    limit: int = Query(default=10, ge=1, le=3000)
 ):
     """
     Get observatories ranked by lowest PWV.
@@ -417,15 +408,7 @@ def get_best_pwv(
     results = []
 
     for _, row in df.iterrows():
-        atm = get_full_atmospheric_analysis({
-            "temperature_c":    row.get("temperature_c"),
-            "wind_speed_ms":    row.get("wind_speed_ms"),
-            "humidity_pct":     row.get("humidity_pct"),
-            "altitude_m":       row.get("altitude_m", 0),
-            "surface_pressure": row.get("surface_pressure"),
-            "jet_stream_ms":    row.get("jet_stream_ms"),
-            "latitude":         row.get("latitude", 0)
-        })
+        atm = get_full_atmospheric_analysis(row)
         if atm["pwv_mm"] is not None:
             results.append({
                 "observatory":   row["observatory"],

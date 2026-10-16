@@ -1,11 +1,11 @@
 """
 Forward seeing log for DIMM validation.
 
-GOWC's Tatarski seeing needs upper-air (850/500 hPa) data, which the free
-weather archive does not serve for past dates --- so a historical reconstruction
-is not possible. Instead we log GOWC's LIVE seeing forecast each day for the
-DIMM-equipped sites, building matched pairs against measured DIMM seeing over
-time. After a few weeks of logging, compare_to_dimm() produces the validation.
+Logs GOWC's LIVE seeing forecast each day for the DIMM-equipped sites, building
+matched pairs against measured DIMM seeing going forward. (The historical
+validation in the paper is a hindcast through Open-Meteo's Historical Forecast
+API, which does archive pressure levels -- see tests/hindcast_multiyear.py; this
+log is the complementary record of what the live site actually forecast.)
 
 USAGE
 -----
@@ -58,7 +58,8 @@ def log_seeing():
                    w.temp_850hpa, w.temp_700hpa, w.temp_600hpa, w.temp_500hpa,
                    w.geopot_850hpa, w.geopot_700hpa, w.geopot_600hpa,
                    w.geopot_500hpa, w.wind_850hpa, w.wind_700hpa, w.wind_600hpa,
-                   w.wind_500hpa, w.jet_stream_ms
+                   w.wind_500hpa, w.jet_stream_ms, w.pwv_column,
+                   w.model_elevation_m
             FROM weather_readings w JOIN observatories o ON o.id = w.observatory_id
             WHERE o.name ILIKE '{pat}'
               AND w.fetch_date = (SELECT MAX(fetch_date) FROM weather_readings)

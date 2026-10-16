@@ -119,7 +119,8 @@ def fetch_weather(observatory):
             "wind_speed_250hPa",
             "relative_humidity_850hPa",
             "relative_humidity_500hPa",
-            # Model-computed total-column precipitable water (sea-level column);
+            # Model-computed total-column precipitable water, integrated from the
+            # model terrain (the response's `elevation`), not from sea level;
             # scaled to site altitude when used. Far more reliable than deriving
             # PWV from the coarse 2-3 node humidity profile.
             "total_column_integrated_water_vapour",

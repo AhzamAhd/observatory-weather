@@ -50,4 +50,7 @@ jobs:
           git config --global user.email "actions@github.com"
           git add data/
           git diff --staged --quiet || git commit -m "auto: daily precompute $(date -u '+%Y-%m-%d')"
-          git push --force
+          # Rebase onto anything the other workflow pushed meanwhile (e.g. the
+          # DIMM seeing-log commits) instead of force-pushing over it.
+          git pull --rebase --autostash origin "${GITHUB_REF_NAME}"
+          git push

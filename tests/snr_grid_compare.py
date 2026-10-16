@@ -16,27 +16,31 @@ from snr_calculator import calculate_snr             # noqa: E402
 from instruments import get_instrument_config         # noqa: E402
 
 
+import snr_calculator                                   # noqa: E402
+
+
 def _alt_from_airmass(x):
-    return math.degrees(math.asin(min(1.0, 1.0 / x)))
+    """Altitude (deg) whose Pickering (2002) airmass -- GOWC's definition -- is
+    exactly X (bisection), so the grid is evaluated at SIGNAL's airmass."""
+    lo, hi = 1.0, 90.0
+    for _ in range(60):
+        mid = 0.5 * (lo + hi)
+        if snr_calculator._pickering_airmass(mid) > x:
+            lo = mid
+        else:
+            hi = mid
+    return 0.5 * (lo + hi)
 
 
-def _acam_specs():
-    area_m2 = 12.47
-    aperture = math.sqrt(area_m2 / math.pi) * 2
-    return {
-        "aperture_m": aperture, "pixel_scale": 0.25, "read_noise": 3.2,
-        "dark_current": 0.0, "quantum_efficiency": 0.85,
-        "throughput": 0.72 * 0.71, "obstruction": 0.0,
-        "full_well_e": None, "type": "optical",
-    }
-
-
-ACAM = _acam_specs()
+# Both instruments come straight from GOWC's catalogue (instruments.py): the
+# configuration an observer actually gets is the one benchmarked.
+ACAM = get_instrument_config(
+    "William Herschel Telescope (WHT)", "ACAM (imaging)", "V (visual)")
 WFC = get_instrument_config(
     "Isaac Newton Telescope (INT)", "WFC (Wide Field Camera)", "V (visual)")
 
 INSTR = {
-    "WHT/ACAM": (ACAM, dict(wavelength_nm=550.0, bandwidth_nm=86.0)),
+    "WHT/ACAM": (ACAM, dict()),
     "INT/WFC":  (WFC,  dict()),
 }
 
@@ -69,6 +73,22 @@ def gowc_snr(specs, m, X, extra):
         object_altitude_deg=_alt_from_airmass(X), filter_band="V",
         extinction_coeff=0.12, **extra)
     return r["snr"]
+
+
+def no_scintillation_residuals():
+    """Diagnostic for the appendix: residuals with GOWC's scintillation term
+    switched off, isolating the throughput/normalisation offset."""
+    real = snr_calculator.scintillation_sigma
+    snr_calculator.scintillation_sigma = lambda *a, **k: 0.0
+    try:
+        print("\n  Residuals with scintillation OFF (GOWC/SIGNAL - 1), m = 16..22:")
+        for inst, (specs, extra) in INSTR.items():
+            for X in (1.0, 1.5):
+                row = [f"{(gowc_snr(specs, m, X, extra) / SIGNAL[(inst, m, X)] - 1) * 100:+.1f}%"
+                       for m in (16, 18, 20, 22)]
+                print(f"    {inst:9} X={X:.1f}: " + "  ".join(row))
+    finally:
+        snr_calculator.scintillation_sigma = real
 
 
 def main():
@@ -111,6 +131,7 @@ def main():
     print("\n  --- LaTeX rows ---")
     for t in tex:
         print("  " + t)
+    no_scintillation_residuals()
     print()
 
 

@@ -65,7 +65,23 @@ def precompute_all():
                w.temperature_c, w.wind_speed_ms,
                w.humidity_pct, w.surface_pressure,
                w.jet_stream_ms, w.cloud_cover_pct,
-               w.precipitation_mm,
+               w.precipitation_mm, w.dewpoint_c,
+               w.temp_850hpa,
+               w.temp_700hpa,
+               w.temp_600hpa,
+               w.temp_500hpa,
+               w.geopot_850hpa,
+               w.geopot_700hpa,
+               w.geopot_600hpa,
+               w.geopot_500hpa,
+               w.wind_850hpa,
+               w.wind_700hpa,
+               w.wind_600hpa,
+               w.wind_500hpa,
+               w.rh_850hpa,
+               w.rh_500hpa,
+               w.pwv_column,
+               w.model_elevation_m,
                ROUND(GREATEST(0,
                    100 - (w.cloud_cover_pct * 0.50)
                    - (CASE WHEN w.humidity_pct > 85
@@ -83,15 +99,7 @@ def precompute_all():
 
     atm_results = []
     for _, row in df.iterrows():
-        atm = get_full_atmospheric_analysis({
-            "temperature_c":    row["temperature_c"],
-            "wind_speed_ms":    row["wind_speed_ms"],
-            "humidity_pct":     row["humidity_pct"],
-            "altitude_m":       row["altitude_m"],
-            "surface_pressure": row.get("surface_pressure"),
-            "jet_stream_ms":    row.get("jet_stream_ms"),
-            "latitude":         row["latitude"],
-        })
+        atm = get_full_atmospheric_analysis(row)
         # Genuine observing-quality index (matches dashboard load_data).
         obs_score = observing_quality_score(
             row.get("cloud_cover_pct"), row.get("humidity_pct"),
