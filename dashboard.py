@@ -816,6 +816,7 @@ def load_data():
             w.humidity_pct,
             w.wind_speed_ms,
             w.temperature_c,
+            w.dewpoint_c,
             w.precipitation_mm,
             w.surface_pressure,
             w.jet_stream_ms,
@@ -8146,6 +8147,46 @@ if _detail_sub == "Live detail":
     w3.metric("Humidity",    f"{live['humidity_pct']}%")
     w4.metric("Wind Speed",  f"{live['wind_speed_ms']} m/s")
     w5.metric("Temperature", f"{live['temperature_c']}°C")
+
+    # Dew point, rain amount and chance of rain. The probability is not stored
+    # with the readings, so it is fetched for this site on demand (cached).
+    @st.cache_data(ttl=1800, show_spinner=False)
+    def _rain_outlook(lat, lon):
+        from forecast import fetch_rain_outlook
+        return fetch_rain_outlook(lat, lon, hours=12)
+
+    def _num(v):
+        try:
+            v = float(v)
+            return None if v != v else v          # NaN -> None
+        except (TypeError, ValueError):
+            return None
+
+    _t, _td = _num(live.get("temperature_c")), _num(live.get("dewpoint_c"))
+    _rain = _rain_outlook(round(float(live["latitude"]), 4),
+                          round(float(live["longitude"]), 4))
+    d1, d2, d3, d4, d5 = st.columns(5)
+    d1.metric("Dew Point", f"{_td:.1f}°C" if _td is not None else "—")
+    d2.metric("Dew Margin",
+              f"{_t - _td:.1f}°C" if (_t is not None and _td is not None) else "—",
+              help="Air temperature minus dew point. Below ~3 °C, dew can form "
+                   "on optics; at 0 °C the air is saturated.")
+    _pmm = _num(live.get("precipitation_mm"))
+    d3.metric("Rain Now", f"{_pmm:.1f} mm" if _pmm is not None else "—",
+              help="Rain amount in the stored reading's forecast hour.")
+    d4.metric("Chance of Rain (now)",
+              f"{_rain['prob_now']}%" if _rain and _rain.get("prob_now") is not None else "—")
+    d5.metric("Chance of Rain (next 12 h)",
+              f"{_rain['prob_max']}%" if _rain and _rain.get("prob_max") is not None else "—",
+              help=("Highest hourly chance over the next 12 hours"
+                    + (f"; {_rain['amount_mm']} mm expected in total."
+                       if _rain and _rain.get("amount_mm") is not None else ".")
+                    + " The chance comes from a forecast ensemble and the amount "
+                      "from the main model, so they can occasionally disagree."))
+    st.caption("Forecast-model values (Open-Meteo) for this site's coordinates, "
+               "not an on-site weather station. Chance of rain is fetched live "
+               "for this site; the other values are from the latest stored "
+               f"reading ({live['fetch_datetime']}).")
 
     st.markdown("---")
 

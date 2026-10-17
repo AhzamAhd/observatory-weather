@@ -88,6 +88,7 @@ def calculate_live_conditions(obs_row, when=None):
         "wind_speed_ms":     obs_row.get("wind_speed_ms"),
         "temperature_c":     obs_row.get("temperature_c"),
         "precipitation_mm":  obs_row.get("precipitation_mm"),
+        "dewpoint_c":        obs_row.get("dewpoint_c"),
         "seeing_arcsec":     atm["seeing_arcsec"],
         "seeing_quality":    atm["seeing_quality"],
         "pwv_mm":            atm["pwv_mm"],

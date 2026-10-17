@@ -83,6 +83,38 @@ def fetch_forecast(lat, lon, days=7):
         print(f"  [ERROR] Forecast fetch failed: {e}")
         return pd.DataFrame()
 
+def fetch_rain_outlook(lat, lon, hours=12):
+    """Chance of rain now and over the next `hours` hours at one site, from
+    Open-Meteo's hourly forecast. The stored live readings carry only the rain
+    AMOUNT, so the probability is fetched on demand. Returns a dict, or None
+    if the request fails."""
+    try:
+        r = requests.get("https://api.open-meteo.com/v1/forecast", params={
+            "latitude": lat, "longitude": lon,
+            "hourly": "precipitation_probability,precipitation",
+            "forecast_days": 2, "timezone": "UTC"}, timeout=15)
+        r.raise_for_status()
+        h = r.json().get("hourly", {})
+        times = h.get("time", [])
+        probs = h.get("precipitation_probability", [])
+        amts = h.get("precipitation", [])
+        now = datetime.utcnow().replace(minute=0, second=0, microsecond=0)
+        idx = [i for i, t in enumerate(times)
+               if now <= datetime.fromisoformat(t) < now + timedelta(hours=hours)]
+        if not idx:
+            return None
+        win_p = [probs[i] for i in idx if i < len(probs) and probs[i] is not None]
+        win_a = [amts[i] for i in idx if i < len(amts) and amts[i] is not None]
+        return {
+            "prob_now": win_p[0] if win_p else None,
+            "prob_max": max(win_p) if win_p else None,
+            "amount_mm": round(sum(win_a), 1) if win_a else None,
+            "hours": hours,
+        }
+    except Exception:
+        return None
+
+
 def _period_stats(grp):
     if grp.empty:
         return {"score": None, "cloud": None, "humidity": None,
