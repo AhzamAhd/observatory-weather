@@ -394,9 +394,12 @@ includes the atmosphere, so this understates the sky by $10^{-0.4kX}$ ($\sim$11\
 $X=1$); it is the \textsc{signal} convention, and the faint-end benchmark confirms it
 (removing the attenuation moves the sky-limited ACAM points from $-0.2\%$ to $-5$ to
 $-7\%$ against \textsc{signal}). The exposure time for a target SNR solves
-$S^2t^2 - \mathrm{SNR}^2(S+B)\,t - \mathrm{SNR}^2 R = 0$, with source and sky shot
-noise both linear in $t$ and $R$ the total read-noise variance (e.g.\ INT/WFC at
-$V=20$ reaches SNR\,100 in 118\,s). Instrument constants (aperture,
+$S^2t^2 - \mathrm{SNR}^2(S+B+D_c+KS^2)\,t - \mathrm{SNR}^2 R = 0$, where $S$, $B$ and
+$D_c$ are now rates, $R$ is the total read-noise variance, and $K=\sigma_Y^2t$ is
+constant because $\sigma_Y^2\propto t^{-1}$, so scintillation, like shot noise, enters
+linearly in $t$ and the solution is exact (e.g.\ INT/WFC at $V=20$ reaches SNR\,100 in
+119\,s; a $V=8$ star reaches SNR\,30 in 5\,ms, well below a practical shutter time,
+which the planner flags together with saturation). Instrument constants (aperture,
 obstruction, pixel scale, read noise, full well, throughput, QE, and an
 empirical/theoretical efficiency) come from a small cited catalogue
 (Appendix~\ref{app:constants}). The magnitude uncertainty is reported as
@@ -753,9 +756,7 @@ cannot supply.
 source shot noise, sky, dark current, read noise, and scintillation --- which dominate
 optical point-source photometry. Thermal background (significant only beyond
 $\sim$1\,$\mu$m), flat-fielding residuals (a $\sim$0.1--1\% floor for very bright
-sources), fringing, cosmic rays and charge-transfer inefficiency are omitted; the
-exposure-time solver also neglects scintillation, which matters only for bright
-targets on small telescopes.
+sources), fringing, cosmic rays and charge-transfer inefficiency are omitted.
 
 % ============ FUTURE WORK ============
 \section{Future Work}

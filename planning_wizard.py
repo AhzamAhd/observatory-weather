@@ -232,7 +232,7 @@ def render_planning_wizard(df, utcnow, load_atmospheric_cached):
     # in the sky/read regime; a direct scan is robust across regimes).
     def _snr_at(t):
         r = calculate_snr(
-            object_magnitude=mag, exposure_time_s=int(t),
+            object_magnitude=mag, exposure_time_s=float(t),
             telescope_specs=specs, sky_brightness_mag=float(sky_mag),
             seeing_arcsec=seeing, object_name=target,
             object_altitude_deg=best_alt_for_snr, pwv_mm=pwv,
@@ -241,11 +241,16 @@ def render_planning_wizard(df, utcnow, load_atmospheric_cached):
         return r
 
     # Bracket the exposure, then refine.
-    t_lo, t_hi = 1, 36000
+    # Search from 1 ms: bright targets reach the SNR in well under a second,
+    # and a 1 s floor would report "1 s" with the (much higher) SNR at 1 s.
+    t_lo, t_hi = 0.001, 36000.0
     r_hi = _snr_at(t_hi)
     if r_hi["snr"] < target_snr:
         req_t = None
         chosen = r_hi
+    elif _snr_at(t_lo)["snr"] >= target_snr:
+        req_t = t_lo
+        chosen = _snr_at(t_lo)
     else:
         for _ in range(40):
             t_mid = math.sqrt(t_lo * t_hi)
@@ -259,6 +264,12 @@ def render_planning_wizard(df, utcnow, load_atmospheric_cached):
     def _fmt_t(t):
         if t is None:
             return "Not reachable (>10 h)"
+        if t <= 0.001:
+            return "< 1 ms"
+        if t < 1:
+            return f"{t * 1000:.0f} ms"
+        if t < 10:
+            return f"{t:.1f} s"
         if t < 60:
             return f"{t:.0f} s"
         if t < 3600:
@@ -276,6 +287,14 @@ def render_planning_wizard(df, utcnow, load_atmospheric_cached):
     if chosen.get("is_saturated"):
         st.error("⚠️ Detector saturates at this exposure — shorten it or "
                  "defocus.")
+    if req_t is not None and req_t < 1:
+        _r1 = _snr_at(1.0)
+        st.warning(
+            f"This target is bright: SNR {target_snr} needs only {_fmt_t(req_t)}, "
+            "shorter than most CCD shutters allow (~1 s). A 1 s exposure gives "
+            f"SNR {_r1['snr']}"
+            + (" and **saturates the detector**" if _r1.get("is_saturated") else "")
+            + ". Use a neutral-density filter, defocus, or a smaller telescope.")
 
     # ══ STEP 8 — Plan summary ═════════════════════════════════════
     st.markdown("---")

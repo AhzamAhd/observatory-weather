@@ -800,15 +800,17 @@ def calculate_snr(
 
     # Time to reach SNR targets
     def time_for_snr(target_snr):
-        # SNR^2 = S^2 t^2 / ((S + B) t + R)  =>
-        # S^2 t^2 - SNR^2 (S + B) t - SNR^2 R = 0. Source shot noise grows
-        # linearly in t, so it belongs in b, not a. (Scintillation, which grows
-        # as t^2 in the noise budget, is neglected here.)
+        # Noise^2 = (S + B + D) t + R + sigma_Y^2 S^2 t^2, and sigma_Y^2 = K / t
+        # (Osborn et al. 2015), so scintillation adds K S^2 t -- also linear in t.
+        # SNR^2 = S^2 t^2 / Noise^2  =>
+        # S^2 t^2 - SNR^2 (S + B + D + K S^2) t - SNR^2 R = 0.
+        scint_k = sigma_scint ** 2 * exposure_time_s     # sigma_Y^2 * t
         a = source_rate ** 2
         b = -(target_snr ** 2) * (
             source_rate +
             sky_rate_pixel * n_pixels +
-            dark_current * n_pixels
+            dark_current * n_pixels +
+            scint_k * source_rate ** 2
         )
         c = -(target_snr ** 2) * read_counts
         if a <= 0:
@@ -817,11 +819,15 @@ def calculate_snr(
         if discriminant < 0:
             return None
         t = (-b + math.sqrt(discriminant)) / (2 * a)
-        return round(max(1, t), 1)
+        return round(max(0.001, t), 3)
 
     def format_time(t):
         if t is None:
             return "Not achievable"
+        if t < 1:
+            return f"{t * 1000:.0f} ms"
+        if t < 10:
+            return f"{t:.1f} seconds"
         if t < 60:
             return f"{t:.0f} seconds"
         elif t < 3600:
