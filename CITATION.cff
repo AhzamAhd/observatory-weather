@@ -20,7 +20,7 @@ abstract: >-
 license: MIT
 identifiers:
   - type: doi
-    value: 10.5281/zenodo.22170119
+    value: 10.5281/zenodo.23437360
     description: Zenodo archive of the released version
 preferred-citation:
   type: article
