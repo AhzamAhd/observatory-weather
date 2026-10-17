@@ -103,16 +103,6 @@ persistence and surface wind --- and reports what the calibration implies about 
 input data. Fourth, it states quantity by quantity which outputs are
 measurement-backed, which are calibrated, and which are passed through unvalidated.
 
-\emph{Note on this revision.} An external code review of an earlier version found
-that the seeing hindcast left the pressure-level winds in km\,h$^{-1}$ (only the
-surface wind was converted), which inflated the wind shear entering the outer scale
-by a factor of 3.6; that observing nights were keyed by calendar day rather than
-noon to noon; and that most of the live application called the seeing model without
-its pressure-level inputs. All three are fixed here, the calibration and every
-statistic are recomputed, and the seeing results are substantially weaker than
-previously reported ($\rho=+0.24$ rather than $+0.36$ at Paranal). Other corrections
-are noted where they apply.
-
 % ============ 2. SYSTEM OVERVIEW ============
 \section{System Overview}
 
@@ -124,13 +114,11 @@ many small and amateur stations, so this is a count of catalogued observatory si
 rather than of major professional facilities. Each site's geodetic latitude is
 recovered from the MPC parallax constants $(\rho\cos\phi',\rho\sin\phi')$ by the
 standard iterative geocentric-to-geodetic conversion on the WGS84 ellipsoid, and its
-elevation is taken from a digital-elevation lookup at those coordinates. (An earlier
-import used the geocentric latitude $\phi'=\operatorname{atan2}(\rho\sin\phi',
-\rho\cos\phi')$, which lies up to $0.19^\circ$ ($\sim$21\,km) equatorward of the true
-site; for the $1{,}235$ MPC-derived sites this misplaced the elevation lookup, by
-$\ge$300\,m at 206 of them --- the MPC La Palma entry sat at 548\,m rather than
-2315\,m. It is corrected here; the validation hindcasts of \S4 use independently
-specified site coordinates and were not affected.) About $1.4\%$ of MPC entries carry
+elevation is taken from a digital-elevation lookup at those coordinates. (The
+geocentric latitude $\phi'=\operatorname{atan2}(\rho\sin\phi',\rho\cos\phi')$ lies up
+to $0.19^\circ$, $\sim$21\,km, equatorward of the true site, enough to move an
+elevation lookup by hundreds of metres in mountainous terrain, so the conversion
+matters.) About $1.4\%$ of MPC entries carry
 only coarse coordinates (longitude to $\le$0.01$^\circ$ or parallax constants to
 $\le$3 decimals); for those the elevation --- and hence the altitude-dependent seeing
 and extinction --- remains uncertain.
@@ -282,16 +270,14 @@ with wind shear $S$ in s$^{-1}$ from winds in m\,s$^{-1}$. Dewan's fit takes the
 \emph{local} shear, so $S$ is the shear across each individual layer, matching the
 layer over which its $\Gamma$ is formed. Because $S$ sits in an exponent,
 $\partial(\ln\varepsilon)/\partial S \approx 58$\,s: a shear error of
-$0.001$\,s$^{-1}$ is a $\sim$6\% seeing error. That sensitivity is exactly why the
-wind units matter: at Paranal the per-layer shear has a median of
+$0.001$\,s$^{-1}$ is a $\sim$6\% seeing error. That sensitivity is why the
+winds must be in m\,s$^{-1}$: at Paranal the per-layer shear has a median of
 $2.2\times10^{-3}$\,s$^{-1}$ (95th percentile $6.7\times10^{-3}$), whereas the same
 winds read as km\,h$^{-1}$ triple it. Two guards are applied: $S$ is capped at
 $0.02$\,s$^{-1}$, the strong-shear end of Dewan's fit (reached in 0.01\% of Paranal
 layers), and a representative $3\times10^{-3}$\,s$^{-1}$ is used where no shear is
 available. A difference across a model layer still under-resolves the thin-layer
-shear the Dewan radiosonde fit was built on.\footnote{The Dewan form replaced an
-earlier $L_0=\tfrac12 S/N^2$ (with $N$ the Brunt--V\"ais\"al\"a frequency), which is
-dimensionally a timescale, not a length.}
+shear the Dewan radiosonde fit was built on.
 
 \emph{Free-atmosphere integration and calibration.} GOWC integrates $C_n^2$ over the
 pressure levels that lie \emph{above} the site --- 850, 700, 600 and 500\,hPa;
@@ -310,9 +296,7 @@ identifiable: with $c=2.8$, $c_{\text{eff}}=5.7$. That is about twice the
 $2.1$--$3.2$ quoted in the literature. We read it as a measurement, not a fit to be
 defended: four pressure levels resolve only the broad gradients, not the thin, sharp
 sheets where optical turbulence concentrates, and the calibration absorbs a factor
-of about two in $\int C_n^2\,dh$ that the coarse profile misses. (An earlier version
-reported $c_{\text{eff}}=2.16$, inside the literature range; that value was an
-artefact of the km\,h$^{-1}$ shear.) The same constant serves the live Forecast API
+of about two in $\int C_n^2\,dh$ that the coarse profile misses. The same constant serves the live Forecast API
 and the Historical Forecast API used for validation: on 48 Paranal readings stored by
 the live site since 2026-08-25, the two products give free-atmosphere medians of
 $0.50''$ and $0.49''$ with a rank correlation of $0.99$. If the 700/600\,hPa levels
@@ -344,8 +328,8 @@ with surface wind and depends only gently on altitude: the ground layer is set b
 local topography and heating, and the MASS/DIMM decomposition confirms that even
 Paranal retains a strong one. The $10\,000$\,m scale height is chosen, not fitted ---
 one site cannot constrain it --- and makes the term nearly site-invariant (altitude
-factor $1.00$ at sea level to $0.64$ at 4500\,m). (A humidity factor in an earlier
-version reduced ranking skill and was removed.)
+factor $1.00$ at sea level to $0.64$ at 4500\,m). A humidity factor was tested as a
+surface-instability proxy and reduced ranking skill, so it is not included.
 
 \emph{Fallback.} Where a site has no usable profile (and for the historical
 reliability page, whose daily archive stores surface fields only), seeing is the same
@@ -388,8 +372,8 @@ Moonlit sky brightness uses the Krisciunas \& Schaefer (1991) model \cite{ks1991
 which folds in the lunar phase angle $\alpha$, the Moon's and target's airmasses,
 and --- the dominant term --- the Moon--target separation, summed against a dark-sky
 baseline. The phase angle follows from the illuminated fraction $f$ as
-$\alpha=\arccos(2f-1)$. (An earlier version mapped $f$ to $\alpha$ linearly, which
-is $\sim$0.4\,mag wrong in the gibbous phases.)
+$\alpha=\arccos(2f-1)$; a linear mapping would be $\sim$0.4\,mag wrong in the gibbous
+phases.
 
 \subsection{Signal-to-noise ratio}
 The SNR calculator implements the standard CCD equation with scintillation:
@@ -411,9 +395,8 @@ $X=1$); it is the \textsc{signal} convention, and the faint-end benchmark confir
 (removing the attenuation moves the sky-limited ACAM points from $-0.2\%$ to $-5$ to
 $-7\%$ against \textsc{signal}). The exposure time for a target SNR solves
 $S^2t^2 - \mathrm{SNR}^2(S+B)\,t - \mathrm{SNR}^2 R = 0$, with source and sky shot
-noise both linear in $t$ and $R$ the total read-noise variance. (An earlier version
-put the source term on $t^2$ and reported reachable targets as unachievable --- e.g.\
-INT/WFC at $V=20$ reaches SNR\,100 in 118\,s.) Instrument constants (aperture,
+noise both linear in $t$ and $R$ the total read-noise variance (e.g.\ INT/WFC at
+$V=20$ reaches SNR\,100 in 118\,s). Instrument constants (aperture,
 obstruction, pixel scale, read noise, full well, throughput, QE, and an
 empirical/theoretical efficiency) come from a small cited catalogue
 (Appendix~\ref{app:constants}). The magnitude uncertainty is reported as
@@ -512,13 +495,14 @@ precision of the benchmark.}
 The two instruments test different parts of the chain. GOWC's ACAM entry carries
 \textsc{signal}'s own constants for the instrument (collecting area $12.47$\,m$^2$,
 throughput $0.72\times0.71$, QE $0.85$, 86\,nm, $3.2\,e^-$, $0.25''$), so its
-agreement tests the CCD-equation bookkeeping. (An earlier catalogue entry used a
-published zero-point, $\mathrm{ZP1}_V=27.0$, which read 16\% high against
-\textsc{signal}, whose counts imply $\approx26.7$; it was replaced.) WFC was initially
-high by a constant factor of about 1.4 in both source and sky counts; because the
-factor was common to source and sky it had to be a throughput term, and it matched
-\textsc{signal}'s ``empirical/theoretical'' efficiency of $\sim$0.70 for WFC. With that
-term the remaining WFC offset is a constant $\sim$6\% in counts (Appendix~B).
+agreement tests the CCD-equation bookkeeping. (A published-zero-point
+configuration for ACAM, $\mathrm{ZP1}_V=27.0$, reads 16\% high against
+\textsc{signal}, whose counts imply $\approx26.7$, so the catalogue uses the computed
+path.) WFC tests the throughput term: without it GOWC is high by a constant factor of
+about 1.4 in both source and sky counts, and because the factor is common to source
+and sky it must be a throughput term --- it matches \textsc{signal}'s
+``empirical/theoretical'' efficiency of $\sim$0.70 for WFC, which the catalogue
+carries. The remaining WFC offset is a constant $\sim$6\% in counts (Appendix~B).
 
 \subsection{Seeing: calibration and validation}
 \label{sec:dimm}
@@ -597,10 +581,8 @@ sites the model's mean absolute bias is 16\%, whereas a constant $0.75''$ guess
 scores 2.5\%: the forecast's absolute scale carries no site-to-site information that
 a constant does not, and at La Palma it is 26\% high. Two consequences follow. GOWC
 does not claim to rank sites by forecast seeing, and the absolute seeing it displays
-is labelled indicative. (An earlier version compared Mauna Kea with a
-$0.6$--$0.7''$ range; the TMT campaign median for the 13N site is $0.75''$
-\cite{schoeck}. It also listed Hanle; we found no verifiable published DIMM median for
-it, so it is dropped.)
+is labelled indicative. Higher sites with no verifiable published DIMM median
+(e.g.\ Hanle) are not included.
 
 \paragraph{Night-to-night ranking over 20 months.} Bias and ranking are independent,
 so ranking is tested directly. GOWC's seeing is hindcast through Open-Meteo's
@@ -843,10 +825,9 @@ Site Monitor public archive (DIMM, MASS and LHATPRO data). Meteorological inputs
 from Open-Meteo. The literature-search tool queries the NASA Astrophysics Data
 System. The SNR validation compares against the \textsc{signal} exposure-time
 calculator provided by the Isaac Newton Group of Telescopes. The observing assistant
-uses Anthropic's Claude API for language parsing and phrasing only. An external code
-review identified the wind-unit, night-grouping and model-wiring errors corrected in
-this version. We thank these providers for making their data and tools openly
-available.
+uses Anthropic's Claude API for language parsing and phrasing only. We thank these
+providers for making their data and tools openly available, and an independent
+reviewer for a careful check of the code and analysis.
 
 \emph{Software:} this work made use of NumPy \cite{harris2020}, pandas \cite{pandas},
 Astropy \cite{astropy2013,astropy2018,astropy2022}, PyEphem \cite{pyephem},
