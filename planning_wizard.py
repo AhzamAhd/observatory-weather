@@ -23,13 +23,19 @@ import streamlit as st
 
 from object_visibility import OBJECTS
 from airmass_calculator import (get_object_airmass_curve,
-                                get_best_observation_window)
+                                get_best_observation_window,
+                                altitude_to_airmass)
 from snr_calculator import (OBJECT_MAGNITUDES, PHOTOMETRIC_FILTERS,
                             calculate_snr, get_telescope_specs,
-                            get_sky_brightness)
+                            get_sky_brightness, is_extended_object)
 from instruments import (list_facilities, list_instruments, list_filters,
                          get_instrument_config)
 from observing_engine import W_AIRMASS, W_WEATHER, W_ALT, MIN_ALT_DEG
+
+# Solar-system targets that are far too bright for CCD photometry and are
+# observed instead with short video / lucky imaging.
+_PLANETS = {"Mercury", "Venus", "Mars", "Jupiter", "Saturn", "Uranus",
+            "Neptune", "Moon"}
 
 
 def _step_header(n, total, title):
@@ -52,7 +58,9 @@ def render_planning_wizard(df, utcnow, load_atmospheric_cached):
     with c2:
         default_mag = float(OBJECT_MAGNITUDES.get(target, 10.0))
         mag = st.number_input("Magnitude", -5.0, 25.0, default_mag, 0.1,
-                              key="wiz_mag",
+                              # keyed per target: a fixed key keeps the old
+                              # value when the target changes (Streamlit state)
+                              key=f"wiz_mag_{target}",
                               help="Pre-filled from the catalogue; override for "
                                    "a custom target.")
 
@@ -142,11 +150,23 @@ def render_planning_wizard(df, utcnow, load_atmospheric_cached):
                        f"**{window['window_end']}** UTC.")
         best_airmass = window["best_airmass"] or 1.5
         best_alt_for_snr = math.degrees(math.asin(min(1.0, 1.0 / best_airmass)))
+    elif dark_pts:
+        # Up in darkness, but never below airmass 2: plan at the best DARK
+        # altitude, not at the (possibly daylight) peak.
+        best_alt_for_snr = max(p["altitude"] for p in dark_pts)
+        best_airmass = altitude_to_airmass(max(1.0, best_alt_for_snr)) or 40.0
+        st.warning(f"{target} is up in a dark sky only at low altitude (best "
+                   f"{best_alt_for_snr:.0f}°, airmass {best_airmass:.2f}) on "
+                   "this night. You can still plan, but conditions are "
+                   "marginal.")
     else:
-        st.warning("No dark-sky window with the target above airmass 2 on this "
-                   "night. You can still plan, but conditions are marginal.")
-        best_airmass = 1.0 / math.sin(math.radians(max(1, best_alt)))
         best_alt_for_snr = best_alt
+        best_airmass = altitude_to_airmass(max(1.0, best_alt)) or 40.0
+        st.error(f"{target} is never above the horizon in a dark sky at {site} "
+                 "on this night — it is only up in daylight or twilight. The "
+                 "dark-sky conditions and exposure below do not apply; try "
+                 "another date or site.")
+    dark_ok = bool(dark_pts)
 
     st.markdown("---")
 
@@ -182,10 +202,12 @@ def render_planning_wizard(df, utcnow, load_atmospheric_cached):
     weather_score = (float(site_atm.iloc[0]["weather_score"])
                       if not site_atm.empty else 50.0)
     _airmass_term = max(0.0, min(1.0, (2.5 - best_airmass) / 1.5))
-    _alt_term = max(0.0, min(1.0, (best_alt - MIN_ALT_DEG) / 60.0))
+    _alt_term = max(0.0, min(1.0, (best_alt_for_snr - MIN_ALT_DEG) / 60.0))
     target_score = round(100.0 * (W_AIRMASS * _airmass_term
                                   + W_WEATHER * (weather_score / 100.0)
                                   + W_ALT * _alt_term), 1)
+    if not dark_ok:
+        target_score = 0.0      # not observable in darkness on this night
     st.markdown("---")
     st.metric(f"Target-weighted score — {target} at {site}",
               f"{target_score:.0f}/100",
@@ -217,6 +239,23 @@ def render_planning_wizard(df, utcnow, load_atmospheric_cached):
                                    index=_default_ix, key="wiz_filter")
     with sc2:
         target_snr = st.slider("Target SNR", 5, 200, 30, 5, key="wiz_snr")
+
+    if mag <= 5 and (target in _PLANETS or not is_extended_object(target)):
+        if target in _PLANETS:
+            st.warning(f"{target} (V ≈ {mag}) is far too bright for CCD "
+                       "photometry: it saturates a detector in milliseconds. "
+                       "Planets are observed with short video bursts (lucky "
+                       "imaging) on small telescopes, often in twilight.")
+        else:
+            st.warning(f"V ≈ {mag} is very bright: expect saturation in well "
+                       "under a second on most telescopes. Use a neutral-"
+                       "density filter, defocus, or a smaller telescope.")
+
+    exposure_valid = dark_ok
+    if not dark_ok:
+        exposure_valid = st.checkbox(
+            "Estimate anyway, assuming a dark sky (not realistic for this "
+            "night)", value=False, key="wiz_est_anyway")
 
     if wiz_instrument:
         # Real instrument: resolved config carries specs + this filter's band,
@@ -261,7 +300,12 @@ def render_planning_wizard(df, utcnow, load_atmospheric_cached):
         req_t = t_hi
         chosen = _snr_at(req_t)
 
+    if not exposure_valid:
+        req_t = None            # no exposure is offered for a daylight target
+
     def _fmt_t(t):
+        if not exposure_valid:
+            return "not estimated (not up in darkness)"
         if t is None:
             return "Not reachable (>10 h)"
         if t <= 0.001:
@@ -276,18 +320,24 @@ def render_planning_wizard(df, utcnow, load_atmospheric_cached):
             return f"{t/60:.1f} min"
         return f"{t/3600:.2f} h"
 
-    ec1, ec2, ec3 = st.columns(3)
-    ec1.metric(f"Exposure for SNR {target_snr}", _fmt_t(req_t))
-    ec2.metric("Achieved SNR", chosen["snr"])
-    _sig = chosen.get("sigma_mag")
-    ec3.metric("Mag uncertainty σ_m",
-               f"±{_sig}" if _sig else "—",
-               help="σ_m = 1.0857 / SNR — the photometric error on the "
-                    "magnitude at this SNR.")
-    if chosen.get("is_saturated"):
+    _sig = chosen.get("sigma_mag") if exposure_valid else None
+    pred_snr = chosen["snr"] if exposure_valid else "not estimated"
+    if not exposure_valid:
+        st.info("Exposure not estimated: the target is not up in a dark sky on "
+                "this night, so a dark-sky signal-to-noise would be "
+                "misleading.")
+    else:
+        ec1, ec2, ec3 = st.columns(3)
+        ec1.metric(f"Exposure for SNR {target_snr}", _fmt_t(req_t))
+        ec2.metric("Achieved SNR", chosen["snr"])
+        ec3.metric("Mag uncertainty σ_m",
+                   f"±{_sig}" if _sig else "—",
+                   help="σ_m = 1.0857 / SNR — the photometric error on the "
+                        "magnitude at this SNR.")
+    if exposure_valid and chosen.get("is_saturated"):
         st.error("⚠️ Detector saturates at this exposure — shorten it or "
                  "defocus.")
-    if req_t is not None and req_t < 1:
+    if exposure_valid and req_t is not None and req_t < 1:
         _r1 = _snr_at(1.0)
         st.warning(
             f"This target is bright: SNR {target_snr} needs only {_fmt_t(req_t)}, "
@@ -299,7 +349,14 @@ def render_planning_wizard(df, utcnow, load_atmospheric_cached):
     # ══ STEP 8 — Plan summary ═════════════════════════════════════
     st.markdown("---")
     _step_header(8, TOTAL, "Your observing plan")
-    best_time = window.get("best_time", "—") if window else "—"
+    best_time = window.get("best_time") if window else None
+    if best_time:
+        window_line = f"around {best_time} UTC, airmass {round(best_airmass, 2)}"
+    elif dark_ok:
+        window_line = (f"none below airmass 2 in darkness; best dark airmass "
+                       f"{round(best_airmass, 2)}")
+    else:
+        window_line = "none — target is not up in a dark sky on this night"
     plan = f"""OBSERVING PLAN
 ================
 Target        : {target}   (V ≈ {mag})
@@ -308,12 +365,12 @@ Night         : {when.strftime('%Y-%m-%d')}
 Moon          : {moon_choice}
 
 Visibility    : peak altitude {best_alt:.0f}°, up {len(up_pts)*0.5:.1f} h
-Best window   : around {best_time} UTC, airmass {round(best_airmass,2)}
+Best window   : {window_line}
 Conditions    : seeing {seeing:.2f}", sky {sky_mag} mag/arcsec²{f', PWV {pwv:.1f} mm' if pwv else ''}
 
 Filter        : {filter_name}
 Exposure      : {_fmt_t(req_t)}  for SNR {target_snr}
-Achieved SNR  : {chosen['snr']}  (σ_m = ±{_sig if _sig else '—'} mag)
+Achieved SNR  : {pred_snr}  (σ_m = ±{_sig if _sig else '—'} mag)
 
 Generated by GOWC — forecasts are planning estimates, not official
 observatory conditions.
@@ -366,8 +423,9 @@ observatory conditions.
             f"§3 OBSERVING TIME REQUIRED : {obs_hours:.2f} hours "
             "(single target, incl. ~40% overhead)",
             f"§4 MOON PHASE REQUIRED     : {moon_choice}",
-            f"§5 PREFERRED DATE/TIME     : {when.strftime('%Y-%m-%d')} around "
-            f"{best_time} UTC (dark, target well placed)",
+            f"§5 PREFERRED DATE/TIME     : {when.strftime('%Y-%m-%d')} "
+            + (f"around {best_time} UTC (dark, target well placed)"
+               if best_time else f"— {window_line}"),
             "",
             f"Observatory                : {site} ({int(alt_m)} m)",
             f"Filter / band              : {filter_name}",
@@ -387,7 +445,7 @@ observatory conditions.
             f"sky + dark + read + scintillation noise) in the {filt['band']} "
             f"band, including airmass extinction at {int(alt_m)} m and "
             f"moon-dependent sky brightness ({sky_mag} mag/arcsec²). "
-            f"Predicted SNR {chosen['snr']} (σ_m = ±{_sig if _sig else '—'} "
+            f"Predicted SNR {pred_snr} (σ_m = ±{_sig if _sig else '—'} "
             "mag). SNR method validated against the ING SIGNAL ETC.",
             "",
             f"§10 BACKUP PROGRAMME: {pp_backup or '[to complete — max 50 words]'}",

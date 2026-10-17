@@ -576,7 +576,10 @@ def calculate_snr(
     # Optional in the specs dict; 0 = unobstructed (refractor / no data).
     obstruction  = telescope_specs.get("obstruction", 0.0)
     # Detector full-well / saturation limit (electrons per pixel). Optional.
-    full_well_e  = telescope_specs.get("full_well_e")
+    # Unknown detector (e.g. the altitude-estimated generic telescope): assume
+    # a typical CCD full well so bright targets still trigger the saturation
+    # warning instead of silently passing.
+    full_well_e  = telescope_specs.get("full_well_e") or 100000
     # Published zero-point (e-/s for a mag-0 star, above atmosphere). When a real
     # instrument+filter supplies this, it already folds in area, optics
     # throughput, filter response and detector QE, so we use it DIRECTLY and skip
