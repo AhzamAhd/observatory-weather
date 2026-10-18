@@ -261,10 +261,11 @@ def moon_sky_brightness(moon_phase_pct, moon_alt_deg, target_alt_deg,
     """V-band sky brightness (mag/arcsec^2) including moonlight, via the
     Krisciunas & Schaefer (1991) model (PASP 103, 1033).
 
-    Adds the Moon's scattered-light contribution to a dark-sky baseline as a
-    function of lunar phase, the Moon's and target's airmasses, and the angular
-    separation between them. Larger separation and lower Moon => darker sky.
-    Below the horizon the Moon contributes nothing.
+    The dark-sky baseline is scaled to the target's line of sight (K&S Eq. 2:
+    B_zen 10^(-0.4 k (X-1)) X), and the Moon's scattered light is added as a
+    function of lunar phase, the Moon's and target's airmasses, and strongly
+    of the Moon-target separation. Below the horizon the Moon contributes
+    nothing. V band only: the same value is used for every filter.
 
     Parameters
     ----------
@@ -274,11 +275,23 @@ def moon_sky_brightness(moon_phase_pct, moon_alt_deg, target_alt_deg,
     dark_sky_mag : moonless zenith sky brightness (mag/arcsec^2); site darkness.
     k_extinction : V-band atmospheric extinction coefficient (mag/airmass).
     """
-    # No Moon contribution when it is below the horizon.
-    if moon_alt_deg is None or moon_alt_deg <= 0:
-        return round(dark_sky_mag, 2)
+    # Airmass along a line of sight at altitude h (K&S Eq. 3).
+    def _X(h):
+        z = 90.0 - h
+        return (1.0 - 0.96 * math.sin(math.radians(z)) ** 2) ** -0.5
+
     if target_alt_deg is None or target_alt_deg <= 0:
         return round(dark_sky_mag, 2)
+    X_target = _X(target_alt_deg)
+
+    # Dark sky along the target's line of sight (K&S Eq. 2): more airglow path
+    # (x X), less extinction-dimmed (x 10^(-0.4 k (X-1))).
+    b_dark = (_mag_to_nanolambert(dark_sky_mag)
+              * 10 ** (-0.4 * k_extinction * (X_target - 1.0)) * X_target)
+
+    # No Moon contribution when it is below the horizon.
+    if moon_alt_deg is None or moon_alt_deg <= 0:
+        return round(_nanolambert_to_mag(b_dark), 2)
     rho = max(1.0, min(179.0, moon_target_sep_deg or 60.0))
 
     # Lunar phase angle alpha (deg): 0 = full, 180 = new. The illuminated
@@ -296,21 +309,14 @@ def moon_sky_brightness(moon_phase_pct, moon_alt_deg, target_alt_deg,
     f_rho = (10 ** 5.36) * (1.06 + math.cos(math.radians(rho)) ** 2) \
         + 10 ** (6.15 - rho / 40.0)
 
-    # Airmass along a line of sight at altitude h (K&S Eq. 3).
-    def _X(h):
-        z = 90.0 - h
-        return (1.0 - 0.96 * math.sin(math.radians(z)) ** 2) ** -0.5
-
     X_moon = _X(moon_alt_deg)
-    X_target = _X(target_alt_deg)
 
     # Moon's added brightness in nanoLamberts (K&S Eq. 15).
     b_moon = (f_rho * i_star
               * 10 ** (-0.4 * k_extinction * X_moon)
               * (1.0 - 10 ** (-0.4 * k_extinction * X_target)))
 
-    # Dark sky in nanoLamberts, then add the Moon and convert back to mag.
-    b_dark = _mag_to_nanolambert(dark_sky_mag)
+    # Add the Moon to the dark sky and convert back to mag.
     b_total = b_dark + max(0.0, b_moon)
     return round(_nanolambert_to_mag(b_total), 2)
 
@@ -320,10 +326,11 @@ def get_sky_brightness(moon_phase_pct, moon_altitude_deg,
                        dark_sky_mag=21.8, k_extinction=0.15):
     """Sky brightness (V mag/arcsec^2).
 
-    If the Moon-target separation and target altitude are provided, use the
-    physical Krisciunas & Schaefer (1991) model (separation is the dominant
-    driver of moonlit sky brightness). Otherwise fall back to the original
-    phase/altitude lookup so existing callers are unchanged.
+    With the target altitude and Moon-target separation (every page supplies
+    them; see object_visibility.moon_target_geometry), this is the Krisciunas &
+    Schaefer (1991) model. Pass k_extinction as the site's V-band coefficient.
+    The coarse phase/altitude lookup below is only a last-resort fallback for
+    callers that cannot compute the geometry.
     """
     if (target_altitude_deg is not None and moon_target_sep_deg is not None):
         return moon_sky_brightness(
@@ -897,17 +904,45 @@ def get_snr_for_all_observatories(
     moon_phase_pct,
     moon_altitude_deg,
     seeing_data=None,
-    pwv_data=None
+    pwv_data=None,
+    when=None
 ):
+    """SNR for one target at every site, at time `when` (default now).
+    Each site uses the target's own altitude there and the Krisciunas &
+    Schaefer sky for its Moon geometry; sites where the target is below the
+    horizon get SNR 0. moon_phase_pct / moon_altitude_deg are only used if the
+    geometry cannot be computed."""
     import pandas as pd
+    from datetime import datetime as _dt
+    from object_visibility import moon_target_geometry
+    from airmass_calculator import extinction_coefficient
+    when = when or _dt.utcnow()
     results = []
-    sky_brightness = get_sky_brightness(
-        moon_phase_pct, moon_altitude_deg)
 
     for _, row in observatories_df.iterrows():
         obs_name = row["observatory"]
-        specs    = get_telescope_specs(
-            obs_name, row.get("altitude_m", 0))
+        site_alt = row.get("altitude_m", 0) or 0
+        specs    = get_telescope_specs(obs_name, site_alt)
+        geo = moon_target_geometry(row.get("latitude"), row.get("longitude"),
+                                   object_name, when, site_alt)
+        tgt_alt = geo["target_alt"] if geo else None
+        if geo and tgt_alt <= 0:
+            results.append({
+                "observatory": obs_name, "country": row["country"],
+                "telescope": specs.get("name", f"{specs['aperture_m']}m telescope"),
+                "aperture_m": specs["aperture_m"], "snr": 0.0,
+                "snr_quality": "Below horizon", "limiting_mag": None,
+                "time_snr5": "—", "time_snr10": "—", "time_snr50": "—",
+                "time_snr100": "—", "sky_brightness": None, "seeing": None,
+                "target_altitude": tgt_alt, "noise_budget": None})
+            continue
+        if geo:
+            sky_brightness = get_sky_brightness(
+                geo["moon_phase_pct"], geo["moon_alt"],
+                target_altitude_deg=tgt_alt, moon_target_sep_deg=geo["moon_sep"],
+                k_extinction=extinction_coefficient(site_alt, "V"))
+        else:
+            sky_brightness = get_sky_brightness(moon_phase_pct, moon_altitude_deg)
 
         seeing = 1.5
         if seeing_data is not None:
@@ -935,6 +970,7 @@ def get_snr_for_all_observatories(
                 sky_brightness_mag = sky_brightness,
                 seeing_arcsec      = seeing,
                 object_name        = object_name,
+                object_altitude_deg= tgt_alt,
                 pwv_mm             = pwv,
                 site_altitude_m    = row.get("altitude_m", 2000) or 2000
             )
@@ -955,6 +991,7 @@ def get_snr_for_all_observatories(
                 "time_snr100":   result["time_for_snr100"],
                 "sky_brightness": sky_brightness,
                 "seeing":        seeing,
+                "target_altitude": tgt_alt,
                 "noise_budget":  result["noise_budget"]
             })
         except Exception:

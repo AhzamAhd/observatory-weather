@@ -80,7 +80,10 @@ def calculate_hourly_scores(lat, lon, weather_score,
         from snr_calculator import (calculate_snr, get_telescope_specs,
                                      get_sky_brightness)
         from atmospheric import calculate_seeing
+        from airmass_calculator import extinction_coefficient
+        from object_visibility import moon_target_geometry
         specs = get_telescope_specs(None, altitude_m)
+        k_site = extinction_coefficient(altitude_m, "V")
 
     for h in range(24):
         dt = start + timedelta(hours=h)
@@ -100,7 +103,13 @@ def calculate_hourly_scores(lat, lon, weather_score,
 
         if snr_mode and darkness_score > 0 and obj_alt is not None and obj_alt >= 10:
             # Real SNR for this hour: detectability, not just altitude.
-            sky_mag = get_sky_brightness(moon_phase, moon_alt)
+            # Krisciunas & Schaefer sky for this hour's real Moon-target
+            # geometry (separation, both altitudes) and the site's own k_V.
+            _geo = moon_target_geometry(lat, lon, object_name, dt, altitude_m)
+            sky_mag = get_sky_brightness(
+                moon_phase, moon_alt, target_altitude_deg=obj_alt,
+                moon_target_sep_deg=_geo["moon_sep"] if _geo else None,
+                k_extinction=k_site)
             # Nominal seeing from site altitude (full weather not known
             # per-hour here); ~1.2" fallback if it can't be computed.
             try:

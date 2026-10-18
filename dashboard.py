@@ -997,7 +997,8 @@ def cached_best_months(obs, year, months):
     return get_best_months(obs, year, months)
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def cached_snr_all(object_name, object_mag, exposure_s, moon_phase, moon_alt):
+def cached_snr_all(object_name, object_mag, exposure_s, moon_phase, moon_alt,
+                   when=None):
     return get_snr_for_all_observatories(
         object_name=object_name,
         object_magnitude=object_mag,
@@ -1006,7 +1007,8 @@ def cached_snr_all(object_name, object_mag, exposure_s, moon_phase, moon_alt):
         moon_phase_pct=moon_phase,
         moon_altitude_deg=moon_alt,
         seeing_data=load_atmospheric(),
-        pwv_data=load_atmospheric()
+        pwv_data=load_atmospheric(),
+        when=when
     )
 
 @st.cache_data(ttl=600, show_spinner=False)
@@ -4052,7 +4054,7 @@ if selected_page == "SNR Calculator":
         except Exception:
             return None
 
-    # Moon-target angular separation — the dominant driver of moonlit sky
+    # Moon-target angular separation — a strong driver of moonlit sky
     # brightness in the Krisciunas & Schaefer model used below.
     def _moon_target_sep(lat, lon, obj_name, when):
         try:
@@ -4195,7 +4197,7 @@ if selected_page == "SNR Calculator":
                     f"{_auto_moon_alt}°" if _auto_moon_alt > 0 else "Below horizon")
 
         # Moon-target separation + target altitude drive the Krisciunas &
-        # Schaefer (1991) sky-brightness model (separation is the dominant term).
+        # Schaefer (1991) sky-brightness model (strongly separation-dependent).
         _snr_tgt_alt = _obj_altitude(
             _snr_obs_row["latitude"], _snr_obs_row["longitude"],
             snr_object, _snr_when)
@@ -4203,18 +4205,20 @@ if selected_page == "SNR Calculator":
             _snr_obs_row["latitude"], _snr_obs_row["longitude"],
             snr_object, _snr_when)
 
+        from airmass_calculator import extinction_coefficient as _ext_k
         sky_brightness = get_sky_brightness(
             moon_phase_input, moon_alt_input,
             target_altitude_deg=_snr_tgt_alt,
-            moon_target_sep_deg=_snr_moon_sep)
+            moon_target_sep_deg=_snr_moon_sep,
+            k_extinction=_ext_k(_snr_obs_row.get("altitude_m") or 0, "V"))
         _sep_txt = (f"{_snr_moon_sep}° from Moon"
                     if _snr_moon_sep is not None else "separation n/a")
         st.metric(
             "Sky brightness",
             f"{sky_brightness} mag/arcsec²",
             help="Higher = darker sky = better. Krisciunas & Schaefer (1991) "
-                 "model: folds in Moon phase, altitude and — the dominant "
-                 "factor — the Moon–target angular separation."
+                 "model (V band): folds in Moon phase, the Moon's and target's "
+                 "altitudes and, strongly, the Moon–target angular separation."
         )
         if _auto_moon_alt > 0:
             st.caption(f"{snr_object} is **{_sep_txt}**.")
@@ -4529,12 +4533,15 @@ if selected_page == "SNR Calculator":
     st.subheader(
         "SNR comparison across all observatories")
     st.caption(
-        "Which observatory gives the best SNR "
-        "for your target tonight?"
+        f"Which observatory gives the best SNR for your target at "
+        f"{_snr_when:%Y-%m-%d %H:%M} UTC? Each site uses the target's altitude "
+        "there and its own moonlit sky; sites where the target is below the "
+        "horizon are listed last with SNR 0."
     )
 
     with st.spinner("Calculating SNR for all observatories..."):
-        all_snr = cached_snr_all(snr_object, object_mag, exposure_s, moon_phase_input, moon_alt_input)
+        all_snr = cached_snr_all(snr_object, object_mag, exposure_s,
+                                 moon_phase_input, moon_alt_input, _snr_when)
 
     if not all_snr.empty:
         s1, s2, s3, s4 = st.columns(4)
@@ -4567,13 +4574,15 @@ if selected_page == "SNR Calculator":
                 c2.metric("Aperture",
                           f"{row['aperture_m']}m")
                 c3.metric("Limit mag",
-                          row["limiting_mag"])
+                          row["limiting_mag"]
+                          if row["limiting_mag"] is not None else "—")
                 c4.metric("Time for SNR 10",
                           row["time_snr10"])
                 c5.metric("Time for SNR 50",
                           row["time_snr50"])
                 st.caption(
                     f"{row['country']} · "
+                    f"Target altitude {row['target_altitude']}° · "
                     f"Seeing {row['seeing']}\" · "
                     f"Sky {row['sky_brightness']} "
                     f"mag/arcsec²"
@@ -4583,10 +4592,11 @@ if selected_page == "SNR Calculator":
         st.markdown("**Full SNR table**")
         snr_display = all_snr[[
             "observatory", "country", "telescope",
-            "aperture_m", "snr", "snr_quality",
+            "aperture_m", "target_altitude", "snr", "snr_quality",
             "limiting_mag", "time_snr5",
             "time_snr10", "time_snr50"
         ]].rename(columns={
+            "target_altitude": "Target alt (°)",
             "observatory":  "Observatory",
             "country":      "Country",
             "telescope":    "Telescope",

@@ -368,12 +368,22 @@ this.) A layered integral of specific humidity from the Magnus relation \cite{ma
 is retained as a fallback where the column product is unavailable.
 
 \subsection{Sky brightness}
-Moonlit sky brightness uses the Krisciunas \& Schaefer (1991) model \cite{ks1991},
-which folds in the lunar phase angle $\alpha$, the Moon's and target's airmasses,
-and --- the dominant term --- the Moon--target separation, summed against a dark-sky
-baseline. The phase angle follows from the illuminated fraction $f$ as
+\label{sec:sky}
+Moonlit sky brightness uses the Krisciunas \& Schaefer (1991) model \cite{ks1991}
+in the $V$ band. A zenith dark-sky baseline of $21.8$\,mag\,arcsec$^{-2}$ is carried
+to the target's line of sight as $B_{\text{zen}}\,10^{-0.4k(X-1)}X$ (their Eq.~2),
+and the scattered moonlight is added; it depends on the lunar phase angle $\alpha$,
+the Moon's and target's airmasses, and strongly on the Moon--target separation.
+The extinction coefficient $k$ in both terms is the site's own $V$-band value
+(\S3.2). The phase angle follows from the illuminated fraction $f$ as
 $\alpha=\arccos(2f-1)$; a linear mapping would be $\sim$0.4\,mag wrong in the gibbous
-phases.
+phases. The geometry --- target altitude, Moon altitude and illumination, and their
+separation --- is computed with \texttt{ephem} for the site and time on every page
+that uses the sky: the SNR calculator, the per-hour peak-time ranking, the all-site
+SNR comparison (each site at its own target altitude) and the planning workflow,
+which uses the real Moon at the planned time or, for a what-if Moon phase, places
+the Moon an assumed $90^\circ$ from the target. The $V$-band value is used for every
+filter, a simplification of the full model.
 
 \subsection{Signal-to-noise ratio}
 The SNR calculator implements the standard CCD equation with scintillation:
@@ -690,8 +700,9 @@ and the Maunakea Weather Center, and live PWV from the Paranal LHATPRO radiomete
 \label{sec:skyval}
 Moonlit sky brightness (\S3.4) is computed from the Krisciunas \& Schaefer (1991)
 model \cite{ks1991}, which remains the standard photometric choice and is well tested
-in its original literature. We do not independently validate it here: it drives only
-the dark-time window and the advisory sky-brightness figure in the exposure planner.
+in its original literature. We do not independently validate it here; it sets the
+sky term in every SNR and exposure estimate (\S\ref{sec:sky}), so its accuracy limits
+those under a bright Moon.
 A grid comparison against the ESO \textsc{skycalc} model \cite{skycalc} across lunar
 phase and Moon--target separation is the natural next check (\S\ref{sec:future}); the
 quantity is flagged as modelled-not-measured wherever it is reported.

@@ -31,6 +31,8 @@ from snr_calculator import (OBJECT_MAGNITUDES, PHOTOMETRIC_FILTERS,
 from instruments import (list_facilities, list_instruments, list_filters,
                          get_instrument_config)
 from observing_engine import W_AIRMASS, W_WEATHER, W_ALT, MIN_ALT_DEG
+from object_visibility import moon_target_geometry
+from airmass_calculator import extinction_coefficient
 
 # Solar-system targets that are far too bright for CCD photometry and are
 # observed instead with short video / lucky imaging.
@@ -167,6 +169,12 @@ def render_planning_wizard(df, utcnow, load_atmospheric_cached):
                  "dark-sky conditions and exposure below do not apply; try "
                  "another date or site.")
     dark_ok = bool(dark_pts)
+    # The moment the plan refers to: the best window's time, else the best
+    # dark point, else the target's peak. Sky brightness is evaluated here.
+    _cands = ([p for p in curve if window and p["time"] == window.get("best_time")]
+              or sorted(dark_pts, key=lambda p: -p["altitude"])
+              or sorted(up_pts, key=lambda p: -p["altitude"]))
+    plan_dt = _cands[0]["time_dt"]
 
     st.markdown("---")
 
@@ -180,12 +188,34 @@ def render_planning_wizard(df, utcnow, load_atmospheric_cached):
         seeing = float(site_atm.iloc[0].get("seeing_arcsec") or 1.5)
         pwv = site_atm.iloc[0].get("pwv_mm")
 
-    moon_choice = st.radio("Moon conditions",
-                          ["Dark (new)", "Grey (quarter)", "Bright (full)"],
-                          horizontal=True, key="wiz_moon")
-    _mm = {"Dark (new)": (5, 0), "Grey (quarter)": (50, 30),
-           "Bright (full)": (100, 60)}[moon_choice]
-    sky_mag = get_sky_brightness(_mm[0], _mm[1])
+    # Krisciunas & Schaefer (1991) sky for the real Moon on this night at the
+    # planning time, or a what-if Moon placed at an assumed 90 deg from the
+    # target (a hypothetical Moon has no real position).
+    _geo = moon_target_geometry(lat, lon, target, plan_dt, alt_m)
+    _real = (f"This night's Moon ({_geo['moon_phase_pct']:.0f}% lit, "
+             f"{'up' if _geo['moon_alt'] > 0 else 'down'})" if _geo else None)
+    _opts = ([_real] if _real else []) + ["Dark (new)", "Grey (quarter)",
+                                          "Bright (full)"]
+    moon_choice = st.radio("Moon conditions", _opts, horizontal=True,
+                          key="wiz_moon")
+    _k_v = extinction_coefficient(alt_m, "V")
+    if _real and moon_choice == _real:
+        sky_mag = get_sky_brightness(
+            _geo["moon_phase_pct"], _geo["moon_alt"],
+            target_altitude_deg=best_alt_for_snr,
+            moon_target_sep_deg=_geo["moon_sep"], k_extinction=_k_v)
+        st.caption(f"At {plan_dt:%H:%M} UTC the Moon is {_geo['moon_phase_pct']:.0f}% "
+                   f"illuminated, {_geo['moon_alt']:.0f}° altitude, "
+                   f"{_geo['moon_sep']:.0f}° from {target}.")
+    else:
+        _mm = {"Dark (new)": (5, -10), "Grey (quarter)": (50, 30),
+               "Bright (full)": (100, 60)}[moon_choice]
+        sky_mag = get_sky_brightness(
+            _mm[0], _mm[1], target_altitude_deg=best_alt_for_snr,
+            moon_target_sep_deg=90.0, k_extinction=_k_v)
+        if _mm[1] > 0:
+            st.caption(f"What-if Moon: {_mm[0]}% lit at {_mm[1]}° altitude, "
+                       f"assumed 90° from {target}.")
 
     cc1, cc2, cc3 = st.columns(3)
     cc1.metric("Seeing", f"{seeing:.2f}\"")

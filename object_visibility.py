@@ -273,6 +273,32 @@ def get_ephem_object(name, obj_info):
     fixed._epoch = ephem.J2000
     return fixed
 
+def moon_target_geometry(lat, lon, object_name, when, elevation_m=0):
+    """Target altitude, Moon altitude, Moon illumination (%) and Moon-target
+    separation (deg) at a site and time -- the inputs of the Krisciunas &
+    Schaefer moonlit-sky model. Returns None if the target is unknown."""
+    try:
+        info = OBJECTS.get(object_name)
+        if not info:
+            return None
+        ob = ephem.Observer()
+        ob.lat, ob.long = str(lat), str(lon)
+        ob.elevation = float(elevation_m or 0)
+        ob.pressure = 0
+        ob.date = when.strftime("%Y/%m/%d %H:%M:%S")
+        moon = ephem.Moon(ob)
+        tgt = get_ephem_object(object_name, info)
+        tgt.compute(ob)
+        return {
+            "target_alt": round(math.degrees(float(tgt.alt)), 1),
+            "moon_alt": round(math.degrees(float(moon.alt)), 1),
+            "moon_phase_pct": round(float(moon.phase), 1),
+            "moon_sep": round(math.degrees(float(ephem.separation(moon, tgt))), 1),
+        }
+    except Exception:
+        return None
+
+
 def calculate_visibility(lat, lon, object_name, date=None,
                          altitude_m=0):
     if date is None:
