@@ -219,7 +219,10 @@ def render_planning_wizard(df, utcnow, load_atmospheric_cached):
 
     cc1, cc2, cc3 = st.columns(3)
     cc1.metric("Seeing", f"{seeing:.2f}\"")
-    cc2.metric("Sky brightness", f"{sky_mag} mag/arcsec²")
+    cc2.metric("Sky brightness", f"{sky_mag} mag/arcsec²",
+               help="Modelled, not measured: Krisciunas & Schaefer (1991) "
+                    "moonlit-sky model in the V band, not independently "
+                    "validated here.")
     cc3.metric("PWV", f"{pwv:.1f} mm" if pwv else "—")
 
     # Target-weighted score: this target, this site, this night -- distinct
@@ -248,6 +251,8 @@ def render_planning_wizard(df, utcnow, load_atmospheric_cached):
                    f"altitude {W_ALT:.0%}). Different from the site's plain "
                    "weather score shown elsewhere in GOWC, which does not "
                    "depend on what you're observing.")
+    st.caption("Cloud cover is the Open-Meteo forecast, passed through without "
+               "independent validation; the score inherits its accuracy.")
 
     # ══ STEP 7 — SNR / exposure ═══════════════════════════════════
     st.markdown("---")

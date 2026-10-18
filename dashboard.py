@@ -106,6 +106,13 @@ st.set_page_config(
 )
 import streamlit.components.v1 as components
 
+# One-line provenance flags, shown wherever these quantities are reported.
+CLOUD_NOTE = ("Cloud cover is the Open-Meteo forecast, passed through without "
+              "independent validation; the observing-quality score inherits its "
+              "accuracy.")
+SKY_NOTE = ("Modelled, not measured: Krisciunas & Schaefer (1991) moonlit-sky "
+            "model in the V band, not independently validated here.")
+
 # Google Analytics (GA4). components.html renders in a sandboxed iframe,
 # so gtag must be injected into the PARENT document head — otherwise it
 # only ever tracks the throwaway iframe and reports zero users. Mirrors
@@ -1453,6 +1460,7 @@ if selected_page == "Home":
   </div>
 </div>
 """, unsafe_allow_html=True)
+    st.caption(CLOUD_NOTE)
 
     # ── Feature grid ───────────────────────────────────
     st.markdown("<div style='font-size:1.2rem;font-weight:700;color:#e8f4fd;margin-bottom:16px;'>Platform Features</div>", unsafe_allow_html=True)
@@ -1536,6 +1544,7 @@ week.
     )
 
     st.subheader("Observing-Quality Index")
+    st.caption(CLOUD_NOTE)
     st.markdown(r"""
 Each observatory's headline **0–100 score** is a *multiplicative* observing-quality
 index — the same approach used by ClearDarkSky and Meteoblue astronomy indices. Each
@@ -1700,6 +1709,7 @@ if selected_page == "Live Weather Map":
     _hc2.metric("Excellent Tonight", f"{_n_excellent:,}")
     _hc3.metric("Avg Score", f"{_avg_score} / 100")
     _hc4.metric("Best Tonight", _best_name[:28])
+    st.caption(CLOUD_NOTE)
 
     st.subheader("World map — live observation quality")
 
@@ -1926,6 +1936,7 @@ if selected_page == "Observing Windows":
         "Dark-time windows plus the peak observing hour for every site. "
         "Scores adjusted for moon phase and position; dark hours from "
         "astronomical twilight (-18°).")
+    st.caption(CLOUD_NOTE)
 
     if not win.empty:
         w1, w2, w3, w4 = st.columns(4)
@@ -2710,6 +2721,7 @@ if selected_page == "Historical Reliability":
         "Reliability grades based on accumulated daily weather "
         "data. The longer the pipeline runs, the more accurate "
         "these scores become. Updated automatically every day.")
+    st.caption(CLOUD_NOTE)
 
     days_option = st.selectbox(
         "Analysis window",
@@ -2901,6 +2913,7 @@ if selected_page == "Site Comparison":
         "Useful for telescope time proposals and site selection. "
         "Combines current conditions, historical reliability, "
         "atmospheric seeing, PWV, and jet stream impact.")
+    st.caption(CLOUD_NOTE)
 
     # Filter the picker by country so the 1,200+ list is manageable.
     _countries = sorted(df["country"].dropna().unique().tolist())
@@ -4216,9 +4229,9 @@ if selected_page == "SNR Calculator":
         st.metric(
             "Sky brightness",
             f"{sky_brightness} mag/arcsec²",
-            help="Higher = darker sky = better. Krisciunas & Schaefer (1991) "
-                 "model (V band): folds in Moon phase, the Moon's and target's "
-                 "altitudes and, strongly, the Moon–target angular separation."
+            help="Higher = darker sky = better. " + SKY_NOTE + " Folds in "
+                 "Moon phase, the Moon's and target's altitudes and, strongly, "
+                 "the Moon–target angular separation."
         )
         if _auto_moon_alt > 0:
             st.caption(f"{snr_object} is **{_sep_txt}**.")
@@ -4481,7 +4494,7 @@ if selected_page == "SNR Calculator":
                else tel_specs.get("name", f"{tel_specs['aperture_m']}m")))
     m4.metric("Seeing",        f"{seeing}\"")
     m5.metric("Sky brightness",
-              f"{sky_brightness} mag/arcsec²")
+              f"{sky_brightness} mag/arcsec²", help=SKY_NOTE)
 
     # For extended objects, explain the surface-brightness treatment: the SNR
     # measures the light within a seeing-disk aperture, not the whole object.
@@ -4536,7 +4549,7 @@ if selected_page == "SNR Calculator":
         f"Which observatory gives the best SNR for your target at "
         f"{_snr_when:%Y-%m-%d %H:%M} UTC? Each site uses the target's altitude "
         "there and its own moonlit sky; sites where the target is below the "
-        "horizon are listed last with SNR 0."
+        "horizon are listed last with SNR 0. " + SKY_NOTE
     )
 
     with st.spinner("Calculating SNR for all observatories..."):
@@ -8196,7 +8209,7 @@ if _detail_sub == "Live detail":
     st.caption("Forecast-model values (Open-Meteo) for this site's coordinates, "
                "not an on-site weather station. Chance of rain is fetched live "
                "for this site; the other values are from the latest stored "
-               f"reading ({live['fetch_datetime']}).")
+               f"reading ({live['fetch_datetime']}). " + CLOUD_NOTE)
 
     st.markdown("---")
 
