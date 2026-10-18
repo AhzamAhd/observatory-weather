@@ -29,7 +29,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 LAT, LON, ALT = -24.6275, -70.4044, 2635.0
 START, END = "2025-01-01", "2026-08-28"
 HW = 2000.0   # GOWC water-vapour scale height (m)
-H_MODEL = 2617.0  # Open-Meteo model-cell terrain height at Paranal (`elevation`)
+# Height Open-Meteo returns as `elevation` for this point: a 90 m digital-
+# elevation-model height (the column is downscaled towards it), NOT the
+# forecast model's own grid-cell terrain, which `elevation=nan` reveals.
+H_MODEL = 2617.0
 
 
 def fetch_model_pwv():
@@ -45,6 +48,24 @@ def fetch_model_pwv():
     h = r.json()["hourly"]
     json.dump(h, open(cache, "w"))
     return h
+
+
+def fetch_raw_pwv():
+    """The same column WITHOUT Open-Meteo's statistical downscaling
+    (elevation=nan), plus the native grid-cell height it then reports."""
+    cache = os.path.join(HERE, "hfa_pwv_Paranal_raw.json")
+    if os.path.exists(cache):
+        return json.load(open(cache))
+    r = requests.get("https://historical-forecast-api.open-meteo.com/v1/forecast",
+                     params={"latitude": LAT, "longitude": LON,
+                             "start_date": START, "end_date": END,
+                             "hourly": "total_column_integrated_water_vapour",
+                             "timezone": "UTC", "elevation": "nan"}, timeout=300)
+    r.raise_for_status()
+    d = r.json()
+    out = {"grid_cell_elevation_m": d["elevation"], "hourly": d["hourly"]}
+    json.dump(out, open(cache, "w"))
+    return out
 
 
 def fetch_lhatpro():
@@ -158,6 +179,10 @@ def main():
     print(f"  median bias ratio = {bias:.2f}x  (per-night)")
     print(f"  median |error|    = {abserr:.2f} mm")
 
+    driest = [i for i in range(len(dv)) if dv[i] < 1.0]
+    if driest:
+        print(f"  driest nights (LHATPRO < 1 mm): N={len(driest)}  "
+              f"ratio of medians {statistics.median(mv[i] for i in driest) / statistics.median(dv[i] for i in driest):.2f}x")
     dry = [i for i in range(len(dv)) if dv[i] < 1.5]
     if dry:
         print(f"  dry nights (LHATPRO < 1.5 mm): N={len(dry)}  "
@@ -173,6 +198,21 @@ def main():
     print(f"  median GOWC PWV   = {statistics.median(lv):.2f} mm  "
           f"({statistics.median(mv) / statistics.median(lv):.1f}x below corrected, "
           f"{statistics.median(dv) / statistics.median(lv):.1f}x below LHATPRO)")
+
+    # Alternative: undo Open-Meteo's (partial) downscaling and apply GOWC's
+    # exponential from the native grid-cell height instead (paper S4.2).
+    rawd = fetch_raw_pwv()
+    hg = rawd["grid_cell_elevation_m"]
+    rh = rawd["hourly"]
+    alt_series = {datetime.fromisoformat(t[:19]): v * math.exp(-max(0.0, ALT - hg) / HW)
+                  for t, v in zip(rh["time"], rh["total_column_integrated_water_vapour"])
+                  if v is not None}
+    an = nightly(alt_series, hours=lhat)
+    ca = sorted(set(an) & set(meas))
+    av, bv = [an[d] for d in ca], [meas[d] for d in ca]
+    print(f"\n  Grid-cell alternative: raw column x exp(-(h_site - {hg:.0f} m)/2000)")
+    print(f"  nights N={len(ca)}  Spearman rho={spearman(av, bv):+.3f}  "
+          f"wet bias {(statistics.median(av) / statistics.median(bv) - 1) * 100:+.0f}%")
 
 
 if __name__ == "__main__":

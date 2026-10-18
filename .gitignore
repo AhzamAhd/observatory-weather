@@ -24,3 +24,17 @@ tests/lhatpro_paranal_*.csv
 
 # DB snapshots from one-off repairs (contain subscriber data)
 backups/
+
+# Validation inputs the paper is computed from: archived with each release for
+# reproducibility (ESO ASM public archive extracts and Open-Meteo responses).
+!/dimm_measured.csv
+!tests/dimm_measured_Lasilla.csv
+!tests/dimm_paranal_2026-05_08.csv
+!tests/mass_paranal_2026-05_08.csv
+!tests/lhatpro_paranal_2025_26.csv
+!tests/hfa_Paranal.json
+!tests/hfa_LaSilla.json
+!tests/hfa_LaPalma.json
+!tests/hfa_MaunaKea.json
+!tests/hfa_pwv_Paranal.json
+!tests/hfa_pwv_Paranal_raw.json
