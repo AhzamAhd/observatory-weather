@@ -939,7 +939,7 @@ def load_windows():
         return data
     return load_precomputed("observing_windows")
 
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False, max_entries=8)
 def load_peak_times_cached(object_name=None, object_magnitude=None,
                            filter_band="V", wavelength_nm=550.0,
                            bandwidth_nm=100.0):
@@ -963,7 +963,7 @@ def load_atmospheric_cached():
         return data
     return load_precomputed("atmospheric")
 
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False, max_entries=8)
 def load_efficiency_cached(telescope_type="optical"):
     if telescope_type == "optical":
         data = get_all_precomputed().get(
@@ -983,7 +983,7 @@ def condition_emoji(condition):
             "Marginal": "🟡", "Poor": "🔴"}.get(condition, "⚪")
 
 # ── Cached wrappers for heavy per-page computations ──────────────
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False, max_entries=8)
 def cached_reliability_scores(days):
     key = f"reliability_{days}d"
     pre = load_precomputed(key)
@@ -991,19 +991,19 @@ def cached_reliability_scores(days):
         return pre
     return calculate_reliability_scores(days=days)
 
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False, max_entries=8)
 def cached_compare_sites(sites_tuple, days):
     return compare_sites(list(sites_tuple), days)
 
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False, max_entries=8)
 def cached_calendar_data(obs, year, start_month, months):
     return build_calendar_data(obs, year, start_month, months)
 
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False, max_entries=8)
 def cached_best_months(obs, year, months):
     return get_best_months(obs, year, months)
 
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False, max_entries=8)
 def cached_snr_all(object_name, object_mag, exposure_s, moon_phase, moon_alt,
                    when=None):
     return get_snr_for_all_observatories(
@@ -1018,7 +1018,7 @@ def cached_snr_all(object_name, object_mag, exposure_s, moon_phase, moon_alt,
         when=when
     )
 
-@st.cache_data(ttl=600, show_spinner=False)
+@st.cache_data(ttl=600, show_spinner=False, max_entries=8)
 def cached_forecast(lat, lon, days=7):
     from forecast import fetch_forecast as _ff, get_daily_summary as _gds
     fc = _ff(lat, lon, days=days)
@@ -1038,7 +1038,7 @@ def cached_showers():
 # Transient targets = curated catalogue + a live MAXI outburst fetch.
 # 30-min TTL keeps outburst alerts fresh (fast-response matters here) while
 # avoiding a network hit on every rerun. Returns [] gracefully if MAXI is down.
-@st.cache_data(ttl=1800, show_spinner=False)
+@st.cache_data(ttl=1800, show_spinner=False, max_entries=8)
 def cached_transient_targets(class_name):
     import transients as T
     return T.get_targets(class_name)
@@ -1050,7 +1050,7 @@ def cached_eclipse_events():
         return pre
     return get_upcoming_events()
 
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False, max_entries=8)
 def cached_best_obs_for_eclipse(event_name, event_date):
     key = f"eclipse_best_{event_date}_{event_name.replace(' ', '_')}"
     pre = load_precomputed_raw(key)
@@ -1059,15 +1059,15 @@ def cached_best_obs_for_eclipse(event_name, event_date):
     return get_best_observatories_for_eclipse(
         {"name": event_name, "date": event_date}, load_data())
 
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False, max_entries=8)
 def cached_airmass_curve(obs_name, obj_name, lat, lon, alt):
     return get_object_airmass_curve(obj_name, lat, lon, alt)
 
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False, max_entries=8)
 def cached_compare_airmass(objects, lat, lon, alt):
     return compare_objects_airmass(list(objects), lat, lon, alt)
 
-@st.cache_data(ttl=3600, show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False, max_entries=8)
 def cached_reviews(obs_name):
     return get_reviews(obs_name), get_observatory_stats(obs_name)
 
@@ -2806,7 +2806,22 @@ if selected_page == "Historical Reliability":
             if _rel_view.empty:
                 st.info("No observatories match your search.")
 
-        for _hist_i, (_, row) in enumerate(_rel_view.iterrows()):
+        # One expander (with its own chart) per site for all ~2,600 sites took
+        # minutes and pushed the server past its 512 MB limit, so page them.
+        _REL_PAGE = 25
+        _rel_pages = max(1, -(-len(_rel_view) // _REL_PAGE))
+        if _rel_pages > 1:
+            _rel_page = st.number_input(
+                f"Page (of {_rel_pages}, {_REL_PAGE} sites each; "
+                "every site is in the full table below)",
+                min_value=1, max_value=_rel_pages, value=1, step=1,
+                key=f"rel_page_{days_option}_{_rel_q}")
+        else:
+            _rel_page = 1
+        _rel_start = (int(_rel_page) - 1) * _REL_PAGE
+        _rel_slice = _rel_view.iloc[_rel_start:_rel_start + _REL_PAGE]
+
+        for _hist_i, (_, row) in enumerate(_rel_slice.iterrows(), start=_rel_start):
             grade_color = get_grade_color(row["grade"])
             trend_emoji = get_trend_emoji(row["trend"])
 
@@ -4553,8 +4568,12 @@ if selected_page == "SNR Calculator":
     )
 
     with st.spinner("Calculating SNR for all observatories..."):
+        # Cache by the hour, not the exact second: a per-second key stored a
+        # new 2,600-row table on every visit (~19 MB each) and exhausted the
+        # server's memory.
         all_snr = cached_snr_all(snr_object, object_mag, exposure_s,
-                                 moon_phase_input, moon_alt_input, _snr_when)
+                                 moon_phase_input, moon_alt_input,
+                                 _snr_when.replace(minute=0, second=0, microsecond=0))
 
     if not all_snr.empty:
         s1, s2, s3, s4 = st.columns(4)
@@ -7387,7 +7406,7 @@ if _sky_sub == "Asteroid Tracker":
         )
 
     # ── Fetch button ──────────────────────────────────────
-    @st.cache_data(ttl=3600, show_spinner=False)
+    @st.cache_data(ttl=3600, show_spinner=False, max_entries=8)
     def cached_fetch_asteroids(days, cache_key):
         if days <= 7:
             return fetch_asteroids(days_ahead=days)
@@ -8173,7 +8192,7 @@ if _detail_sub == "Live detail":
 
     # Dew point, rain amount and chance of rain. The probability is not stored
     # with the readings, so it is fetched for this site on demand (cached).
-    @st.cache_data(ttl=1800, show_spinner=False)
+    @st.cache_data(ttl=1800, show_spinner=False, max_entries=8)
     def _rain_outlook(lat, lon):
         from forecast import fetch_rain_outlook
         return fetch_rain_outlook(lat, lon, hours=12)
