@@ -50,11 +50,13 @@ def airmass_color(airmass):
     else:                 return "#880000"
 
 # Reference extinction coefficients (mag/airmass) at the
-# 2000 m reference altitude, per filter band. Calibrated so
-# that the altitude scaling reproduces published mean
-# extinction at ORM La Palma (2360 m): U~0.46, B~0.22,
-# V~0.12, R~0.09, I~0.05 (King 1985; ORM site monitoring),
-# consistent with ESO Paranal (V~0.11) once scaled.
+# 2000 m reference altitude, per filter band. Set so that the
+# altitude scaling gives representative values for the Roque
+# de los Muchachos Observatory, La Palma: U 0.46, B 0.22,
+# V 0.12, R 0.09, I 0.05 (cf. King 1985). They were derived
+# for 2326 m, so at the 2360 m used elsewhere they come out
+# 0.001-0.002 lower. Checked at Paranal against ESO's FORS1
+# quality-control coefficients (tests/validate_extinction.py).
 EXTINCTION_REFERENCE = {
     "U": 0.479,  # UV
     "B": 0.229,  # Blue

@@ -94,7 +94,8 @@ def main():
     const = rows[0][2]                         # Paranal's measured median
     mae_const = statistics.fmean(abs(const / m - 1) for _, m in held)
     print(f"\n  held-out sites: model MAE {mae_model:.1%}; "
-          f"constant {const:.2f}\" predictor MAE {mae_const:.1%}")
+          f"constant {const:.3f}\" (Paranal's measured median) predictor "
+          f"MAE {mae_const:.1%}")
 
 
 if __name__ == "__main__":

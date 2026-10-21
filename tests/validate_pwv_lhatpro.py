@@ -214,6 +214,23 @@ def main():
     print(f"  nights N={len(ca)}  Spearman rho={spearman(av, bv):+.3f}  "
           f"wet bias {(statistics.median(av) / statistics.median(bv) - 1) * 100:+.0f}%")
 
+    # How far Open-Meteo's downscaling moves the column from the grid cell to
+    # the elevation-model height, against what the exponential would predict.
+    # (Correcting the already-downscaled column from the grid-cell height would
+    # remove the same slab twice.)
+    dh = fetch_model_pwv()
+    ds = {datetime.fromisoformat(t[:19]): v
+          for t, v in zip(dh["time"], dh["total_column_integrated_water_vapour"])
+          if v is not None}
+    rw = {datetime.fromisoformat(t[:19]): v
+          for t, v in zip(rh["time"], rh["total_column_integrated_water_vapour"])
+          if v is not None}
+    hrs = sorted(set(ds) & set(rw) & set(lhat))
+    ratio = statistics.median(rw[t] / ds[t] for t in hrs if ds[t] > 0)
+    print(f"  downscaling: raw / downscaled column = {ratio:.2f} (median over "
+          f"{len(hrs)} LHATPRO hours); exp(({H_MODEL:.0f} - {hg:.0f})/2000) "
+          f"would give {math.exp((H_MODEL - hg) / HW):.2f}")
+
 
 if __name__ == "__main__":
     main()

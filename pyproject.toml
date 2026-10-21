@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gowc"
-version = "1.0.2"
+version = "1.0.3"
 description = "Global Observing-conditions Weather Catalogue: observing-conditions prediction and observation planning across ~2,600 observatory sites"
 readme = "Readme.md"
 requires-python = ">=3.10"   # statistics.correlation
