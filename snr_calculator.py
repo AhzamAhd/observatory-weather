@@ -255,39 +255,72 @@ def _nanolambert_to_mag(b_nl):
     return (20.7233 - math.log(b_nl / 34.08)) / 0.92104
 
 
+# Moonless sky colour relative to V, (dark sky in band) - (dark sky in V), in
+# mag/arcsec^2: Patat (2008), A&A 481, 575, "The Dancing Sky: 6 years of night
+# sky observations at Cerro Paranal", Table 3 -- zenith-corrected average dark-
+# time sky at Paranal, U 22.35, B 22.67, V 21.71, R 20.93, I 19.65. Only the
+# colours are used; the V level stays GOWC's 21.8. Bands without an entry
+# (e.g. J/H/K) fall back to the V value.
+DARK_SKY_COLOUR = {"U": +0.64, "B": +0.96, "V": 0.00, "R": -0.78, "I": -2.06}
+
+
+def dark_sky_for_band(band, dark_sky_mag_v=21.8):
+    """Moonless zenith sky (mag/arcsec^2) in `band`: the V baseline plus the
+    Patat (2008) colour. Narrowband filters pass the broad band they already
+    use for zero-point and extinction (H-alpha -> R, [O III] -> V)."""
+    return dark_sky_mag_v + DARK_SKY_COLOUR.get(band or "V", 0.0)
+
+
 def moon_sky_brightness(moon_phase_pct, moon_alt_deg, target_alt_deg,
                         moon_target_sep_deg, dark_sky_mag=21.8,
-                        k_extinction=0.15):
-    """V-band sky brightness (mag/arcsec^2) including moonlight, via the
+                        k_extinction=0.15, band="V", k_band=None):
+    """Sky brightness (mag/arcsec^2) in `band` including moonlight, via the
     Krisciunas & Schaefer (1991) model (PASP 103, 1033).
 
-    The dark-sky baseline is scaled to the target's line of sight (K&S Eq. 2:
-    B_zen 10^(-0.4 k (X-1)) X), and the Moon's scattered light is added as a
-    function of lunar phase, the Moon's and target's airmasses, and strongly
-    of the Moon-target separation. Below the horizon the Moon contributes
-    nothing. V band only: the same value is used for every filter.
+    The dark-sky baseline for the band is the V baseline `dark_sky_mag` plus
+    the Patat (2008) dark-sky colour (DARK_SKY_COLOUR), scaled to the target's
+    line of sight with the band's own extinction coefficient (K&S Eq. 2:
+    B_zen 10^(-0.4 k (X-1)) X). The Moon's scattered light is the K&S V-band
+    value -- a function of lunar phase, the Moon's and target's airmasses, and
+    strongly of the Moon-target separation -- added in flux to the band's dark
+    sky. Below the horizon the Moon contributes nothing.
+
+    Deliberate simplification: moonlight is given no colour (its V-band
+    brightness is used in every band). Scattered moonlight is in reality bluer
+    than the dark sky, so in moonlit conditions the sky is somewhat
+    underestimated in U/B and overestimated in R/I. With band="V" the result is
+    exactly the V-band K&S value.
 
     Parameters
     ----------
     moon_phase_pct : illuminated fraction (0-100).
     moon_alt_deg, target_alt_deg : altitudes above the horizon (deg).
     moon_target_sep_deg : Moon-target angular separation (deg).
-    dark_sky_mag : moonless zenith sky brightness (mag/arcsec^2); site darkness.
-    k_extinction : V-band atmospheric extinction coefficient (mag/airmass).
+    dark_sky_mag : moonless zenith V sky brightness (mag/arcsec^2); site darkness.
+    k_extinction : V-band atmospheric extinction coefficient (mag/airmass),
+        used for the moonlight term (and the dark sky when band is V).
+    band : photometric band key (U, B, V, R, I); narrowband filters pass the
+        broad band they use for zero-point and extinction.
+    k_band : the band's extinction coefficient for the dark-sky term; defaults
+        to k_extinction.
     """
     # Airmass along a line of sight at altitude h (K&S Eq. 3).
     def _X(h):
         z = 90.0 - h
         return (1.0 - 0.96 * math.sin(math.radians(z)) ** 2) ** -0.5
 
+    dark_band = dark_sky_for_band(band, dark_sky_mag)
+    k_dark = k_extinction if k_band is None else k_band
+
     if target_alt_deg is None or target_alt_deg <= 0:
-        return round(dark_sky_mag, 2)
+        return round(dark_band, 2)
     X_target = _X(target_alt_deg)
 
     # Dark sky along the target's line of sight (K&S Eq. 2): more airglow path
-    # (x X), less extinction-dimmed (x 10^(-0.4 k (X-1))).
-    b_dark = (_mag_to_nanolambert(dark_sky_mag)
-              * 10 ** (-0.4 * k_extinction * (X_target - 1.0)) * X_target)
+    # (x X), less extinction-dimmed (x 10^(-0.4 k (X-1))). The nanoLambert
+    # conversion is only a linear flux scale here, so it serves any band.
+    b_dark = (_mag_to_nanolambert(dark_band)
+              * 10 ** (-0.4 * k_dark * (X_target - 1.0)) * X_target)
 
     # No Moon contribution when it is below the horizon.
     if moon_alt_deg is None or moon_alt_deg <= 0:
@@ -323,20 +356,22 @@ def moon_sky_brightness(moon_phase_pct, moon_alt_deg, target_alt_deg,
 
 def get_sky_brightness(moon_phase_pct, moon_altitude_deg,
                        target_altitude_deg=None, moon_target_sep_deg=None,
-                       dark_sky_mag=21.8, k_extinction=0.15):
-    """Sky brightness (V mag/arcsec^2).
+                       dark_sky_mag=21.8, k_extinction=0.15,
+                       band="V", k_band=None):
+    """Sky brightness (mag/arcsec^2) in `band` (default V).
 
     With the target altitude and Moon-target separation (every page supplies
     them; see object_visibility.moon_target_geometry), this is the Krisciunas &
-    Schaefer (1991) model. Pass k_extinction as the site's V-band coefficient.
-    The coarse phase/altitude lookup below is only a last-resort fallback for
-    callers that cannot compute the geometry.
+    Schaefer (1991) model with a per-band dark sky (see moon_sky_brightness).
+    Pass k_extinction as the site's V-band coefficient and k_band as the
+    band's. The coarse phase/altitude lookup below is only a last-resort
+    fallback for callers that cannot compute the geometry (V band only).
     """
     if (target_altitude_deg is not None and moon_target_sep_deg is not None):
         return moon_sky_brightness(
             moon_phase_pct, moon_altitude_deg, target_altitude_deg,
             moon_target_sep_deg, dark_sky_mag=dark_sky_mag,
-            k_extinction=k_extinction)
+            k_extinction=k_extinction, band=band, k_band=k_band)
 
     # ── Legacy fallback: 5-bucket phase table + linear altitude term ──
     if moon_altitude_deg <= 0:
