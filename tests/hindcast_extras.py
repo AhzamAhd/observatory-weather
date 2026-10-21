@@ -108,6 +108,10 @@ def analyse(site):
     print(f"\n  poor nights (DIMM > {POOR}\"): base rate {base:.1%}")
     print(f"  recall {tp / sum(poor):.1%}  false-alarm {fp / (len(poor) - sum(poor)):.1%}  "
           f"precision {tp / sum(flag):.1%}")
+    # Nightly model medians are rounded to 0.01", so ties at the threshold
+    # make the flagged fraction slightly exceed the base rate.
+    print(f"  threshold {thr:.2f}\" flags {sum(flag)}/{len(flag)} nights "
+          f"({sum(flag) / len(flag):.1%})")
 
     lm = [math.log10(v) for v in xs]
     ld = [math.log10(dn[d]) for d in cn]

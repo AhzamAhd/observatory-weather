@@ -200,29 +200,38 @@ def render_planning_wizard(df, utcnow, load_atmospheric_cached):
                           key="wiz_moon")
     _k_v = extinction_coefficient(alt_m, "V")
     if _real and moon_choice == _real:
-        sky_mag = get_sky_brightness(
-            _geo["moon_phase_pct"], _geo["moon_alt"],
-            target_altitude_deg=best_alt_for_snr,
-            moon_target_sep_deg=_geo["moon_sep"], k_extinction=_k_v)
+        _moon = (_geo["moon_phase_pct"], _geo["moon_alt"], _geo["moon_sep"])
+    else:
+        _mm = {"Dark (new)": (5, -10), "Grey (quarter)": (50, 30),
+               "Bright (full)": (100, 60)}[moon_choice]
+        _moon = (_mm[0], _mm[1], 90.0)
+
+    def _sky_in(band):
+        # K&S sky in `band`: per-band dark sky (Patat 2008 colour, the band's
+        # own extinction) plus the V-band moonlight. Step 7 calls this again
+        # once the filter is chosen.
+        return get_sky_brightness(
+            _moon[0], _moon[1], target_altitude_deg=best_alt_for_snr,
+            moon_target_sep_deg=_moon[2], k_extinction=_k_v,
+            band=band, k_band=extinction_coefficient(alt_m, band))
+
+    sky_mag = _sky_in("V")
+    if _real and moon_choice == _real:
         st.caption(f"At {plan_dt:%H:%M} UTC the Moon is {_geo['moon_phase_pct']:.0f}% "
                    f"illuminated, {_geo['moon_alt']:.0f}° altitude, "
                    f"{_geo['moon_sep']:.0f}° from {target}.")
     else:
-        _mm = {"Dark (new)": (5, -10), "Grey (quarter)": (50, 30),
-               "Bright (full)": (100, 60)}[moon_choice]
-        sky_mag = get_sky_brightness(
-            _mm[0], _mm[1], target_altitude_deg=best_alt_for_snr,
-            moon_target_sep_deg=90.0, k_extinction=_k_v)
         if _mm[1] > 0:
             st.caption(f"What-if Moon: {_mm[0]}% lit at {_mm[1]}° altitude, "
                        f"assumed 90° from {target}.")
 
     cc1, cc2, cc3 = st.columns(3)
     cc1.metric("Seeing", f"{seeing:.2f}\"")
-    cc2.metric("Sky brightness", f"{sky_mag} mag/arcsec²",
+    cc2.metric("Sky brightness (V)", f"{sky_mag} mag/arcsec²",
                help="Modelled, not measured: Krisciunas & Schaefer (1991) "
                     "moonlit-sky model in the V band, not independently "
-                    "validated here.")
+                    "validated here. Step 7 recomputes it for the chosen "
+                    "filter (dark-sky colour from Patat 2008).")
     cc3.metric("PWV", f"{pwv:.1f} mm" if pwv else "—")
 
     # Target-weighted score: this target, this site, this night -- distinct
@@ -302,12 +311,19 @@ def render_planning_wizard(df, utcnow, load_atmospheric_cached):
         filt = PHOTOMETRIC_FILTERS[filter_name]
         specs = get_telescope_specs(site, alt_m)
 
+    # The sky in the chosen filter's band (narrowband uses its broad band).
+    sky_band = _sky_in(filt["band"])
+    if filt["band"] != "V":
+        st.caption(f"Sky in the {filt['band']} band: {sky_band} mag/arcsec² "
+                   f"(V: {sky_mag}); moonless sky colour from Patat (2008), "
+                   "moonlight taken as colourless.")
+
     # Solve exposure to reach the target SNR by scanning (SNR grows ~sqrt(t)
     # in the sky/read regime; a direct scan is robust across regimes).
     def _snr_at(t):
         r = calculate_snr(
             object_magnitude=mag, exposure_time_s=float(t),
-            telescope_specs=specs, sky_brightness_mag=float(sky_mag),
+            telescope_specs=specs, sky_brightness_mag=float(sky_band),
             seeing_arcsec=seeing, object_name=target,
             object_altitude_deg=best_alt_for_snr, pwv_mm=pwv,
             site_altitude_m=alt_m, filter_band=filt["band"],
@@ -401,7 +417,7 @@ Moon          : {moon_choice}
 
 Visibility    : peak altitude {best_alt:.0f}°, up {len(up_pts)*0.5:.1f} h
 Best window   : {window_line}
-Conditions    : seeing {seeing:.2f}", sky {sky_mag} mag/arcsec²{f', PWV {pwv:.1f} mm' if pwv else ''}
+Conditions    : seeing {seeing:.2f}", sky {sky_band} mag/arcsec² ({filt['band']}){f', PWV {pwv:.1f} mm' if pwv else ''}
 
 Filter        : {filter_name}
 Exposure      : {_fmt_t(req_t)}  for SNR {target_snr}
@@ -479,7 +495,7 @@ observatory conditions.
             "  Exposure solved via the CCD signal-to-noise equation (shot + "
             f"sky + dark + read + scintillation noise) in the {filt['band']} "
             f"band, including airmass extinction at {int(alt_m)} m and "
-            f"moon-dependent sky brightness ({sky_mag} mag/arcsec²). "
+            f"moon-dependent sky brightness ({sky_band} mag/arcsec² in {filt['band']}). "
             f"Predicted SNR {pred_snr} (σ_m = ±{_sig if _sig else '—'} "
             "mag). SNR method validated against the ING SIGNAL ETC.",
             "",

@@ -4242,11 +4242,12 @@ if selected_page == "SNR Calculator":
         _sep_txt = (f"{_snr_moon_sep}° from Moon"
                     if _snr_moon_sep is not None else "separation n/a")
         st.metric(
-            "Sky brightness",
+            "Sky brightness (V)",
             f"{sky_brightness} mag/arcsec²",
             help="Higher = darker sky = better. " + SKY_NOTE + " Folds in "
                  "Moon phase, the Moon's and target's altitudes and, strongly, "
-                 "the Moon–target angular separation."
+                 "the Moon–target angular separation. The SNR uses the sky in "
+                 "the chosen filter's band (dark-sky colour from Patat 2008)."
         )
         if _auto_moon_alt > 0:
             st.caption(f"{snr_object} is **{_sep_txt}**.")
@@ -4398,7 +4399,20 @@ if selected_page == "SNR Calculator":
     # (alt = asin(1/X)); typed sky brightness and extinction replace the live
     # values. This lets the UI reproduce an ETC run exactly.
     _eff_obj_alt = _snr_obj_alt
-    _eff_sky = float(sky_brightness)
+    # Live sky in the band actually used (the real instrument's filter, or the
+    # standard filter picked above; narrowband uses its broad band).
+    _sky_band = (_instrument_cfg or {}).get("band") or _filt["band"]
+    _site_alt_m = _snr_obs_row.get("altitude_m") or 0
+    _eff_sky = float(get_sky_brightness(
+        moon_phase_input, moon_alt_input,
+        target_altitude_deg=_snr_tgt_alt,
+        moon_target_sep_deg=_snr_moon_sep,
+        k_extinction=_ext_k(_site_alt_m, "V"),
+        band=_sky_band, k_band=_ext_k(_site_alt_m, _sky_band)))
+    if _sky_band != "V" and _manual_sky is None:
+        st.caption(f"Sky in the {_sky_band} band: {_eff_sky} mag/arcsec² "
+                   f"(V: {sky_brightness}); moonless sky colour from Patat "
+                   "(2008), moonlight taken as colourless.")
     if _manual_airmass is not None:
         _eff_obj_alt = math.degrees(math.asin(min(1.0, 1.0 / _manual_airmass)))
     if _manual_sky is not None:
@@ -4508,8 +4522,10 @@ if selected_page == "SNR Calculator":
               (_instrument_cfg["name"] if _instrument_cfg
                else tel_specs.get("name", f"{tel_specs['aperture_m']}m")))
     m4.metric("Seeing",        f"{seeing}\"")
-    m5.metric("Sky brightness",
-              f"{sky_brightness} mag/arcsec²", help=SKY_NOTE)
+    m5.metric(f"Sky brightness ({_sky_band})",
+              f"{_eff_sky} mag/arcsec²",
+              help=SKY_NOTE + " The value used in the SNR above"
+                   + (" (manual override)." if _manual_sky is not None else "."))
 
     # For extended objects, explain the surface-brightness treatment: the SNR
     # measures the light within a seeing-disk aperture, not the whole object.
